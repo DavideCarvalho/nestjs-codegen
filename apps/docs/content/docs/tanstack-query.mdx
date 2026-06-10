@@ -3,31 +3,38 @@ title: TanStack Query
 description: queryOptions / mutationOptions from your framework adapter.
 ---
 
-The generated `api.ts` uses TanStack Query's **`queryOptions`/`mutationOptions`**
-helpers — the same pattern nestjs-inertia uses. GET routes become `queryOptions`,
-everything else `mutationOptions`.
+TanStack Query is **opt-in**. By default the client is a [plain typed
+fetch](/docs/api-client#calling-endpoints) with no TanStack dependency. Set `query: true`
+(in `forRoot()` or your config file) and each endpoint returns a handle exposing TanStack's
+**`queryOptions`/`mutationOptions`** helpers — GET routes get `queryOptions()`, everything
+else `mutationOptions()`.
+
+```ts
+NestjsCodegenModule.forRoot({ /* … */ query: true });
+```
 
 ## Which package?
 
 You don't install `@tanstack/query-core` directly (nobody does) — your framework
-adapter re-exports the helpers. Point `queryImport` at the package you already have:
+adapter re-exports the helpers. Point `queryImport` at the package you already have
+(`@tanstack/react-query` is the default):
 
 <Tabs items={['React', 'Vue', 'Svelte', 'Solid']}>
 
 ```ts tab="React"
-export default defineConfig({ queryImport: '@tanstack/react-query' }); // default
+NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/react-query' }); // default
 ```
 
 ```ts tab="Vue"
-export default defineConfig({ queryImport: '@tanstack/vue-query' });
+NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/vue-query' });
 ```
 
 ```ts tab="Svelte"
-export default defineConfig({ queryImport: '@tanstack/svelte-query' });
+NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/svelte-query' });
 ```
 
 ```ts tab="Solid"
-export default defineConfig({ queryImport: '@tanstack/solid-query' });
+NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/solid-query' });
 ```
 
 </Tabs>
@@ -40,15 +47,15 @@ import { api } from '../lib/api';
 
 function Users() {
   const qc = useQueryClient();
-  const list = useQuery(api.users.list());
+  const list = useQuery(api.users.list().queryOptions());
   const create = useMutation({
-    ...api.users.create(),
-    onSuccess: () => qc.invalidateQueries(api.users.list()),
+    ...api.users.create().mutationOptions(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: api.users.list().queryKey() }),
   });
   // …
 }
 ```
 
-Because each route returns a real `queryOptions`/`mutationOptions` object, you compose
-it with your own `onSuccess`, `select`, `staleTime`, etc. — and the `queryKey` is
-derived from the route name + input for you.
+Each handle builds a real `queryOptions`/`mutationOptions` object, so you compose it with
+your own `onSuccess`, `select`, `staleTime`, etc. — and `queryKey()` derives a stable key
+from the route name + input for you.

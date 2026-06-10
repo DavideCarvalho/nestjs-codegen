@@ -19,23 +19,39 @@ export const api = createApi(
 The result is a nested object keyed by route name (`controller.method`), fully typed
 from your contracts.
 
-## Reads vs writes
+## Calling endpoints
 
-GET routes produce **`queryOptions`**; the rest produce **`mutationOptions`** — the
-helpers from your TanStack adapter (see [TanStack Query](/docs/tanstack-query)).
+By default (`query: false`) **each endpoint is a plain typed fetch** — call it and you
+get a `Promise` resolved with the typed response. Params, query, and body are all typed
+from your contracts:
+
+```ts
+import { api } from '../lib/api';
+
+// GET /users  → Promise<User[]>
+const users = await api.users.list();
+
+// GET /users/:id  → params are typed + required
+const user = await api.users.show({ params: { id } });
+
+// POST /users  → body typed from the DTO
+const created = await api.users.create({ body: { email: 'a@b.com', password: 'secret123' } });
+```
+
+## TanStack Query handles
+
+Set `query: true` and every endpoint instead returns a **handle** carrying its own
+`fetch`, `queryKey`, and `queryOptions()` (GET) or `mutationOptions()` (the rest) — the
+helpers from your TanStack adapter (see [TanStack Query](/docs/tanstack-query)):
 
 ```tsx
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
-// GET /users  → queryOptions, data typed as User[]
-const users = useQuery(api.users.list());
+const users = useQuery(api.users.list().queryOptions());
+const user = useQuery(api.users.show({ params: { id } }).queryOptions());
 
-// GET /users/:id  → params are typed + required
-const user = useQuery(api.users.show({ params: { id } }));
-
-// POST /users  → mutationOptions; mutate({ body }) typed from the DTO
-const create = useMutation(api.users.create());
+const create = useMutation(api.users.create().mutationOptions());
 create.mutate({ body: { email: 'a@b.com', password: 'secret123' } });
 ```
 
@@ -46,7 +62,8 @@ calling anything:
 
 ```ts
 import type { Api } from '../generated/api';
-// e.g. Awaited<ReturnType<typeof api.users.show>> for the queryOptions object
+// default: Awaited<ReturnType<typeof api.users.show>> is the response type
+// query: true: ReturnType<typeof api.users.show> is the handle
 ```
 
 ## Inertia mode

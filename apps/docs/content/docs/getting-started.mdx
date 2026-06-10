@@ -26,8 +26,6 @@ Create `nestjs-codegen.config.ts` at your project root:
 import { defineConfig } from '@dudousxd/nestjs-codegen';
 
 export default defineConfig({
-  // where to read pages from (Inertia only — omit if you don't use Inertia)
-  pages: { glob: 'resources/pages/**/*.tsx' },
   // controllers to scan for routes + contracts
   contracts: { glob: 'src/**/*.controller.ts' },
   // output directory for the generated files
@@ -38,6 +36,12 @@ export default defineConfig({
   queryImport: '@tanstack/react-query',
 });
 ```
+
+<Callout type="info">
+  `pages` is **Inertia-only** and optional — add it only if you build a NestJS +
+  Inertia app (see [nestjs-inertia](/docs/inertia)). A plain NestJS API needs just
+  `contracts` + `codegen`.
+</Callout>
 
 See [Configuration](/docs/configuration) for every option.
 

@@ -87,11 +87,13 @@ function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
     validation: resolveAdapter(userConfig.validation ?? 'zod'),
     mutationClient: userConfig.mutationClient ?? 'inertia',
     queryImport: userConfig.queryImport ?? '@tanstack/react-query',
-    pages: {
-      glob: userConfig.pages.glob,
-      propsExport: userConfig.pages.propsExport ?? 'ComponentProps',
-      componentNameStrategy: userConfig.pages.componentNameStrategy ?? 'relative-no-ext',
-    },
+    pages: userConfig.pages
+      ? {
+          glob: userConfig.pages.glob,
+          propsExport: userConfig.pages.propsExport ?? 'ComponentProps',
+          componentNameStrategy: userConfig.pages.componentNameStrategy ?? 'relative-no-ext',
+        }
+      : null,
     contracts: {
       glob: userConfig.contracts?.glob ?? 'src/**/*.controller.ts',
       debounceMs: userConfig.contracts?.debounceMs ?? 500,

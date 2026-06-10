@@ -22,7 +22,8 @@ export interface UserConfig {
    * @default '@tanstack/react-query'
    */
   queryImport?: string;
-  pages: {
+  /** Inertia page discovery. Omit when you don't use Inertia. */
+  pages?: {
     glob: string;
     propsExport?: string;
     componentNameStrategy?: 'relative-no-ext' | 'kebab' | ((path: string) => string);
@@ -111,7 +112,7 @@ export interface ResolvedConfig {
   validation: ValidationAdapter;
   mutationClient: 'fetcher' | 'inertia';
   queryImport: string;
-  pages: ResolvedPagesConfig;
+  pages: ResolvedPagesConfig | null;
   contracts: ResolvedContractsConfig;
   scopes: Record<string, ScopeConfig>;
   codegen: ResolvedCodegenConfig;

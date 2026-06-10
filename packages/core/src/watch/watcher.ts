@@ -75,7 +75,9 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
   // ── Pages watcher (fast path — no route discovery) ──────────────────────────
   let pagesDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const pagesWatcher = chokidar.watch(join(config.codegen.cwd, config.pages.glob), {
+  // No `pages` config → watch a path that matches nothing (pages are Inertia-only).
+  const pagesGlob = config.pages?.glob ?? '.nestjs-codegen-no-pages';
+  const pagesWatcher = chokidar.watch(join(config.codegen.cwd, pagesGlob), {
     ignoreInitial: true,
     persistent: true,
     awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },

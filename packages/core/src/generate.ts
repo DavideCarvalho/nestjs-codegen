@@ -25,45 +25,48 @@ export async function generate(
   config: ResolvedConfig,
   routes: RouteDescriptor[] = [],
 ): Promise<void> {
-  const pages = await discoverPages({
-    glob: config.pages.glob,
-    cwd: config.codegen.cwd,
-    propsExport: config.pages.propsExport,
-    componentNameStrategy: config.pages.componentNameStrategy,
-  });
+  // Inertia page discovery is opt-in — skip entirely when `pages` isn't configured.
+  if (config.pages) {
+    const pagesConfig = config.pages;
+    const pages = await discoverPages({
+      glob: pagesConfig.glob,
+      cwd: config.codegen.cwd,
+      propsExport: pagesConfig.propsExport,
+      componentNameStrategy: pagesConfig.componentNameStrategy,
+    });
 
-  // Discover shared props from InertiaModule.forRoot({ share: ... }) if moduleEntry is configured
-  let sharedProps: SharedPropsResult | null = null;
-  if (config.app?.moduleEntry) {
-    try {
-      const tsconfigPath = config.app.tsconfig ?? join(config.codegen.cwd, 'tsconfig.json');
-      let project: Project;
+    let sharedProps: SharedPropsResult | null = null;
+    if (config.app?.moduleEntry) {
       try {
-        project = new Project({
-          tsConfigFilePath: tsconfigPath,
-          skipAddingFilesFromTsConfig: true,
-          skipLoadingLibFiles: true,
-          skipFileDependencyResolution: true,
-        });
+        const tsconfigPath = config.app.tsconfig ?? join(config.codegen.cwd, 'tsconfig.json');
+        let project: Project;
+        try {
+          project = new Project({
+            tsConfigFilePath: tsconfigPath,
+            skipAddingFilesFromTsConfig: true,
+            skipLoadingLibFiles: true,
+            skipFileDependencyResolution: true,
+          });
+        } catch {
+          project = new Project({
+            skipAddingFilesFromTsConfig: true,
+            skipLoadingLibFiles: true,
+            skipFileDependencyResolution: true,
+            compilerOptions: { allowJs: true, strict: false },
+          });
+        }
+        sharedProps = discoverSharedProps(project, config.app.moduleEntry);
       } catch {
-        project = new Project({
-          skipAddingFilesFromTsConfig: true,
-          skipLoadingLibFiles: true,
-          skipFileDependencyResolution: true,
-          compilerOptions: { allowJs: true, strict: false },
-        });
+        // Graceful fallback — skip shared props if anything goes wrong
       }
-      sharedProps = discoverSharedProps(project, config.app.moduleEntry);
-    } catch {
-      // Graceful fallback — skip shared props if anything goes wrong
     }
-  }
 
-  await emitPages(pages, config.codegen.outDir, {
-    propsExport: config.pages.propsExport,
-    sharedProps,
-  });
-  await emitCache(pages, config.codegen.outDir);
+    await emitPages(pages, config.codegen.outDir, {
+      propsExport: pagesConfig.propsExport,
+      sharedProps,
+    });
+    await emitCache(pages, config.codegen.outDir);
+  }
 
   const hasRoutes = routes.length > 0;
   const hasContracts = routes.some((r) => r.contract);

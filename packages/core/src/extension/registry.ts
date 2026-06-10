@@ -2,7 +2,55 @@ import { Project } from 'ts-morph';
 import type { ResolvedConfig } from '../config/types.js';
 import type { RouteDescriptor } from '../discovery/types.js';
 import { CodegenError } from '../exceptions.js';
-import type { CodegenExtension, EmittedFile, ExtensionContext } from './types.js';
+import type {
+  ApiClientLayer,
+  ApiTransport,
+  CodegenExtension,
+  EmittedFile,
+  ExtensionContext,
+} from './types.js';
+
+/**
+ * Resolve the two single-slot api.ts hooks. At most one extension may claim each slot;
+ * a second claimer throws a {@link CodegenError} naming both extensions. An unclaimed
+ * `apiTransport` means the host falls back to the bundled fetcher transport; an unclaimed
+ * `apiClientLayer` means leaves stay bare callables.
+ */
+export function resolveApiSlots(extensions: readonly CodegenExtension[]): {
+  transport?: ApiTransport;
+  layer?: ApiClientLayer;
+} {
+  let transport: ApiTransport | undefined;
+  let transportOwner: string | undefined;
+  let layer: ApiClientLayer | undefined;
+  let layerOwner: string | undefined;
+
+  for (const ext of extensions) {
+    if (ext.apiTransport) {
+      if (transport) {
+        throw new CodegenError(
+          `api transport claimed by both "${transportOwner}" and "${ext.name}" — only one extension may set apiTransport.`,
+        );
+      }
+      transport = ext.apiTransport;
+      transportOwner = ext.name;
+    }
+    if (ext.apiClientLayer) {
+      if (layer) {
+        throw new CodegenError(
+          `api client layer claimed by both "${layerOwner}" and "${ext.name}" — only one extension may set apiClientLayer.`,
+        );
+      }
+      layer = ext.apiClientLayer;
+      layerOwner = ext.name;
+    }
+  }
+
+  return {
+    ...(transport ? { transport } : {}),
+    ...(layer ? { layer } : {}),
+  };
+}
 
 /** Output filenames the core always owns — an extension emitting one of these is an error. */
 const CORE_FILES = new Set(['routes.ts', 'api.ts', 'forms.ts', 'index.d.ts', 'pages.d.ts']);

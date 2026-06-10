@@ -3,12 +3,25 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
-    alias: {
-      // Resolve the workspace core to its source so tests run without a build step.
-      '@dudousxd/nestjs-codegen': fileURLToPath(
-        new URL('./packages/core/src/index.ts', import.meta.url),
-      ),
-    },
+    // Order matters: the more specific subpath alias must come before the bare package
+    // (Vite does prefix replacement, so the bare alias would otherwise swallow subpaths).
+    alias: [
+      {
+        find: '@dudousxd/nestjs-codegen/extension',
+        replacement: fileURLToPath(
+          new URL('./packages/core/src/extension/index.ts', import.meta.url),
+        ),
+      },
+      {
+        find: '@dudousxd/nestjs-codegen-tanstack',
+        replacement: fileURLToPath(new URL('./packages/tanstack/src/index.ts', import.meta.url)),
+      },
+      {
+        // Resolve the workspace core to its source so tests run without a build step.
+        find: '@dudousxd/nestjs-codegen',
+        replacement: fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
+      },
+    ],
   },
   test: {
     globals: false,

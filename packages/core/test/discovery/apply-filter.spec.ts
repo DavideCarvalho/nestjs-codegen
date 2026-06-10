@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 import { afterEach, describe, expect, it } from 'vitest';
 import { discoverContractsFast } from '../../src/discovery/contracts-fast.js';
 import type { FilterFieldType } from '../../src/discovery/types.js';
@@ -40,7 +41,7 @@ describe('@ApplyFilter query type extraction', () => {
     });
     const outDir = await mkdtemp(join(tmpdir(), 'apply-filter-emit-'));
     try {
-      await emitApi(routes, outDir, { query: true });
+      await emitApi(routes, outDir, { extensions: [tanstackQuery()] });
       const content = await readFile(join(outDir, 'api.ts'), 'utf8');
       // The query TYPE position (in ApiRouter) is byte-identical to the args
       // used by the `_filterQueryTyped<...>` factory.
@@ -79,7 +80,7 @@ describe('@ApplyFilter query-type vs factory-type consistency', () => {
     });
     const outDir = await mkdtemp(join(tmpdir(), 'apply-filter-enum-emit-'));
     try {
-      await emitApi(routes, outDir, { query: true });
+      await emitApi(routes, outDir, { extensions: [tanstackQuery()] });
       const content = await readFile(join(outDir, 'api.ts'), 'utf8');
       const map =
         '{ "minAge": number; "state": Status; "mode": "draft" | "published"; "score": number }';

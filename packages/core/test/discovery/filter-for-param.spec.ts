@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 import { afterEach, describe, expect, it } from 'vitest';
 import { discoverContractsFast } from '../../src/discovery/contracts-fast.js';
 import type { FilterFieldType } from '../../src/discovery/types.js';
@@ -76,7 +77,7 @@ describe('@FilterFor method-parameter type inference (emit)', () => {
       glob: 'filter-for-param.controller.ts',
     });
     outDir = await mkdtemp(join(tmpdir(), 'filter-for-param-emit-'));
-    await emitApi(routes, outDir, { query: true });
+    await emitApi(routes, outDir, { extensions: [tanstackQuery()] });
     const content = await readFile(join(outDir, 'api.ts'), 'utf8');
 
     // Real `import type { Status } from '<relative path>'` for the local enum.
@@ -98,7 +99,7 @@ describe('@FilterFor method-parameter type inference (emit)', () => {
       glob: 'filter-for-param-imported.controller.ts',
     });
     outDir = await mkdtemp(join(tmpdir(), 'filter-for-param-imp-emit-'));
-    await emitApi(routes, outDir, { query: true });
+    await emitApi(routes, outDir, { extensions: [tanstackQuery()] });
     const content = await readFile(join(outDir, 'api.ts'), 'utf8');
 
     expect(content).toMatch(
@@ -121,7 +122,7 @@ describe('@FilterFor method-parameter type inference (emit)', () => {
       glob: 'filter-for-param-unexported.controller.ts',
     });
     outDir = await mkdtemp(join(tmpdir(), 'filter-for-param-unexp-emit-'));
-    await emitApi(routes, outDir, { query: true });
+    await emitApi(routes, outDir, { extensions: [tanstackQuery()] });
     const content = await readFile(join(outDir, 'api.ts'), 'utf8');
 
     // No import is emitted for any of the non-exported internal types.

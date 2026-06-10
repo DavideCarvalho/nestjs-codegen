@@ -135,19 +135,27 @@ export interface LeafModel {
   members?: Record<string, string>;
 }
 
+/**
+ * Top-level `api.ts` imports + helpers a transport or layer depends on. Functions of the
+ * context so they can be route-aware (e.g. only import `mutationOptions` when a mutation
+ * exists). Imports are deduped by the host across all extensions.
+ */
+export interface ApiModuleDeps {
+  /** Raw import lines (e.g. `import { queryOptions as _q } from '@tanstack/react-query';`). */
+  imports?(ctx: ExtensionContext): string[];
+  /** Module-level helper declarations the rendered expressions depend on. */
+  helpers?(ctx: ExtensionContext): string[];
+}
+
 /** Single-slot: decides how an endpoint issues its request. */
-export interface ApiTransport {
+export interface ApiTransport extends ApiModuleDeps {
   name: string;
   /** Render the expression that issues this endpoint's request (e.g. `fetcher.get<Res>(url, opts)`). */
   renderRequest(leaf: LeafModel, ctx: ExtensionContext): string;
-  /** Raw import lines this transport's rendered expression depends on. */
-  imports?: string[];
-  /** Module-level helper declarations the rendered expression depends on. */
-  helpers?: string[];
 }
 
 /** Single-slot: decides what a leaf returns (the handle members). */
-export interface ApiClientLayer {
+export interface ApiClientLayer extends ApiModuleDeps {
   name: string;
   /**
    * Given the request expression (from the transport) and the leaf, return the handle's
@@ -155,8 +163,6 @@ export interface ApiClientLayer {
    * Returning members flips the leaf from a bare callable to a handle.
    */
   buildMembers(requestExpr: string, leaf: LeafModel, ctx: ExtensionContext): Record<string, string>;
-  imports?: string[];
-  helpers?: string[];
 }
 
 /** Identity helper for authoring extensions with full type inference. */

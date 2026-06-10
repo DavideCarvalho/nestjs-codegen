@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { RouteDescriptor } from '../../src/discovery/types.js';
 import { emitApi } from '../../src/emit/emit-api.js';
@@ -99,7 +100,7 @@ describe('emitApi golden output', () => {
   });
 
   it('query: true (TanStack handles)', async () => {
-    expect(await gen({ query: true })).toMatchSnapshot();
+    expect(await gen({ extensions: [tanstackQuery()] })).toMatchSnapshot();
   });
 
   it('mutationClient: inertia', async () => {
@@ -108,12 +109,15 @@ describe('emitApi golden output', () => {
 
   it('query + inertia + custom queryImport', async () => {
     expect(
-      await gen({ query: true, mutationClient: 'inertia', queryImport: '@tanstack/vue-query' }),
+      await gen({
+        extensions: [tanstackQuery({ import: '@tanstack/vue-query' })],
+        mutationClient: 'inertia',
+      }),
     ).toMatchSnapshot();
   });
 
   it('empty routes', async () => {
-    await emitApi([], outDir, { query: true, mutationClient: 'inertia' });
+    await emitApi([], outDir, { extensions: [tanstackQuery()], mutationClient: 'inertia' });
     expect(await readFile(join(outDir, 'api.ts'), 'utf8')).toMatchSnapshot();
   });
 });

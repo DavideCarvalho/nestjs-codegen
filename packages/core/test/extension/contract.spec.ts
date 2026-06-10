@@ -17,7 +17,7 @@ describe('extension contract', () => {
     const transport: ApiTransport = {
       name: 'fetcher',
       renderRequest: (leaf) => `fetcher.${leaf.request.method}(${leaf.request.urlExpr})`,
-      imports: ["import type { Fetcher } from '@dudousxd/nestjs-client';"],
+      imports: () => ["import type { Fetcher } from '@dudousxd/nestjs-client';"],
     };
     const layer: ApiClientLayer = {
       name: 'tanstack',

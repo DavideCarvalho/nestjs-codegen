@@ -7,21 +7,32 @@ import type {
   FilterFieldType,
   RouteDescriptor,
 } from '../discovery/types.js';
-import type { RequestModel } from '../extension/types.js';
+import { resolveApiSlots } from '../extension/registry.js';
+import type {
+  ApiClientLayer,
+  ApiTransport,
+  CodegenExtension,
+  ExtensionContext,
+  LeafModel,
+  RequestModel,
+} from '../extension/types.js';
 
 /**
  * Emits `api.ts` into `outDir` for all routes that carry a `.contract`.
- * - GET routes get `queryOptions`
- * - POST/PUT/PATCH/DELETE routes get `mutationOptions`
+ *
+ * By default each leaf is a bare typed-fetch callable. Registered extensions shape the
+ * output: an `apiClientLayer` (e.g. `@dudousxd/nestjs-codegen-tanstack`) turns leaves into
+ * handles; an `apiTransport` changes how requests are issued; `apiMembers` add handle
+ * members; `apiHeader` contributes top-level imports/statements.
  */
 export interface ApiEmitOptions {
   fetcherImportPath?: string;
   /** `'inertia'` (default) emits the Inertia `navigate()` helper; `'fetcher'` omits it (no @inertiajs import). */
   mutationClient?: 'fetcher' | 'inertia';
-  /** Module to import `queryOptions`/`mutationOptions` from. Default `@tanstack/react-query`. */
-  queryImport?: string;
-  /** Emit TanStack handles (`.queryOptions()`/`.mutationOptions()`). Default false (plain fetch). */
-  query?: boolean;
+  /** Registered extensions. Their api.ts hooks (transport/layer/members/header) are applied. */
+  extensions?: CodegenExtension[];
+  /** Shared extension context (from `generate()`). When omitted, a minimal one is built from routes. */
+  ctx?: ExtensionContext;
 }
 
 export async function emitApi(
@@ -364,27 +375,9 @@ function renderFetcherRequest(req: RequestModel): string {
 }
 
 /**
- * The bundled TanStack client layer (Phase 1: still flag-driven; Phase 3: extracted to
- * `@dudousxd/nestjs-codegen-tanstack`). Wraps a leaf into a handle exposing
- * `fetch`/`queryKey`/`queryOptions`|`mutationOptions`. Returns ordered members.
- */
-function tanstackLayerMembers(requestExpr: string, req: RequestModel): Record<string, string> {
-  const members: Record<string, string> = {
-    fetch: `() => ${requestExpr}`,
-    queryKey: `() => ${req.queryKeyExpr}`,
-  };
-  if (req.isGet) {
-    members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
-  } else {
-    members.mutationOptions = `() => _mutationOptions({ mutationFn: (body: ${req.bodyType}) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { body }) })`;
-  }
-  return members;
-}
-
-/**
  * The bundled nestjs-filter member contributor (Phase 4: extracted to
  * `@dudousxd/nestjs-filter-codegen`). Adds `filterQuery` to handle leaves whose route
- * carries `filterFields`.
+ * carries `filterFields`. Only meaningful when a client layer turned the leaf into a handle.
  */
 function filterMembers(c: LeafEntry): Record<string, string> {
   if (!c.contractSource.filterFields?.length) return {};
@@ -413,13 +406,21 @@ function renderLeaf(
   return lines;
 }
 
+/** Resolved api.ts pipeline pieces, threaded through the recursive emit. */
+interface ApiPipeline {
+  transport?: ApiTransport;
+  layer?: ApiClientLayer;
+  memberExts: CodegenExtension[];
+  ctx: ExtensionContext;
+}
+
 /**
  * Emit the nested `api` object body via the LeafModel pipeline:
- * build model → transport (fetcher) → layer (TanStack, when `query`) → members (filter)
- * → render. The default (no layer) is a bare typed-fetch callable; `query` flips leaves
- * into TanStack handles.
+ * build model → transport (default fetcher) → layer (when a client layer is registered)
+ * → member contributors (bundled filter + extensions' apiMembers) → render. With no layer
+ * a leaf is a bare typed-fetch callable; a layer flips it into a handle.
  */
-function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, query: boolean): string[] {
+function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiPipeline): string[] {
   const pad = ' '.repeat(indent);
   const lines: string[] = [];
 
@@ -427,22 +428,47 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, query: 
     const objKey = toObjectKey(key);
     if (node.kind === 'branch') {
       lines.push(`${pad}${objKey}: {`);
-      lines.push(...emitApiObjectBlock(node.children, indent + 2, query));
+      lines.push(...emitApiObjectBlock(node.children, indent + 2, p));
       lines.push(`${pad}},`);
       continue;
     }
 
     const req = buildRequestModel(node);
-    const requestExpr = renderFetcherRequest(req);
+    // Reconstruct a RouteDescriptor view for extension hooks. The tree only retains the
+    // LeafEntry (params typed as `source: string`), so cast back to the canonical shape.
+    const route = {
+      method: node.method,
+      path: node.path,
+      name: node.name,
+      params: node.params,
+      contract: { contractSource: node.contractSource },
+      ...(node.controllerRef ? { controllerRef: node.controllerRef } : {}),
+    } as unknown as RouteDescriptor;
+    const leaf: LeafModel = { route, request: req, requestExpr: '' };
+    leaf.requestExpr = p.transport
+      ? p.transport.renderRequest(leaf, p.ctx)
+      : renderFetcherRequest(req);
 
-    // No client layer → bare callable (Promise). The TanStack layer (gated on `query`)
-    // turns the leaf into a handle, then the filter member contributor adds filterQuery.
+    // No client layer → bare callable (Promise). A layer turns the leaf into a handle;
+    // then the bundled filter contributor + any extension apiMembers add handle members.
     let members: Record<string, string> | undefined;
-    if (query) {
-      members = { ...tanstackLayerMembers(requestExpr, req), ...filterMembers(node) };
+    if (p.layer) {
+      members = { ...p.layer.buildMembers(leaf.requestExpr, leaf, p.ctx), ...filterMembers(node) };
+      for (const ext of p.memberExts) {
+        const extra = ext.apiMembers?.(leaf, p.ctx);
+        if (!extra) continue;
+        for (const [name, value] of Object.entries(extra)) {
+          if (name in members) {
+            throw new Error(
+              `api member "${name}" on route "${req.routeName}" is contributed by more than one extension (conflict at "${ext.name}").`,
+            );
+          }
+          members[name] = value;
+        }
+      }
     }
 
-    lines.push(...renderLeaf(pad, objKey, req, requestExpr, members));
+    lines.push(...renderLeaf(pad, objKey, req, leaf.requestExpr, members));
   }
 
   return lines;
@@ -468,9 +494,26 @@ function buildApiFile(
 ): string {
   const fetcherImportPath = opts.fetcherImportPath;
   const inertia = opts.mutationClient !== 'fetcher';
-  const queryModule = opts.queryImport ?? '@tanstack/react-query';
-  const query = opts.query ?? false;
+  const extensions = opts.extensions ?? [];
+  const { transport, layer } = resolveApiSlots(extensions);
+  const memberExts = extensions.filter((e) => e.apiMembers);
+  const headerExts = extensions.filter((e) => e.apiHeader);
   const contracted = routes.filter((r) => r.contract);
+
+  // Extension context for the api.ts hooks. `generate()` passes the real one; standalone
+  // `emitApi` calls (tests) get a minimal context exposing the routes (all the bundled
+  // layer/transport read). `project()` is unavailable in the standalone path.
+  const ctx: ExtensionContext =
+    opts.ctx ??
+    ({
+      cwd: outDir ?? '',
+      outDir: outDir ?? '',
+      routes,
+      config: {} as never,
+      project: () => {
+        throw new Error('ExtensionContext.project() is unavailable in standalone emitApi.');
+      },
+    } satisfies ExtensionContext);
 
   // Collect all type refs for import generation
   const importsByFile = new Map<string, Set<string>>();
@@ -503,25 +546,33 @@ function buildApiFile(
     }
   }
 
-  const hasGetRoutes = contracted.some((r) => r.method === 'GET');
-  const hasMutationRoutes = contracted.some((r) => r.method !== 'GET');
   const hasFilters = contracted.some((r) => r.contract?.contractSource.filterFields?.length);
 
   const lines: string[] = ['// Generated by @dudousxd/nestjs-codegen. Do not edit.', ''];
 
-  // TanStack Query helpers — only when `query` is enabled (opt-in).
-  if (query) {
-    const tqImports: string[] = [];
-    if (hasGetRoutes || hasFilters) tqImports.push('queryOptions as _queryOptions');
-    if (hasMutationRoutes) tqImports.push('mutationOptions as _mutationOptions');
-    if (tqImports.length > 0) {
-      lines.push(`import { ${tqImports.join(', ')} } from '${queryModule}';`);
-    }
-    if (hasFilters) {
-      lines.push(
-        "import { filterQueryTyped as _filterQueryTyped } from '@dudousxd/nestjs-filter-client';",
-      );
-    }
+  // Extension-contributed module imports (transport + client layer + apiHeader), deduped
+  // and emitted in order. e.g. the TanStack layer emits its queryOptions/mutationOptions
+  // import here.
+  const extImports: string[] = [];
+  const seenImports = new Set<string>();
+  const pushImport = (imp: string): void => {
+    if (seenImports.has(imp)) return;
+    seenImports.add(imp);
+    extImports.push(imp);
+  };
+  for (const imp of transport?.imports?.(ctx) ?? []) pushImport(imp);
+  for (const imp of layer?.imports?.(ctx) ?? []) pushImport(imp);
+  for (const ext of headerExts) {
+    for (const imp of ext.apiHeader?.(ctx)?.imports ?? []) pushImport(imp);
+  }
+  lines.push(...extImports);
+
+  // Bundled nestjs-filter import (Phase 4 → filter extension): needed by the `filterQuery`
+  // handle member, so only when a client layer turns leaves into handles AND filters exist.
+  if (layer && hasFilters) {
+    lines.push(
+      "import { filterQueryTyped as _filterQueryTyped } from '@dudousxd/nestjs-filter-client';",
+    );
   }
 
   // The Inertia router is only needed for the navigate() helper (inertia mode).
@@ -647,7 +698,14 @@ function buildApiFile(
   // --- api factory (inject your fetcher at runtime) ---
   lines.push('export function createApi(fetcher: Fetcher) {');
   lines.push('  return {');
-  lines.push(...emitApiObjectBlock(tree, 4, query));
+  lines.push(
+    ...emitApiObjectBlock(tree, 4, {
+      ...(transport ? { transport } : {}),
+      ...(layer ? { layer } : {}),
+      memberExts,
+      ctx,
+    }),
+  );
   lines.push('  };');
   lines.push('}');
   lines.push('');
@@ -750,6 +808,14 @@ function buildApiFile(
     lines.push('  router.visit(url, visitOptions);');
     lines.push('}');
     lines.push('');
+  }
+
+  // Extension-contributed top-level statements (e.g. an extension's own helpers).
+  for (const ext of headerExts) {
+    const statements = ext.apiHeader?.(ctx)?.statements;
+    if (statements?.length) {
+      lines.push(...statements, '');
+    }
   }
 
   return lines.join('\n');

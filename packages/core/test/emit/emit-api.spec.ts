@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { RouteDescriptor } from '../../src/discovery/types.js';
 import { emitApi } from '../../src/emit/emit-api.js';
@@ -57,7 +58,7 @@ describe('emitApi', () => {
   });
 
   async function gen(query?: boolean): Promise<string> {
-    await emitApi(routes, outDir, query === undefined ? {} : { query });
+    await emitApi(routes, outDir, query ? { extensions: [tanstackQuery()] } : {});
     return readFile(join(outDir, 'api.ts'), 'utf8');
   }
 

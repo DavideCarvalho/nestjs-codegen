@@ -99,8 +99,6 @@ function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
     extensions: userConfig.extensions ?? [],
     validation: resolveAdapter(userConfig.validation ?? 'zod'),
     mutationClient: userConfig.mutationClient ?? 'inertia',
-    queryImport: userConfig.queryImport ?? '@tanstack/react-query',
-    query: userConfig.query ?? false,
     pages: userConfig.pages
       ? {
           glob: userConfig.pages.glob,

@@ -94,8 +94,8 @@ export async function generate(
     await emitApi(routes, config.codegen.outDir, {
       ...(config.fetcher?.importPath ? { fetcherImportPath: config.fetcher.importPath } : {}),
       mutationClient: config.mutationClient,
-      queryImport: config.queryImport,
-      query: config.query,
+      extensions,
+      ctx,
     });
   }
 

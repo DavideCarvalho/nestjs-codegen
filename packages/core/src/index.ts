@@ -22,6 +22,14 @@ export type { ValidationOption } from './adapters/registry.js';
 // Discovery: class-validator DTO → SchemaModule IR
 export { extractSchemaFromDto } from './discovery/dto-to-ir.js';
 
+// Discovery: NestJS controllers → RouteDescriptor[]
+export {
+  discoverRoutes,
+  discoverRoutesFromProject,
+  joinPaths,
+} from './discovery/discover-controllers.js';
+export type { DiscoverOptions } from './discovery/discover-controllers.js';
+
 // Route model
 export type {
   RouteDescriptor,

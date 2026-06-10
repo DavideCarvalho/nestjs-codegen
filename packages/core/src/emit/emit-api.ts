@@ -335,21 +335,26 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     (c.contractSource.body != null && c.contractSource.body !== 'never');
   // A filter-search route is a read even when POST — treat it as a query too.
   const isQuery = isGet || !!c.contractSource.filterFields?.length;
+  // A route "has a query" when it carries a query contract — GET always can take one;
+  // a mutation may too (query string alongside a body).
+  const hasQuery =
+    isGet ||
+    !!c.contractSource.queryRef ||
+    (c.contractSource.query != null && c.contractSource.query !== 'never');
 
   const fields: string[] = [];
   if (withParams) fields.push(`params: ${TA}['params']`);
-  if (isGet) fields.push(`query?: ${TA}['query']`);
-  if (!isGet && hasBody) fields.push(`body?: ${TA}['body']`);
+  if (hasQuery) fields.push(`query?: ${TA}['query']`);
+  if (hasBody) fields.push(`body?: ${TA}['body']`);
   const inputType = fields.length ? `{ ${fields.join('; ')} }` : 'Record<string, never>';
 
   const urlExpr = withParams
     ? `route(${flat} as never, input?.params as never) || ${path}`
     : `route(${flat} as never) || ${path}`;
-  const optsExpr = isGet
-    ? '{ query: input?.query as Record<string, unknown> | undefined }'
-    : hasBody
-      ? '{ body: input?.body }'
-      : '{}';
+  const optsParts: string[] = [];
+  if (hasQuery) optsParts.push('query: input?.query as Record<string, unknown> | undefined');
+  if (hasBody) optsParts.push('body: input?.body');
+  const optsExpr = optsParts.length ? `{ ${optsParts.join(', ')} }` : '{}';
 
   return {
     routeName: c.name,

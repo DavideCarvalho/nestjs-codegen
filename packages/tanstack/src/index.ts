@@ -47,9 +47,11 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       if (req.isGet) {
         members.infiniteQueryOptions = `() => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ${req.responseType}) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } })`;
       }
-      // ...and any non-GET (incl. filter-search POSTs) also gets a mutation entry.
+      // ...and any non-GET (incl. filter-search POSTs) also gets a mutation entry. The
+      // mutationFn takes the full leaf input ({ params?, query?, body? }) so path params
+      // can be supplied dynamically at mutate() time, not just at the leaf call.
       if (!req.isGet) {
-        members.mutationOptions = `() => _mutationOptions({ mutationFn: (body: ${req.bodyType}) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { body }) })`;
+        members.mutationOptions = `() => _mutationOptions({ mutationFn: (input?: ${req.inputType}) => ${requestExpr} })`;
       }
       return members;
     },

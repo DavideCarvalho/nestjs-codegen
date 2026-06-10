@@ -232,12 +232,12 @@ export function createApi(fetcher: Fetcher) {
       create: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => ({
         ...__req<ApiRouter["users"]["create"]['response']>(() => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body })),
         queryKey: () => ["users.create", input] as const,
-        mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["users"]["create"]['body']) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body }) }),
+        mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body }) }),
       }),
       update: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => ({
         ...__req<ApiRouter["users"]["update"]['response']>(() => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body })),
         queryKey: () => ["users.update", input] as const,
-        mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["users"]["update"]['body']) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body }) }),
+        mutationOptions: () => _mutationOptions({ mutationFn: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body }) }),
       }),
     },
     admin: {
@@ -255,7 +255,7 @@ export function createApi(fetcher: Fetcher) {
         ...__req<ApiRouter["pipelineRuns"]["search"]['response']>(() => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {})),
         queryKey: () => ["pipelineRuns.search", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["pipelineRuns.search", input] as const, queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
-        mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["pipelineRuns"]["search"]['body']) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { body }) }),
+        mutationOptions: () => _mutationOptions({ mutationFn: (input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
       }),
     },
     orders: {
@@ -381,12 +381,12 @@ export function createApi(fetcher: Fetcher) {
       create: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => ({
         ...__req<ApiRouter["users"]["create"]['response']>(() => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body })),
         queryKey: () => ["users.create", input] as const,
-        mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["users"]["create"]['body']) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body }) }),
+        mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body }) }),
       }),
       update: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => ({
         ...__req<ApiRouter["users"]["update"]['response']>(() => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body })),
         queryKey: () => ["users.update", input] as const,
-        mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["users"]["update"]['body']) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body }) }),
+        mutationOptions: () => _mutationOptions({ mutationFn: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body }) }),
       }),
     },
     admin: {
@@ -404,7 +404,7 @@ export function createApi(fetcher: Fetcher) {
         ...__req<ApiRouter["pipelineRuns"]["search"]['response']>(() => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {})),
         queryKey: () => ["pipelineRuns.search", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["pipelineRuns.search", input] as const, queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
-        mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["pipelineRuns"]["search"]['body']) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { body }) }),
+        mutationOptions: () => _mutationOptions({ mutationFn: (input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
       }),
     },
     orders: {

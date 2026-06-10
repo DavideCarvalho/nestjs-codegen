@@ -14,11 +14,56 @@ export interface PayloadTransformer {
   parse<T>(text: string): T;
 }
 
+/** A normalized HTTP request handed to a {@link Transport}. */
+export interface TransportRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  /** Serialized body (JSON string) or FormData; absent for bodyless requests. */
+  body?: string | FormData;
+}
+
+/** A normalized HTTP response a {@link Transport} returns. */
+export interface TransportResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  /** Value of the `content-type` response header, if any. */
+  contentType: string | null;
+  /** The raw response body as text. */
+  text(): Promise<string>;
+}
+
+/**
+ * The network layer. Defaults to native `fetch`. Provide your own to use a
+ * different HTTP client (axios, got, ky, a mock in tests…) — URL building,
+ * headers, the payload transformer, and error handling stay in `createFetcher`;
+ * the transport only performs the call and normalizes the response.
+ *
+ * @example // axios transport
+ * const transport: Transport = async (req) => {
+ *   const res = await axios.request({
+ *     method: req.method, url: req.url, headers: req.headers, data: req.body,
+ *     responseType: 'text', validateStatus: () => true,
+ *   });
+ *   return {
+ *     ok: res.status >= 200 && res.status < 300,
+ *     status: res.status, statusText: res.statusText,
+ *     contentType: res.headers['content-type'] ?? null,
+ *     text: async () => res.data,
+ *   };
+ * };
+ * createFetcher({ transport });
+ */
+export type Transport = (req: TransportRequest) => Promise<TransportResponse>;
+
 export interface FetcherOptions {
   baseUrl?: string;
   /** Called once per request; allows dynamic auth tokens. */
   headers?: () => Record<string, string>;
-  /** Injection seam for tests; default `globalThis.fetch`. */
+  /** Custom network layer (axios, got, …). Defaults to native `fetch`. */
+  transport?: Transport;
+  /** fetch implementation for the default transport; defaults to `globalThis.fetch`. */
   fetch?: typeof fetch;
   /** Invoked with the error before it is re-thrown. */
   onError?: (err: ApiHttpError) => void;
@@ -44,15 +89,35 @@ function isFormData(b: unknown): b is FormData {
   return typeof FormData !== 'undefined' && b instanceof FormData;
 }
 
+/** Default transport: native fetch, normalizing the `Response` to a `TransportResponse`. */
+function fetchTransport(fetchImpl: typeof fetch | undefined): Transport {
+  return async (req) => {
+    if (!fetchImpl) {
+      throw new Error(
+        'No fetch implementation: pass opts.fetch, opts.transport, or set globalThis.fetch',
+      );
+    }
+    const res = await fetchImpl(req.url, {
+      method: req.method,
+      headers: req.headers,
+      ...(req.body !== undefined ? { body: req.body } : {}),
+    });
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      contentType: res.headers.get('content-type'),
+      text: () => res.text(),
+    };
+  };
+}
+
 export function createFetcher(opts: FetcherOptions = {}): Fetcher {
-  const fetchImpl = opts.fetch ?? globalThis.fetch;
   const baseUrl = opts.baseUrl ?? '';
   const transformer = opts.transformer;
+  const transport = opts.transport ?? fetchTransport(opts.fetch ?? globalThis.fetch);
 
   async function request<T>(method: string, path: string, ro: RequestOpts = {}): Promise<T> {
-    if (!fetchImpl) {
-      throw new Error('No fetch implementation: pass opts.fetch or set globalThis.fetch');
-    }
     const url = buildUrl(path, ro, baseUrl);
     const headers: Record<string, string> = { ...getGlobalHeaders(), ...opts.headers?.() };
     let body: string | FormData | undefined;
@@ -71,21 +136,29 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
       headers.accept = 'application/json';
     }
 
-    const res = await fetchImpl(url, { method, headers, ...(body !== undefined ? { body } : {}) });
+    const res = await transport({ method, url, headers, ...(body !== undefined ? { body } : {}) });
 
     if (!res.ok) {
-      const err = await ApiHttpError.fromResponse(res);
+      const ct = res.contentType ?? '';
+      const rawBody = ct.includes('application/json')
+        ? await res
+            .text()
+            .then((t) => safeJsonParse(t))
+            .catch(() => null)
+        : await res.text().catch(() => '');
+      const err = new ApiHttpError(res.status, res.statusText, rawBody);
       opts.onError?.(err);
       throw err;
     }
 
     if (res.status === 204) return undefined as T;
 
-    const ct = res.headers.get('content-type') ?? '';
+    const ct = res.contentType ?? '';
+    const text = await res.text();
     if (ct.includes('application/json')) {
-      return transformer ? transformer.parse<T>(await res.text()) : ((await res.json()) as T);
+      return transformer ? transformer.parse<T>(text) : (JSON.parse(text) as T);
     }
-    return (await res.text()) as unknown as T;
+    return text as unknown as T;
   }
 
   return {
@@ -95,4 +168,12 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
     patch: <T>(p: string, ro?: RequestOpts) => request<T>('PATCH', p, ro),
     delete: <T>(p: string, ro?: RequestOpts) => request<T>('DELETE', p, ro),
   };
+}
+
+function safeJsonParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

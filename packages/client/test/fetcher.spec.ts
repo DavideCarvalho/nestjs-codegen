@@ -53,6 +53,45 @@ describe('createFetcher', () => {
     expect(await api.delete('/x')).toBeUndefined();
   });
 
+  describe('custom transport (bring your own HTTP client, e.g. axios)', () => {
+    it('routes requests through the provided transport instead of fetch', async () => {
+      const calls: Array<{ method: string; url: string; body?: unknown }> = [];
+      const transport = vi.fn(async (req: { method: string; url: string; body?: unknown }) => {
+        calls.push({ method: req.method, url: req.url, body: req.body });
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          contentType: 'application/json',
+          text: async () => JSON.stringify({ via: 'axios', id: 7 }),
+        };
+      });
+      const api = createFetcher({ baseUrl: 'https://api.test', transport });
+      const out = await api.post<{ via: string; id: number }>('/users/:id', {
+        params: { id: 7 },
+        body: { name: 'Ada' },
+      });
+      expect(out).toEqual({ via: 'axios', id: 7 });
+      expect(calls[0]).toEqual({
+        method: 'POST',
+        url: 'https://api.test/users/7',
+        body: '{"name":"Ada"}',
+      });
+    });
+
+    it('maps a non-2xx transport response to ApiHttpError', async () => {
+      const transport = async () => ({
+        ok: false,
+        status: 422,
+        statusText: 'Unprocessable',
+        contentType: 'application/json',
+        text: async () => '{"message":"bad"}',
+      });
+      const api = createFetcher({ transport });
+      await expect(api.get('/x')).rejects.toMatchObject({ status: 422, body: { message: 'bad' } });
+    });
+  });
+
   describe('superjson transformer', () => {
     // A minimal stand-in for superjson: round-trips Date via a {__d} marker.
     const transformer = {

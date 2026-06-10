@@ -21,8 +21,8 @@ from your contracts.
 
 ## Calling endpoints
 
-By default **each endpoint is a plain typed fetch** — call it and you
-get a `Promise` resolved with the typed response. Params, query, and body are all typed
+Each endpoint is an **awaitable handle** — call it with your typed `params`/`query`/`body`
+and `await` it to perform the request (Tuyau-style). Params, query, and body are all typed
 from your contracts:
 
 ```ts
@@ -38,18 +38,22 @@ const user = await api.users.show({ params: { id } });
 const created = await api.users.create({ body: { email: 'a@b.com', password: 'secret123' } });
 ```
 
-## TanStack Query handles
+Awaiting the same handle twice is memoized (one network call). It also exposes
+`.fetch()`/`.catch()`/`.finally()` if you'd rather not `await` directly.
 
-Register the [`tanstackQuery()`](/docs/tanstack-query) extension and every endpoint instead returns a **handle** carrying its own
-`fetch`, `queryKey`, and `queryOptions()` (GET) or `mutationOptions()` (the rest) — the
-helpers from your TanStack adapter (see [TanStack Query](/docs/tanstack-query)):
+## TanStack Query helpers
+
+Register the [`tanstackQuery()`](/docs/tanstack-query) extension and the **same handle**
+additionally carries `.queryKey()`, `.queryOptions()` (GET) / `.mutationOptions()` (the rest),
+and `.infiniteQueryOptions()` (GET) — from your TanStack adapter. The call still awaits:
 
 ```tsx
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useInfiniteQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
-const users = useQuery(api.users.list().queryOptions());
+const direct = await api.users.show({ params: { id } });        // still a plain request
 const user = useQuery(api.users.show({ params: { id } }).queryOptions());
+const list = useInfiniteQuery(api.users.list().infiniteQueryOptions());
 
 const create = useMutation(api.users.create().mutationOptions());
 create.mutate({ body: { email: 'a@b.com', password: 'secret123' } });
@@ -62,8 +66,8 @@ calling anything:
 
 ```ts
 import type { Api } from '../generated/api';
-// default: Awaited<ReturnType<typeof api.users.show>> is the response type
-// with tanstackQuery(): ReturnType<typeof api.users.show> is the handle
+// the leaf returns an awaitable handle; the response type is:
+// Awaited<ReturnType<typeof api.users.show>>
 ```
 
 ## Inertia mode

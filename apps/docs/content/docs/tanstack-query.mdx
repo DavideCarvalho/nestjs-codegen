@@ -47,13 +47,17 @@ tanstackQuery({ import: '@tanstack/solid-query' });
 
 ## Usage
 
+The leaf is still [awaitable](/docs/api-client#calling-endpoints) — `await api.users.list()`
+does a plain request — and the same handle exposes the TanStack helpers:
+
 ```tsx
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
 function Users() {
   const qc = useQueryClient();
   const list = useQuery(api.users.list().queryOptions());
+  const pages = useInfiniteQuery(api.users.list().infiniteQueryOptions());
   const create = useMutation({
     ...api.users.create().mutationOptions(),
     onSuccess: () => qc.invalidateQueries({ queryKey: api.users.list().queryKey() }),
@@ -61,6 +65,9 @@ function Users() {
   // …
 }
 ```
+
+`infiniteQueryOptions()` (GET routes) adds `page` to the query and reads the next page from
+`response.meta.page` / `response.meta.lastPage`.
 
 Each handle builds a real `queryOptions`/`mutationOptions` object, so you compose it with
 your own `onSuccess`, `select`, `staleTime`, etc. — and `queryKey()` derives a stable key

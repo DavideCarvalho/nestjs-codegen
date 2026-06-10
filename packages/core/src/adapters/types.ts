@@ -33,4 +33,6 @@ export interface ValidationAdapter {
   render(node: SchemaNode, ctx: RenderContext): string;
   /** Render a full module (root + hoisted named) to text. */
   renderModule(mod: SchemaModule): RenderedModule;
+  /** TS expression for the inferred type of a schema const, e.g. `z.infer<typeof X>`. */
+  inferType(schemaConst: string): string;
 }

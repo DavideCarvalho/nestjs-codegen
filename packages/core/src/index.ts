@@ -30,3 +30,15 @@ export type { ValidationOption } from './adapters/registry.js';
 
 // class-validator DTO → SchemaModule IR (consumed by the validation adapters)
 export { extractSchemaFromDto } from './discovery/dto-to-ir.js';
+
+// Discovery + emit (programmatic API)
+export type {
+  RouteDescriptor,
+  ContractDescriptor,
+  ContractSource,
+  ControllerRef,
+  TypeRef,
+} from './discovery/types.js';
+export { emitForms } from './emit/emit-forms.js';
+export { emitApi } from './emit/emit-api.js';
+export { emitRoutes } from './emit/emit-routes.js';

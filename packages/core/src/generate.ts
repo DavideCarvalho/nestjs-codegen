@@ -76,7 +76,7 @@ export async function generate(
     await emitApi(routes, config.codegen.outDir, config.fetcher?.importPath);
   }
 
-  const hasForms = await emitForms(routes, config.codegen.outDir, config.forms);
+  const hasForms = await emitForms(routes, config.codegen.outDir, config.forms, config.validation);
 
   await emitIndex(config.codegen.outDir, hasContracts, hasForms);
 }

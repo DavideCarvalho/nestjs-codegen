@@ -152,6 +152,9 @@ export const arktypeAdapter: ValidationAdapter = {
     return usage.used ? ["import { type } from 'arktype';"] : [];
   },
   render,
+  inferType(schemaConst: string): string {
+    return `(typeof ${schemaConst}).infer`;
+  },
   renderModule(mod: SchemaModule): RenderedModule {
     const ctx: RenderContext = { named: mod.named };
     const namedNestedSchemas = new Map<string, string>();

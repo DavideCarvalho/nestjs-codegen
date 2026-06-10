@@ -99,6 +99,9 @@ export const zodAdapter: ValidationAdapter = {
     return usage.used ? ["import { z } from 'zod';"] : [];
   },
   render,
+  inferType(schemaConst: string): string {
+    return `z.infer<typeof ${schemaConst}>`;
+  },
   renderModule(mod: SchemaModule): RenderedModule {
     const ctx: RenderContext = { named: mod.named };
     const namedNestedSchemas = new Map<string, string>();

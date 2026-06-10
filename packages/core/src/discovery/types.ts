@@ -63,6 +63,14 @@ export interface ContractSource {
   formNestedSchemas?: Record<string, string> | null;
   /** Unmappable-decorator warnings surfaced to console + a header comment. */
   formWarnings?: string[];
+  /**
+   * Neutral validation IR for the body, when synthesized from a class-validator
+   * DTO. Lets `emit-forms` render via the configured adapter (valibot/arktype),
+   * not only zod. `null`/absent for `defineContract` (hand-written zod) bodies.
+   */
+  bodySchema?: import('../ir/schema-node.js').SchemaModule | null;
+  /** Neutral validation IR for the query (class-validator DTO only). */
+  querySchema?: import('../ir/schema-node.js').SchemaModule | null;
 }
 
 export interface ContractDescriptor {

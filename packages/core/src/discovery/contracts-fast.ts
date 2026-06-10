@@ -14,6 +14,7 @@ import {
   SyntaxKind,
   type TypeNode,
 } from 'ts-morph';
+import { extractSchemaFromDto } from './dto-to-ir.js';
 import { extractZodFromDto } from './dto-to-zod.js';
 import { extractApplyFilterInfo } from './filter-for.js';
 import {
@@ -730,6 +731,8 @@ export function extractDtoContract(
   queryZodText?: string | null;
   formNestedSchemas?: Record<string, string> | null;
   formWarnings?: string[];
+  bodySchema?: import('../ir/schema-node.js').SchemaModule | null;
+  querySchema?: import('../ir/schema-node.js').SchemaModule | null;
 } | null {
   let body = extractBodyType(method, sourceFile, project);
   const filterInfo = extractApplyFilterInfo(method, sourceFile, project);
@@ -821,6 +824,9 @@ export function extractDtoContract(
   // plain-verb path where no contract schema is present.
   let bodyZodText: string | null = null;
   let queryZodText: string | null = null;
+  // Neutral IR for class-validator DTOs, so emit-forms can render via any adapter.
+  let bodySchema: import('../ir/schema-node.js').SchemaModule | null = null;
+  let querySchema: import('../ir/schema-node.js').SchemaModule | null = null;
   const formNested: Record<string, string> = {};
   const formWarnings: string[] = [];
 
@@ -830,6 +836,7 @@ export function extractDtoContract(
     bodyZodText = result.schemaText;
     for (const [k, v] of result.namedNestedSchemas) formNested[k] = v;
     formWarnings.push(...result.warnings);
+    bodySchema = extractSchemaFromDto(bodyClass.decl, bodyClass.file, project);
   }
   const queryClass = resolveParamClass(method, 'Query', sourceFile, project);
   if (queryClass) {
@@ -837,6 +844,7 @@ export function extractDtoContract(
     queryZodText = result.schemaText;
     for (const [k, v] of result.namedNestedSchemas) formNested[k] = v;
     formWarnings.push(...result.warnings);
+    querySchema = extractSchemaFromDto(queryClass.decl, queryClass.file, project);
   }
 
   return {
@@ -854,6 +862,8 @@ export function extractDtoContract(
     queryZodText,
     formNestedSchemas: Object.keys(formNested).length > 0 ? formNested : null,
     formWarnings,
+    bodySchema,
+    querySchema,
   };
 }
 
@@ -1113,6 +1123,8 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
               queryZodText: dtoContract?.queryZodText ?? null,
               formNestedSchemas: dtoContract?.formNestedSchemas ?? null,
               formWarnings: dtoContract?.formWarnings ?? [],
+              bodySchema: dtoContract?.bodySchema ?? null,
+              querySchema: dtoContract?.querySchema ?? null,
             },
           },
         });

@@ -111,6 +111,9 @@ export const valibotAdapter: ValidationAdapter = {
     return usage.used ? ["import * as v from 'valibot';"] : [];
   },
   render,
+  inferType(schemaConst: string): string {
+    return `v.InferOutput<typeof ${schemaConst}>`;
+  },
   renderModule(mod: SchemaModule): RenderedModule {
     const ctx: RenderContext = { named: mod.named };
     const namedNestedSchemas = new Map<string, string>();

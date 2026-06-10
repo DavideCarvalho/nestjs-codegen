@@ -22,4 +22,22 @@ export type { ValidationOption } from './adapters/registry.js';
 // Discovery: class-validator DTO → SchemaModule IR
 export { extractSchemaFromDto } from './discovery/dto-to-ir.js';
 
+// Route model
+export type {
+  RouteDescriptor,
+  RouteContract,
+  HttpMethod,
+} from './discovery/route-model.js';
+
+// Config
+export { defineConfig, resolveConfig } from './config/define-config.js';
+export type { CodegenConfig, ResolvedConfig } from './config/types.js';
+
+// Emit
+export { generate } from './generate.js';
+export type { GenerateResult } from './generate.js';
+export { emitRoutes, buildRoutesFile } from './emit/emit-routes.js';
+export { emitApi, buildApiFile } from './emit/emit-api.js';
+export { emitForms } from './emit/emit-forms.js';
+
 export { ConfigError, CodegenError } from './exceptions.js';

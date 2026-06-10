@@ -6,14 +6,21 @@ import { zodAdapter } from './zod.js';
 export type ValidationOption = 'zod' | 'valibot' | 'arktype' | ValidationAdapter;
 
 /**
- * Resolve a `validation` config value to a {@link ValidationAdapter}. Only `zod`
- * ships in-tree today; `valibot`/`arktype` resolve once their adapter packages
- * are installed (a later milestone). A custom adapter object passes through.
+ * Resolve a `validation` config value to a {@link ValidationAdapter}. `'zod'` is
+ * bundled in core; the valibot/arktype adapters ship as their own packages — import
+ * the adapter instance and pass it directly (it passes through here). A custom
+ * adapter object also passes through.
+ *
+ * @example
+ * import { valibotAdapter } from '@dudousxd/nestjs-codegen-valibot';
+ * defineConfig({ validation: valibotAdapter });
  */
 export function resolveAdapter(option: ValidationOption): ValidationAdapter {
   if (typeof option !== 'string') return option;
   if (option === 'zod') return zodAdapter;
+  const pkg = `@dudousxd/nestjs-codegen-${option}`;
+  const named = `${option}Adapter`;
   throw new ConfigError(
-    `Validation adapter "${option}" is not yet available. Only "zod" ships today; valibot and arktype adapters arrive in a later milestone.`,
+    `Validation adapter "${option}" is not bundled in core. Install ${pkg} and pass the adapter instance instead of the string:\n\n  import { ${named} } from '${pkg}';\n  defineConfig({ validation: ${named} });`,
   );
 }

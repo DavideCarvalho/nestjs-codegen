@@ -12,8 +12,9 @@ describe('resolveAdapter', () => {
     expect(resolveAdapter(custom)).toBe(custom);
   });
 
-  it('throws a clear error for not-yet-available adapters', () => {
-    expect(() => resolveAdapter('valibot')).toThrow(/valibot.*not yet available/i);
-    expect(() => resolveAdapter('arktype')).toThrow(/arktype.*not yet available/i);
+  it('directs to the adapter package for non-bundled string options', () => {
+    expect(() => resolveAdapter('valibot')).toThrow(/@dudousxd\/nestjs-codegen-valibot/);
+    expect(() => resolveAdapter('valibot')).toThrow(/valibotAdapter/);
+    expect(() => resolveAdapter('arktype')).toThrow(/@dudousxd\/nestjs-codegen-arktype/);
   });
 });

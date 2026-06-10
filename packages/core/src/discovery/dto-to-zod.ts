@@ -242,7 +242,7 @@ function buildPropertySchema(
         ctx.warnedDecorators.add(name);
         const msg = `@${name} is not translatable to zod and was skipped (server-only validation).`;
         ctx.warnings.push(msg);
-        console.warn(`[nestjs-inertia-codegen/forms] ${msg}`);
+        console.warn(`[nestjs-codegen/forms] ${msg}`);
       }
     }
   }
@@ -323,7 +323,7 @@ function buildNestedReference(className: string, fromFile: SourceFile, ctx: Buil
       ctx.warnedDecorators.add(`recursive:${reserved}`);
       const msg = `${className} is a recursive type and was not expanded; the generated form schema uses z.unknown() for it.`;
       ctx.warnings.push(msg);
-      console.warn(`[nestjs-inertia-codegen/forms] ${msg}`);
+      console.warn(`[nestjs-codegen/forms] ${msg}`);
     }
     return `z.lazy(() => ${reserved})`;
   }
@@ -447,7 +447,7 @@ function enumSchemaFromDecorator(
     if (!ctx.warnedDecorators.has(`IsEnum:${name}`)) {
       ctx.warnedDecorators.add(`IsEnum:${name}`);
       ctx.warnings.push(msg);
-      console.warn(`[nestjs-inertia-codegen/forms] ${msg}`);
+      console.warn(`[nestjs-codegen/forms] ${msg}`);
     }
     return `z.unknown() /* @IsEnum(${name}): enum not resolvable to literals */`;
   }

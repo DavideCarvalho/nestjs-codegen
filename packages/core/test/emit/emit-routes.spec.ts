@@ -162,7 +162,7 @@ describe('emitRoutes', () => {
     expect(content).toContain('path === undefined');
 
     // Must throw with a message including the route name and "does not exist"
-    expect(content).toContain('[nestjs-inertia] Route');
+    expect(content).toContain('[nestjs-codegen] Route');
     expect(content).toContain('does not exist');
 
     // Must list available routes in the error
@@ -170,7 +170,7 @@ describe('emitRoutes', () => {
     expect(content).toContain('Object.keys(ROUTES)');
 
     // Must include guidance about common causes
-    expect(content).toContain('nestjs-inertia codegen');
+    expect(content).toContain('nestjs-codegen codegen');
     expect(content).toContain('@As()');
   });
 

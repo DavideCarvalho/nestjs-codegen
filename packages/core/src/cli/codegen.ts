@@ -9,7 +9,7 @@ export interface RunCodegenOptions {
 }
 
 /**
- * Programmatic entry point for `nestjs-inertia codegen [--watch]`.
+ * Programmatic entry point for `nestjs-codegen codegen [--watch]`.
  *
  * - Loads `nestjs-inertia.config.ts` from `cwd`.
  * - In one-shot mode: discovers routes via static AST, then generates all artifacts.

@@ -4,7 +4,9 @@ import { pathToFileURL } from 'node:url';
 import { ConfigError } from '../exceptions.js';
 import type { ResolvedConfig, UserConfig } from './types.js';
 
-const CONFIG_FILE = 'nestjs-inertia.config.ts';
+/** Config file names, in lookup order. The legacy `nestjs-inertia.config.ts` is
+ * still accepted for back-compat with projects migrating from nestjs-inertia. */
+const CONFIG_FILES = ['nestjs-codegen.config.ts', 'nestjs-inertia.config.ts'] as const;
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {
@@ -107,11 +109,19 @@ function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
 
 export async function loadConfig(cwd?: string): Promise<ResolvedConfig> {
   const resolvedCwd = cwd ?? process.cwd();
-  const configPath = join(resolvedCwd, CONFIG_FILE);
 
-  if (!(await fileExists(configPath))) {
+  let configPath: string | undefined;
+  for (const name of CONFIG_FILES) {
+    const candidate = join(resolvedCwd, name);
+    if (await fileExists(candidate)) {
+      configPath = candidate;
+      break;
+    }
+  }
+
+  if (!configPath) {
     throw new ConfigError(
-      `Config file not found: ${configPath}\nRun \`nestjs-inertia init\` to create a starter config.`,
+      `Config file not found in ${resolvedCwd} (looked for ${CONFIG_FILES.join(', ')})\nRun \`nestjs-codegen init\` to create a starter config.`,
     );
   }
 

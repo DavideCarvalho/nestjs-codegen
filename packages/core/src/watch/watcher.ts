@@ -47,7 +47,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
       // Lock file unreadable — fall back to generic warning
     }
     console.warn(
-      `[nestjs-inertia-codegen] auto-watch skipped — another process (PID ${holderPid}) is already running the watcher in ${config.codegen.outDir}. Files will continue to regenerate from that process. To take over, stop the other watcher.`,
+      `[nestjs-codegen] auto-watch skipped — another process (PID ${holderPid}) is already running the watcher in ${config.codegen.outDir}. Files will continue to regenerate from that process. To take over, stop the other watcher.`,
     );
     return NO_OP_WATCHER;
   }
@@ -63,7 +63,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
   } catch (err) {
     // Best-effort; don't crash the watcher on initial generation failure
     console.warn(
-      `[nestjs-inertia-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
+      `[nestjs-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
     );
     try {
       await generate(config);
@@ -91,7 +91,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
         await generate(config);
       } catch (err) {
         console.error(
-          '[nestjs-inertia-codegen] Pages generation failed:',
+          '[nestjs-codegen] Pages generation failed:',
           err instanceof Error ? err.message : err,
         );
       }
@@ -138,7 +138,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
         await emitIndex(config.codegen.outDir, hasContracts, hasForms);
       } catch (err) {
         console.error(
-          '[nestjs-inertia-codegen] Contracts generation failed:',
+          '[nestjs-codegen] Contracts generation failed:',
           err instanceof Error ? err.message : err,
         );
       }

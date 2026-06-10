@@ -959,7 +959,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
           const varDecl = sourceFile.getVariableDeclaration(identName);
           if (!varDecl) {
             console.warn(
-              `[nestjs-inertia-codegen/fast] Cannot resolve '${identName}' in ${sourceFile.getFilePath()} (cross-file imports are out-of-scope for v1) — skipping`,
+              `[nestjs-codegen/fast] Cannot resolve '${identName}' in ${sourceFile.getFilePath()} (cross-file imports are out-of-scope for v1) — skipping`,
             );
             continue;
           }
@@ -981,7 +981,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
           }
         } else {
           console.warn(
-            `[nestjs-inertia-codegen/fast] @ApplyContract arg is not an identifier or call expression in ${sourceFile.getFilePath()} — skipping`,
+            `[nestjs-codegen/fast] @ApplyContract arg is not an identifier or call expression in ${sourceFile.getFilePath()} — skipping`,
           );
           continue;
         }

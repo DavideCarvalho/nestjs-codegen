@@ -157,7 +157,7 @@ export async function runDoctor(opts: { cwd: string; fix?: boolean }): Promise<n
   checks.push({
     name: '.nestjs-inertia/ codegen output exists',
     pass: hasApi && hasRoutes && hasPages,
-    fix: 'Run: nestjs-inertia codegen',
+    fix: 'Run: nestjs-codegen codegen',
     autoFix: () => runCodegen({ cwd }),
   });
 
@@ -304,7 +304,7 @@ export async function runDoctor(opts: { cwd: string; fix?: boolean }): Promise<n
   // 8. Package versions
   const requiredPkgs = [
     '@dudousxd/nestjs-inertia',
-    '@dudousxd/nestjs-inertia-codegen',
+    '@dudousxd/nestjs-codegen',
     '@dudousxd/nestjs-inertia-client',
   ];
   const missingRequired = requiredPkgs.filter((pkg) => !getPackageVersion(cwd, pkg));
@@ -323,7 +323,7 @@ export async function runDoctor(opts: { cwd: string; fix?: boolean }): Promise<n
 
   const libPackages = [
     '@dudousxd/nestjs-inertia',
-    '@dudousxd/nestjs-inertia-codegen',
+    '@dudousxd/nestjs-codegen',
     '@dudousxd/nestjs-inertia-client',
     '@dudousxd/nestjs-inertia-vite',
     '@dudousxd/nestjs-inertia-testing',

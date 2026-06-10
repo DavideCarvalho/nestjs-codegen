@@ -12,7 +12,7 @@ import { runInit } from './init.js';
  * Exported so tests can call `run(argv)` directly without spawning a subprocess.
  */
 export async function run(argv: string[]): Promise<number> {
-  const cli = cac('nestjs-inertia');
+  const cli = cac('nestjs-codegen');
 
   cli
     .command('codegen', 'Generate typed artifacts from your NestJS + Inertia app')
@@ -21,11 +21,9 @@ export async function run(argv: string[]): Promise<number> {
       await runCodegen({ watch: Boolean(opts.watch), cwd: process.cwd() });
     });
 
-  cli
-    .command('init', 'Initialise nestjs-inertia-codegen in the current project')
-    .action(async () => {
-      await runInit({ cwd: process.cwd() });
-    });
+  cli.command('init', 'Initialise nestjs-codegen in the current project').action(async () => {
+    await runInit({ cwd: process.cwd() });
+  });
 
   cli
     .command('doctor', 'Diagnose your nestjs-inertia setup')
@@ -45,7 +43,7 @@ export async function run(argv: string[]): Promise<number> {
     return 0;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[nestjs-inertia] Error: ${message}`);
+    console.error(`[nestjs-codegen] Error: ${message}`);
     return 1;
   }
 }

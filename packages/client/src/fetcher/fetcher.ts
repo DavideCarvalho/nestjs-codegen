@@ -14,6 +14,32 @@ export interface PayloadTransformer {
   parse<T>(text: string): T;
 }
 
+/**
+ * Compose a pipeline of transformers. The first is the base serializer
+ * (value → string, e.g. superjson); any following ones are string → string
+ * wrappers (compression, encryption, …) applied left-to-right on `stringify`
+ * and unwound right-to-left on `parse`. A single transformer is returned as-is.
+ */
+export function composeTransformers(transformers: PayloadTransformer[]): PayloadTransformer {
+  if (transformers.length === 1) return transformers[0] as PayloadTransformer;
+  return {
+    stringify(value: unknown): string {
+      let acc = (transformers[0] as PayloadTransformer).stringify(value);
+      for (let i = 1; i < transformers.length; i++) {
+        acc = (transformers[i] as PayloadTransformer).stringify(acc);
+      }
+      return acc;
+    },
+    parse<T>(text: string): T {
+      let acc: unknown = text;
+      for (let i = transformers.length - 1; i >= 1; i--) {
+        acc = (transformers[i] as PayloadTransformer).parse(acc as string);
+      }
+      return (transformers[0] as PayloadTransformer).parse(acc as string);
+    },
+  };
+}
+
 /** A normalized HTTP request handed to a {@link Transport}. */
 export interface TransportRequest {
   method: string;
@@ -67,8 +93,12 @@ export interface FetcherOptions {
   fetch?: typeof fetch;
   /** Invoked with the error before it is re-thrown. */
   onError?: (err: ApiHttpError) => void;
-  /** superjson (or any `{ stringify, parse }`) to transform request/response bodies. */
-  transformer?: PayloadTransformer;
+  /**
+   * superjson (or any `{ stringify, parse }`) to transform request/response bodies.
+   * Pass an array to compose a pipeline (base serializer first, then string→string
+   * wrappers like compression/encryption). Bring your own — it's just an object.
+   */
+  transformer?: PayloadTransformer | PayloadTransformer[];
 }
 
 export interface Fetcher {
@@ -114,7 +144,11 @@ function fetchTransport(fetchImpl: typeof fetch | undefined): Transport {
 
 export function createFetcher(opts: FetcherOptions = {}): Fetcher {
   const baseUrl = opts.baseUrl ?? '';
-  const transformer = opts.transformer;
+  const transformer = Array.isArray(opts.transformer)
+    ? opts.transformer.length > 0
+      ? composeTransformers(opts.transformer)
+      : undefined
+    : opts.transformer;
   const transport = opts.transport ?? fetchTransport(opts.fetch ?? globalThis.fetch);
 
   async function request<T>(method: string, path: string, ro: RequestOpts = {}): Promise<T> {

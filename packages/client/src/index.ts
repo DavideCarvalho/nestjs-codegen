@@ -1,6 +1,6 @@
 export const VERSION = '0.1.0';
 
-export { createFetcher } from './fetcher/fetcher.js';
+export { createFetcher, composeTransformers } from './fetcher/fetcher.js';
 export type {
   Fetcher,
   FetcherOptions,
@@ -9,6 +9,8 @@ export type {
   TransportRequest,
   TransportResponse,
 } from './fetcher/fetcher.js';
+export { axiosTransport } from './transports/axios.js';
+export type { AxiosLike } from './transports/axios.js';
 export { setGlobalHeaders } from './fetcher/global-headers.js';
 export { ApiHttpError } from './fetcher/errors.js';
 export { buildUrl } from './fetcher/url-builder.js';

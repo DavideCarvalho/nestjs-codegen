@@ -99,14 +99,16 @@ describe('emitApi', () => {
     expect(content).toContain('_queryOptions');
     expect(content).toContain('_mutationOptions');
     expect(content).toContain("from './routes.js'");
-    expect(content).toContain("import { fetcher } from '@/lib/api'");
+    // Tuyau-style factory: imports the Fetcher TYPE and exposes createApi(fetcher).
+    expect(content).toContain("import type { Fetcher } from '@dudousxd/nestjs-client'");
+    expect(content).toContain('export function createApi(fetcher: Fetcher)');
   });
 
-  it('imports fetcher from custom path when provided', async () => {
-    await emitApi(routesWithContract, outDir, '@/my-custom-api');
+  it('imports the Fetcher type from a custom runtime path when provided', async () => {
+    await emitApi(routesWithContract, outDir, { fetcherImportPath: '@/my-custom-api' });
     const content = await readFile(join(outDir, 'api.ts'), 'utf8');
-    expect(content).toContain("import { fetcher } from '@/my-custom-api'");
-    expect(content).not.toContain('createFetcher');
+    expect(content).toContain("import type { Fetcher } from '@/my-custom-api'");
+    expect(content).toContain('export function createApi(fetcher: Fetcher)');
   });
 
   // --- ApiRouter: nested shape ---
@@ -171,7 +173,7 @@ describe('emitApi', () => {
   it('exported api object uses nested dot-notation (api.users.list)', async () => {
     await emitApi(routesWithContract, outDir);
     const content = await readFile(join(outDir, 'api.ts'), 'utf8');
-    expect(content).toContain('export const api');
+    expect(content).toContain('export function createApi(fetcher: Fetcher)');
     // Nested keys, not flat string keys in the api object
     expect(content).toContain('users:');
     expect(content).toContain('list:');

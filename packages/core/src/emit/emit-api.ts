@@ -13,13 +13,21 @@ import type {
  * - GET routes get `queryOptions`
  * - POST/PUT/PATCH/DELETE routes get `mutationOptions`
  */
+export interface ApiEmitOptions {
+  fetcherImportPath?: string;
+  /** `'inertia'` (default) emits the Inertia `navigate()` helper; `'fetcher'` omits it (no @inertiajs import). */
+  mutationClient?: 'fetcher' | 'inertia';
+  /** Module to import `queryOptions`/`mutationOptions` from. Default `@tanstack/react-query`. */
+  queryImport?: string;
+}
+
 export async function emitApi(
   routes: RouteDescriptor[],
   outDir: string,
-  fetcherImportPath?: string,
+  opts: ApiEmitOptions = {},
 ): Promise<void> {
   await mkdir(outDir, { recursive: true });
-  const content = buildApiFile(routes, outDir, fetcherImportPath);
+  const content = buildApiFile(routes, outDir, opts);
   await writeFile(join(outDir, 'api.ts'), content, 'utf8');
 }
 
@@ -457,8 +465,11 @@ function buildRouterTypeAccess(name: string): string {
 function buildApiFile(
   routes: RouteDescriptor[],
   outDir?: string,
-  fetcherImportPath?: string,
+  opts: ApiEmitOptions = {},
 ): string {
+  const fetcherImportPath = opts.fetcherImportPath;
+  const inertia = opts.mutationClient !== 'fetcher';
+  const queryModule = opts.queryImport ?? '@tanstack/react-query';
   const contracted = routes.filter((r) => r.contract);
 
   // Collect all type refs for import generation
@@ -503,7 +514,7 @@ function buildApiFile(
   if (hasGetRoutes || hasFilters) tqImports.push('queryOptions as _queryOptions');
   if (hasMutationRoutes) tqImports.push('mutationOptions as _mutationOptions');
   if (tqImports.length > 0) {
-    lines.push(`import { ${tqImports.join(', ')} } from '@tanstack/react-query';`);
+    lines.push(`import { ${tqImports.join(', ')} } from '${queryModule}';`);
   }
   if (hasFilters) {
     lines.push(
@@ -511,12 +522,18 @@ function buildApiFile(
     );
   }
 
-  lines.push("import { router } from '@inertiajs/react';");
+  // The Inertia router is only needed for the navigate() helper (inertia mode).
+  if (inertia) {
+    lines.push("import { router } from '@inertiajs/react';");
+  }
   lines.push(
     "import { route, ROUTES, type RouteName, type ExtractParams, type RouteParams } from './routes.js';",
   );
-  const resolvedFetcherPath = fetcherImportPath ?? '@/lib/api';
-  lines.push(`import { fetcher } from '${resolvedFetcherPath}';`);
+  // Tuyau-style: the api is a factory that takes the fetcher at runtime, so the
+  // app injects its own client (custom transport/axios, baseUrl, superjson) —
+  // rather than the codegen hardcoding `import { fetcher } from '<path>'`.
+  const runtimeImport = fetcherImportPath ?? '@dudousxd/nestjs-client';
+  lines.push(`import type { Fetcher } from '${runtimeImport}';`);
 
   // Emit type imports from source files.
   // When two different files export the same type name, alias the duplicate
@@ -553,7 +570,10 @@ function buildApiFile(
   if (contracted.length === 0) {
     lines.push('export type ApiRouter = Record<string, never>;');
     lines.push('');
-    lines.push('export const api: Record<string, never> = {} as Record<string, never>;');
+    lines.push('export function createApi(_fetcher: Fetcher): Record<string, never> {');
+    lines.push('  return {};');
+    lines.push('}');
+    lines.push('export type Api = ReturnType<typeof createApi>;');
     lines.push('');
     lines.push('export namespace Route {');
     lines.push('  export type Response<K extends string> = never;');
@@ -576,18 +596,20 @@ function buildApiFile(
     lines.push('  export type FilterFields<M extends string, U extends string> = never;');
     lines.push('}');
     lines.push('');
-    lines.push('export type NavigateOptions = {');
-    lines.push('  method?: string;');
-    lines.push('  data?: Record<string, unknown>;');
-    lines.push('  preserveState?: boolean;');
-    lines.push('  preserveScroll?: boolean;');
-    lines.push('  replace?: boolean;');
-    lines.push('};');
-    lines.push('');
-    lines.push('export function navigate(_name: never, _options?: NavigateOptions): void {');
-    lines.push('  // No routes available');
-    lines.push('}');
-    lines.push('');
+    if (inertia) {
+      lines.push('export type NavigateOptions = {');
+      lines.push('  method?: string;');
+      lines.push('  data?: Record<string, unknown>;');
+      lines.push('  preserveState?: boolean;');
+      lines.push('  preserveScroll?: boolean;');
+      lines.push('  replace?: boolean;');
+      lines.push('};');
+      lines.push('');
+      lines.push('export function navigate(_name: never, _options?: NavigateOptions): void {');
+      lines.push('  // No routes available');
+      lines.push('}');
+      lines.push('');
+    }
     return lines.join('\n');
   }
 
@@ -620,10 +642,14 @@ function buildApiFile(
   lines.push('};');
   lines.push('');
 
-  // --- api object ---
-  lines.push('export const api = {');
-  lines.push(...emitApiObjectBlock(tree, 2));
-  lines.push('};');
+  // --- api factory (inject your fetcher at runtime) ---
+  lines.push('export function createApi(fetcher: Fetcher) {');
+  lines.push('  return {');
+  lines.push(...emitApiObjectBlock(tree, 4));
+  lines.push('  };');
+  lines.push('}');
+  lines.push('');
+  lines.push('export type Api = ReturnType<typeof createApi>;');
   lines.push('');
 
   // --- Recursive helper type _RouterAt: walks nested ApiRouter by dot-path ---
@@ -692,35 +718,37 @@ function buildApiFile(
   lines.push('}');
   lines.push('');
 
-  // --- NavigateOptions type ---
-  lines.push('export type NavigateOptions = {');
-  lines.push('  method?: string;');
-  lines.push('  data?: Record<string, unknown>;');
-  lines.push('  preserveState?: boolean;');
-  lines.push('  preserveScroll?: boolean;');
-  lines.push('  replace?: boolean;');
-  lines.push('};');
-  lines.push('');
+  // --- NavigateOptions + navigate() (Inertia-only; uses router.visit) ---
+  if (inertia) {
+    lines.push('export type NavigateOptions = {');
+    lines.push('  method?: string;');
+    lines.push('  data?: Record<string, unknown>;');
+    lines.push('  preserveState?: boolean;');
+    lines.push('  preserveScroll?: boolean;');
+    lines.push('  replace?: boolean;');
+    lines.push('};');
+    lines.push('');
 
-  // --- navigate() function ---
-  lines.push('/**');
-  lines.push(' * Type-safe navigation using Inertia router.');
-  lines.push(' * Resolves the URL from the named route and calls `router.visit()`.');
-  lines.push(' */');
-  lines.push('export function navigate<K extends RouteName>(');
-  lines.push('  name: K,');
-  lines.push('  ...args: ExtractParams<(typeof ROUTES)[K]> extends never');
-  lines.push('    ? [options?: NavigateOptions]');
-  lines.push('    : [options: { params: RouteParams<K> } & NavigateOptions]');
-  lines.push('): void {');
-  lines.push(
-    '  const [options] = args as [({ params?: Record<string, string> } & NavigateOptions) | undefined];',
-  );
-  lines.push('  const url = route(name as never, (options as any)?.params as never);');
-  lines.push('  const { params: _p, ...visitOptions } = options ?? {} as any;');
-  lines.push('  router.visit(url, visitOptions);');
-  lines.push('}');
-  lines.push('');
+    // --- navigate() function ---
+    lines.push('/**');
+    lines.push(' * Type-safe navigation using Inertia router.');
+    lines.push(' * Resolves the URL from the named route and calls `router.visit()`.');
+    lines.push(' */');
+    lines.push('export function navigate<K extends RouteName>(');
+    lines.push('  name: K,');
+    lines.push('  ...args: ExtractParams<(typeof ROUTES)[K]> extends never');
+    lines.push('    ? [options?: NavigateOptions]');
+    lines.push('    : [options: { params: RouteParams<K> } & NavigateOptions]');
+    lines.push('): void {');
+    lines.push(
+      '  const [options] = args as [({ params?: Record<string, string> } & NavigateOptions) | undefined];',
+    );
+    lines.push('  const url = route(name as never, (options as any)?.params as never);');
+    lines.push('  const { params: _p, ...visitOptions } = options ?? {} as any;');
+    lines.push('  router.visit(url, visitOptions);');
+    lines.push('}');
+    lines.push('');
+  }
 
   return lines.join('\n');
 }

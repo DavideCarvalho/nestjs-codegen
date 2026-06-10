@@ -73,7 +73,11 @@ export async function generate(
   }
 
   if (hasContracts) {
-    await emitApi(routes, config.codegen.outDir, config.fetcher?.importPath);
+    await emitApi(routes, config.codegen.outDir, {
+      ...(config.fetcher?.importPath ? { fetcherImportPath: config.fetcher.importPath } : {}),
+      mutationClient: config.mutationClient,
+      queryImport: config.queryImport,
+    });
   }
 
   const hasForms = await emitForms(routes, config.codegen.outDir, config.forms, config.validation);

@@ -20,6 +20,14 @@ export interface UserConfig {
    * @default 'inertia'
    */
   mutationClient?: 'fetcher' | 'inertia';
+  /**
+   * Module the generated `api.ts` imports `queryOptions`/`mutationOptions` from.
+   * Default `@tanstack/react-query` (it re-exports them — no need to install
+   * `@tanstack/query-core` directly). Vue/Svelte/Solid users point this at their
+   * own adapter, e.g. `@tanstack/vue-query`.
+   * @default '@tanstack/react-query'
+   */
+  queryImport?: string;
   pages: {
     glob: string;
     propsExport?: string;
@@ -109,6 +117,7 @@ export interface ResolvedConfig {
   validation: ValidationAdapter;
   transformer: 'superjson' | false;
   mutationClient: 'fetcher' | 'inertia';
+  queryImport: string;
   pages: ResolvedPagesConfig;
   contracts: ResolvedContractsConfig;
   scopes: Record<string, ScopeConfig>;

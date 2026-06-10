@@ -16,12 +16,6 @@ export interface UserConfig {
    * @default 'zod'
    */
   validation?: ValidationOption;
-  /**
-   * How `api.ts` issues mutations. `'inertia'` (default) uses the Inertia router;
-   * `'fetcher'` uses the typed fetcher from `@dudousxd/nestjs-client` (no Inertia).
-   * @default 'inertia'
-   */
-  mutationClient?: 'fetcher' | 'inertia';
   /** Inertia page discovery. Omit when you don't use Inertia. */
   pages?: {
     glob: string;
@@ -111,7 +105,6 @@ export interface ResolvedFormsConfig {
 export interface ResolvedConfig {
   extensions: CodegenExtension[];
   validation: ValidationAdapter;
-  mutationClient: 'fetcher' | 'inertia';
   pages: ResolvedPagesConfig | null;
   contracts: ResolvedContractsConfig;
   scopes: Record<string, ScopeConfig>;

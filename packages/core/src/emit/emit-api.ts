@@ -27,8 +27,6 @@ import type {
  */
 export interface ApiEmitOptions {
   fetcherImportPath?: string;
-  /** `'inertia'` (default) emits the Inertia `navigate()` helper; `'fetcher'` omits it (no @inertiajs import). */
-  mutationClient?: 'fetcher' | 'inertia';
   /** Registered extensions. Their api.ts hooks (transport/layer/members/header) are applied. */
   extensions?: CodegenExtension[];
   /** Shared extension context (from `generate()`). When omitted, a minimal one is built from routes. */
@@ -516,7 +514,6 @@ function buildApiFile(
   opts: ApiEmitOptions = {},
 ): string {
   const fetcherImportPath = opts.fetcherImportPath;
-  const inertia = opts.mutationClient !== 'fetcher';
   const extensions = opts.extensions ?? [];
   const { transport, layer } = resolveApiSlots(extensions);
   const memberExts = extensions.filter((e) => e.apiMembers);
@@ -588,10 +585,6 @@ function buildApiFile(
   }
   lines.push(...extImports);
 
-  // The Inertia router is only needed for the navigate() helper (inertia mode).
-  if (inertia) {
-    lines.push("import { router } from '@inertiajs/react';");
-  }
   lines.push(
     "import { route, ROUTES, type RouteName, type ExtractParams, type RouteParams } from './routes.js';",
   );
@@ -662,20 +655,6 @@ function buildApiFile(
     lines.push('  export type FilterFields<M extends string, U extends string> = never;');
     lines.push('}');
     lines.push('');
-    if (inertia) {
-      lines.push('export type NavigateOptions = {');
-      lines.push('  method?: string;');
-      lines.push('  data?: Record<string, unknown>;');
-      lines.push('  preserveState?: boolean;');
-      lines.push('  preserveScroll?: boolean;');
-      lines.push('  replace?: boolean;');
-      lines.push('};');
-      lines.push('');
-      lines.push('export function navigate(_name: never, _options?: NavigateOptions): void {');
-      lines.push('  // No routes available');
-      lines.push('}');
-      lines.push('');
-    }
     return lines.join('\n');
   }
 
@@ -794,39 +773,7 @@ function buildApiFile(
   lines.push('}');
   lines.push('');
 
-  // --- NavigateOptions + navigate() (Inertia-only; uses router.visit) ---
-  if (inertia) {
-    lines.push('export type NavigateOptions = {');
-    lines.push('  method?: string;');
-    lines.push('  data?: Record<string, unknown>;');
-    lines.push('  preserveState?: boolean;');
-    lines.push('  preserveScroll?: boolean;');
-    lines.push('  replace?: boolean;');
-    lines.push('};');
-    lines.push('');
-
-    // --- navigate() function ---
-    lines.push('/**');
-    lines.push(' * Type-safe navigation using Inertia router.');
-    lines.push(' * Resolves the URL from the named route and calls `router.visit()`.');
-    lines.push(' */');
-    lines.push('export function navigate<K extends RouteName>(');
-    lines.push('  name: K,');
-    lines.push('  ...args: ExtractParams<(typeof ROUTES)[K]> extends never');
-    lines.push('    ? [options?: NavigateOptions]');
-    lines.push('    : [options: { params: RouteParams<K> } & NavigateOptions]');
-    lines.push('): void {');
-    lines.push(
-      '  const [options] = args as [({ params?: Record<string, string> } & NavigateOptions) | undefined];',
-    );
-    lines.push('  const url = route(name as never, (options as any)?.params as never);');
-    lines.push('  const { params: _p, ...visitOptions } = options ?? {} as any;');
-    lines.push('  router.visit(url, visitOptions);');
-    lines.push('}');
-    lines.push('');
-  }
-
-  // Extension-contributed top-level statements (e.g. an extension's own helpers).
+  // Extension-contributed top-level statements (e.g. the Inertia extension's navigate()).
   for (const ext of headerExts) {
     const statements = ext.apiHeader?.(ctx)?.statements;
     if (statements?.length) {

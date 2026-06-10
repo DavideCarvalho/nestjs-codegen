@@ -19,8 +19,7 @@ import { watch } from '../watch/watcher.js';
  *     NestjsCodegenModule.forRoot({
  *       contracts: { glob: 'src/**\/*.controller.ts' },
  *       codegen: { outDir: 'src/generated' },
- *       mutationClient: 'fetcher',
- *       query: true,
+ *       extensions: [tanstackQuery()],
  *     }),
  *   ],
  * })

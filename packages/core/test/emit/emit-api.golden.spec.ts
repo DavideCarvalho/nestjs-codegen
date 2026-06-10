@@ -103,21 +103,14 @@ describe('emitApi golden output', () => {
     expect(await gen({ extensions: [tanstackQuery()] })).toMatchSnapshot();
   });
 
-  it('mutationClient: inertia', async () => {
-    expect(await gen({ mutationClient: 'inertia' })).toMatchSnapshot();
-  });
-
-  it('query + inertia + custom queryImport', async () => {
+  it('tanstack with a custom queryImport', async () => {
     expect(
-      await gen({
-        extensions: [tanstackQuery({ import: '@tanstack/vue-query' })],
-        mutationClient: 'inertia',
-      }),
+      await gen({ extensions: [tanstackQuery({ import: '@tanstack/vue-query' })] }),
     ).toMatchSnapshot();
   });
 
   it('empty routes', async () => {
-    await emitApi([], outDir, { extensions: [tanstackQuery()], mutationClient: 'inertia' });
+    await emitApi([], outDir, { extensions: [tanstackQuery()] });
     expect(await readFile(join(outDir, 'api.ts'), 'utf8')).toMatchSnapshot();
   });
 });

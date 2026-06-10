@@ -385,20 +385,54 @@ function filterMembers(c: LeafEntry): Record<string, string> {
 }
 
 /**
- * Render one leaf from its model. A bare callable when `members` is undefined (default
- * fetch); a handle object when a layer contributed members.
+ * The `__req` runtime helper, emitted once per `api.ts`. Wraps a request thunk into an
+ * **awaitable handle**: `await api.x.y({...})` runs the fetch (Tuyau-style), memoized so
+ * repeated awaits hit the network once. Client-layer extensions (e.g. TanStack) spread
+ * extra members (`queryOptions`/`mutationOptions`/…) onto the same handle.
+ */
+function emitReqHelper(): string[] {
+  return [
+    '/** Awaitable request handle. `await api.x.y({...})` runs the fetch; extensions add query/mutation helpers. */',
+    'type __Req<R> = {',
+    '  then<T1 = R, T2 = never>(',
+    '    onfulfilled?: ((value: R) => T1 | PromiseLike<T1>) | null,',
+    '    onrejected?: ((reason: unknown) => T2 | PromiseLike<T2>) | null,',
+    '  ): Promise<T1 | T2>;',
+    '  catch<T = never>(onrejected?: ((reason: unknown) => T | PromiseLike<T>) | null): Promise<R | T>;',
+    '  finally(onfinally?: (() => void) | null): Promise<R>;',
+    '  fetch(): Promise<R>;',
+    '};',
+    'function __req<R>(run: () => Promise<R>): __Req<R> {',
+    '  let __p: Promise<R> | undefined;',
+    '  const __promise = () => {',
+    '    __p ??= run();',
+    '    return __p;',
+    '  };',
+    '  return {',
+    '    then: (onfulfilled, onrejected) => __promise().then(onfulfilled, onrejected),',
+    '    catch: (onrejected) => __promise().catch(onrejected),',
+    '    finally: (onfinally) => __promise().finally(onfinally),',
+    '    fetch: run,',
+    '  };',
+    '}',
+    '',
+  ];
+}
+
+/**
+ * Render one leaf. Every leaf is an **awaitable handle**: the `__req(...)` base makes
+ * `await api.x.y({...})` perform the request; any client-layer/member contributions
+ * (TanStack options, filterQuery, …) are spread on alongside it.
  */
 function renderLeaf(
   pad: string,
   objKey: string,
   req: RequestModel,
   requestExpr: string,
-  members: Record<string, string> | undefined,
+  members: Record<string, string>,
 ): string[] {
-  if (!members) {
-    return [`${pad}${objKey}: (input?: ${req.inputType}) => ${requestExpr},`];
-  }
   const lines = [`${pad}${objKey}: (input?: ${req.inputType}) => ({`];
+  lines.push(`${pad}  ...__req<${req.responseType}>(() => ${requestExpr}),`);
   for (const [name, value] of Object.entries(members)) {
     lines.push(`${pad}  ${name}: ${value},`);
   }
@@ -449,22 +483,22 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiP
       ? p.transport.renderRequest(leaf, p.ctx)
       : renderFetcherRequest(req);
 
-    // No client layer → bare callable (Promise). A layer turns the leaf into a handle;
-    // then the bundled filter contributor + any extension apiMembers add handle members.
-    let members: Record<string, string> | undefined;
-    if (p.layer) {
-      members = { ...p.layer.buildMembers(leaf.requestExpr, leaf, p.ctx), ...filterMembers(node) };
-      for (const ext of p.memberExts) {
-        const extra = ext.apiMembers?.(leaf, p.ctx);
-        if (!extra) continue;
-        for (const [name, value] of Object.entries(extra)) {
-          if (name in members) {
-            throw new Error(
-              `api member "${name}" on route "${req.routeName}" is contributed by more than one extension (conflict at "${ext.name}").`,
-            );
-          }
-          members[name] = value;
+    // Every leaf is an awaitable handle (the __req base). A client layer (TanStack) spreads
+    // query/mutation helpers on top; the bundled filter contributor + extension apiMembers
+    // add further members. Member-name collisions across extensions are an error.
+    const members: Record<string, string> = {};
+    if (p.layer) Object.assign(members, p.layer.buildMembers(leaf.requestExpr, leaf, p.ctx));
+    Object.assign(members, filterMembers(node));
+    for (const ext of p.memberExts) {
+      const extra = ext.apiMembers?.(leaf, p.ctx);
+      if (!extra) continue;
+      for (const [name, value] of Object.entries(extra)) {
+        if (name in members) {
+          throw new Error(
+            `api member "${name}" on route "${req.routeName}" is contributed by more than one extension (conflict at "${ext.name}").`,
+          );
         }
+        members[name] = value;
       }
     }
 
@@ -568,8 +602,8 @@ function buildApiFile(
   lines.push(...extImports);
 
   // Bundled nestjs-filter import (Phase 4 → filter extension): needed by the `filterQuery`
-  // handle member, so only when a client layer turns leaves into handles AND filters exist.
-  if (layer && hasFilters) {
+  // handle member, emitted whenever any route carries filterFields.
+  if (hasFilters) {
     lines.push(
       "import { filterQueryTyped as _filterQueryTyped } from '@dudousxd/nestjs-filter-client';",
     );
@@ -694,6 +728,9 @@ function buildApiFile(
   lines.push(...emitRouterTypeBlock(tree, 2, outDir ?? ''));
   lines.push('};');
   lines.push('');
+
+  // --- awaitable request handle helper ---
+  lines.push(...emitReqHelper());
 
   // --- api factory (inject your fetcher at runtime) ---
   lines.push('export function createApi(fetcher: Fetcher) {');

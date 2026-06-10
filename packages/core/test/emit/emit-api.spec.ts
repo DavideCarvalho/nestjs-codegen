@@ -62,7 +62,7 @@ describe('emitApi', () => {
     return readFile(join(outDir, 'api.ts'), 'utf8');
   }
 
-  describe('default (query off): leaves are plain typed fetch functions', () => {
+  describe('default (no tanstack): leaves are awaitable fetch handles', () => {
     it('no TanStack import or helpers', async () => {
       const c = await gen();
       expect(c).not.toContain('@tanstack');
@@ -70,22 +70,24 @@ describe('emitApi', () => {
       expect(c).not.toContain('_mutationOptions');
     });
 
-    it('exposes createApi(fetcher) factory + the Fetcher type import', async () => {
+    it('exposes createApi(fetcher) factory + the Fetcher type import + the __req helper', async () => {
       const c = await gen();
       expect(c).toContain('export function createApi(fetcher: Fetcher)');
       expect(c).toContain("import type { Fetcher } from '@dudousxd/nestjs-client'");
+      expect(c).toContain('function __req<R>(run: () => Promise<R>)');
     });
 
-    it('GET leaf is a function that fetches', async () => {
+    it('GET leaf is an awaitable handle backed by fetcher.get', async () => {
       const c = await gen();
       expect(c).toContain('list: (input?:');
-      expect(c).toContain('=> fetcher.get<');
+      expect(c).toContain('...__req<');
+      expect(c).toContain('() => fetcher.get<');
     });
 
-    it('POST leaf is a function that fetches', async () => {
+    it('POST leaf is an awaitable handle backed by fetcher.post', async () => {
       const c = await gen();
       expect(c).toContain('create: (input?:');
-      expect(c).toContain('=> fetcher.post<');
+      expect(c).toContain('() => fetcher.post<');
     });
 
     it('nests by dotted name (api.admin.users.list)', async () => {
@@ -95,20 +97,22 @@ describe('emitApi', () => {
     });
   });
 
-  describe('query: true: leaves return a handle with TanStack helpers', () => {
-    it('imports queryOptions/mutationOptions from @tanstack/react-query', async () => {
+  describe('with tanstack: handles also expose TanStack helpers', () => {
+    it('imports queryOptions/infiniteQueryOptions/mutationOptions from @tanstack/react-query', async () => {
       const c = await gen(true);
       expect(c).toContain("from '@tanstack/react-query'");
       expect(c).toContain('queryOptions as _queryOptions');
+      expect(c).toContain('infiniteQueryOptions as _infiniteQueryOptions');
       expect(c).toContain('mutationOptions as _mutationOptions');
     });
 
-    it('GET handle exposes fetch + queryKey + queryOptions', async () => {
+    it('GET handle is awaitable AND exposes queryKey + queryOptions + infiniteQueryOptions', async () => {
       const c = await gen(true);
       expect(c).toContain('list: (input?:');
-      expect(c).toContain('fetch: () => fetcher.get<');
+      expect(c).toContain('...__req<'); // still awaitable
       expect(c).toContain('queryKey: () => ["users.list", input] as const');
       expect(c).toContain('queryOptions: () => _queryOptions(');
+      expect(c).toContain('infiniteQueryOptions: () => _infiniteQueryOptions(');
     });
 
     it('mutation handle exposes mutationOptions', async () => {

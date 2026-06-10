@@ -53,28 +53,29 @@ describe('tanstackQuery', () => {
     expect(ext.apiClientLayer?.name).toBe('tanstack-query');
   });
 
-  it('GET leaf gets fetch/queryKey/queryOptions', () => {
+  it('GET leaf gets queryKey/queryOptions/infiniteQueryOptions (fetch + await come from __req)', () => {
     const r = req();
     const members = tanstackQuery().apiClientLayer!.buildMembers(
       'fetcher.get<R>(u, o)',
       leaf(r),
       {} as never,
     );
-    expect(Object.keys(members)).toEqual(['fetch', 'queryKey', 'queryOptions']);
-    expect(members.fetch).toBe('() => fetcher.get<R>(u, o)');
+    expect(Object.keys(members)).toEqual(['queryKey', 'queryOptions', 'infiniteQueryOptions']);
     expect(members.queryOptions).toContain(
       '_queryOptions({ queryKey: ["users.show", input] as const',
     );
+    expect(members.infiniteQueryOptions).toContain('_infiniteQueryOptions(');
+    expect(members.infiniteQueryOptions).toContain('initialPageParam: 1');
   });
 
-  it('mutation leaf gets fetch/queryKey/mutationOptions with a typed body', () => {
+  it('mutation leaf gets queryKey/mutationOptions with a typed body (no infinite/query)', () => {
     const r = req({ method: 'post', isGet: false, hasBody: true });
     const members = tanstackQuery().apiClientLayer!.buildMembers(
       'fetcher.post<R>(u, o)',
       leaf(r),
       {} as never,
     );
-    expect(Object.keys(members)).toEqual(['fetch', 'queryKey', 'mutationOptions']);
+    expect(Object.keys(members)).toEqual(['queryKey', 'mutationOptions']);
     expect(members.mutationOptions).toContain(
       "mutationFn: (body: ApiRouter['users']['show']['body'])",
     );
@@ -83,16 +84,13 @@ describe('tanstackQuery', () => {
   it('imports only what the routes use, from the configured module', () => {
     const layer = tanstackQuery({ import: '@tanstack/vue-query' }).apiClientLayer!;
     expect(layer.imports?.(ctxWith([{ method: 'GET' }]))).toEqual([
-      "import { queryOptions as _queryOptions } from '@tanstack/vue-query';",
+      "import { queryOptions as _queryOptions, infiniteQueryOptions as _infiniteQueryOptions } from '@tanstack/vue-query';",
     ]);
     expect(layer.imports?.(ctxWith([{ method: 'POST' }]))).toEqual([
       "import { mutationOptions as _mutationOptions } from '@tanstack/vue-query';",
     ]);
     expect(layer.imports?.(ctxWith([{ method: 'GET' }, { method: 'POST' }]))).toEqual([
-      "import { queryOptions as _queryOptions, mutationOptions as _mutationOptions } from '@tanstack/react-query';".replace(
-        '@tanstack/react-query',
-        '@tanstack/vue-query',
-      ),
+      "import { queryOptions as _queryOptions, infiniteQueryOptions as _infiniteQueryOptions, mutationOptions as _mutationOptions } from '@tanstack/vue-query';",
     ]);
   });
 

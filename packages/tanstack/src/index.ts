@@ -35,12 +35,14 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
 
     buildMembers(requestExpr: string, leaf: LeafModel): Record<string, string> {
       const req: RequestModel = leaf.request;
+      // `fetch` + awaitability come from the core __req base; we add the TanStack helpers.
       const members: Record<string, string> = {
-        fetch: `() => ${requestExpr}`,
         queryKey: `() => ${req.queryKeyExpr}`,
       };
       if (req.isGet) {
         members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
+        // Cursor/page pagination over the same endpoint (adds `page` to the query).
+        members.infiniteQueryOptions = `() => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ${req.responseType}) => { const meta = (lastPage as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } })`;
       } else {
         members.mutationOptions = `() => _mutationOptions({ mutationFn: (body: ${req.bodyType}) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { body }) })`;
       }
@@ -57,6 +59,7 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
 
       const named: string[] = [];
       if (hasGet || hasFilters) named.push('queryOptions as _queryOptions');
+      if (hasGet) named.push('infiniteQueryOptions as _infiniteQueryOptions');
       if (hasMutation) named.push('mutationOptions as _mutationOptions');
       if (named.length === 0) return [];
       return [`import { ${named.join(', ')} } from '${queryModule}';`];

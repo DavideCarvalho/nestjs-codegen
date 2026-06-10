@@ -88,7 +88,8 @@ describe('discoverRoutesFromProject', () => {
 
   it('ignores non-controller classes and non-HTTP methods', () => {
     const routes = discover({
-      's.ts': 'class Service { doThing() {} } @Controller() class C { helper() {} @Get() ping() {} }',
+      's.ts':
+        'class Service { doThing() {} } @Controller() class C { helper() {} @Get() ping() {} }',
     });
     expect(routes).toHaveLength(1);
     expect(routes[0]?.name).toBe('c.ping');

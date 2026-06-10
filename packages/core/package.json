@@ -26,16 +26,28 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "cac": "^6.7.14",
-    "ts-morph": "^28.0.0"
+    "cac": "6.7.14",
+    "chokidar": "3.6.0",
+    "fast-glob": "3.3.3",
+    "ts-morph": "28.0.0"
   },
   "peerDependencies": {
+    "tsx": ">=4.0.0",
     "typescript": ">=5.0.0"
   },
+  "peerDependenciesMeta": {
+    "tsx": { "optional": true }
+  },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.4.0",
-    "vitest": "^4.1.0"
+    "@nestjs/common": "11.1.26",
+    "@nestjs/core": "11.1.26",
+    "@tanstack/react-query": "5.101.0",
+    "@types/node": "20.19.42",
+    "class-validator": "0.14.4",
+    "tsx": "4.22.4",
+    "typescript": "5.9.3",
+    "vitest": "4.1.8",
+    "zod": "3.25.76"
   },
   "engines": {
     "node": ">=20"

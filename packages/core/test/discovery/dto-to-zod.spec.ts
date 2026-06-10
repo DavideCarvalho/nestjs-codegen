@@ -1,22 +1,11 @@
 /**
- * Golden gate: class-validator → zod text via the IR + zod adapter must reproduce
- * the previous hand-rolled translator byte-for-byte. One case per §2.2 mapping
- * table row, plus nesting / arrays / enums / messages / unmappable decorators /
- * recursion. This is the behavior-preservation contract for the refactor.
+ * Unit tests for extractZodFromDto — pure-AST class-validator → zod translation.
+ * One case per §2.2 mapping table row, plus nesting / arrays / enums / messages /
+ * unmappable decorators / recursion.
  */
 import { Project } from 'ts-morph';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { zodAdapter } from '../../src/adapters/zod.js';
-import { extractSchemaFromDto } from '../../src/discovery/dto-to-ir.js';
-
-/** Compose the IR extractor + zod adapter into the previous one-call shape. */
-function extractZodFromDto(
-  cls: Parameters<typeof extractSchemaFromDto>[0],
-  file: Parameters<typeof extractSchemaFromDto>[1],
-  project: Parameters<typeof extractSchemaFromDto>[2],
-) {
-  return zodAdapter.renderModule(extractSchemaFromDto(cls, file, project));
-}
+import { extractZodFromDto } from '../../src/discovery/dto-to-zod.js';
 
 function dtoSchema(
   source: string,

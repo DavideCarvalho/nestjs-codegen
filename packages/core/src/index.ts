@@ -1,14 +1,23 @@
 export const VERSION = '0.1.0';
 
-// Validation IR
+// Codegen pipeline (migrated from nestjs-inertia)
+export { defineConfig } from './config/define-config.js';
+export { loadConfig } from './config/load-config.js';
+export type { UserConfig, ResolvedConfig, ScopeConfig } from './config/types.js';
+export { ConfigError, CodegenError } from './exceptions.js';
+
+export { generate } from './generate.js';
+export { watch } from './watch/watcher.js';
+export type { Watcher } from './watch/watcher.js';
+export { acquireLock } from './watch/lock-file.js';
+
+// Validation IR + pluggable adapters
 export type {
   SchemaModule,
   SchemaNode,
   StringCheck,
   NumberCheck,
 } from './ir/schema-node.js';
-
-// Validation adapters
 export type {
   ValidationAdapter,
   AdapterUsage,
@@ -19,33 +28,5 @@ export { zodAdapter } from './adapters/zod.js';
 export { resolveAdapter } from './adapters/registry.js';
 export type { ValidationOption } from './adapters/registry.js';
 
-// Discovery: class-validator DTO → SchemaModule IR
+// class-validator DTO → SchemaModule IR (consumed by the validation adapters)
 export { extractSchemaFromDto } from './discovery/dto-to-ir.js';
-
-// Discovery: NestJS controllers → RouteDescriptor[]
-export {
-  discoverRoutes,
-  discoverRoutesFromProject,
-  joinPaths,
-} from './discovery/discover-controllers.js';
-export type { DiscoverOptions } from './discovery/discover-controllers.js';
-
-// Route model
-export type {
-  RouteDescriptor,
-  RouteContract,
-  HttpMethod,
-} from './discovery/route-model.js';
-
-// Config
-export { defineConfig, resolveConfig } from './config/define-config.js';
-export type { CodegenConfig, ResolvedConfig } from './config/types.js';
-
-// Emit
-export { generate } from './generate.js';
-export type { GenerateResult } from './generate.js';
-export { emitRoutes, buildRoutesFile } from './emit/emit-routes.js';
-export { emitApi, buildApiFile } from './emit/emit-api.js';
-export { emitForms } from './emit/emit-forms.js';
-
-export { ConfigError, CodegenError } from './exceptions.js';

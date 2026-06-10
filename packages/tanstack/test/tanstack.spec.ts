@@ -71,13 +71,21 @@ describe('tanstackQuery', () => {
 
   it('plain mutation (POST, no filter) gets queryKey/mutationOptions only', () => {
     const r = req({ method: 'post', isGet: false, isQuery: false, hasBody: true });
-    const members = tanstackQuery().apiClientLayer!.buildMembers('fetcher.post<R>(u, o)', leaf(r), {} as never);
+    const members = tanstackQuery().apiClientLayer!.buildMembers(
+      'fetcher.post<R>(u, o)',
+      leaf(r),
+      {} as never,
+    );
     expect(Object.keys(members)).toEqual(['queryKey', 'mutationOptions']);
   });
 
   it('filter-search (POST + filterFields) gets BOTH queryOptions and mutationOptions', () => {
     const r = req({ method: 'post', isGet: false, isQuery: true, hasBody: true });
-    const members = tanstackQuery().apiClientLayer!.buildMembers('fetcher.post<R>(u, o)', leaf(r), {} as never);
+    const members = tanstackQuery().apiClientLayer!.buildMembers(
+      'fetcher.post<R>(u, o)',
+      leaf(r),
+      {} as never,
+    );
     expect(Object.keys(members)).toEqual(['queryKey', 'queryOptions', 'mutationOptions']);
   });
 

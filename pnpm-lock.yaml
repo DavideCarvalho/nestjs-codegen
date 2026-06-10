@@ -24,6 +24,18 @@ importers:
         specifier: ^4.1.0
         version: 4.1.8(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.27.7))
 
+  packages/client:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.42
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.8(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.27.7))
+
   packages/core:
     dependencies:
       ts-morph:

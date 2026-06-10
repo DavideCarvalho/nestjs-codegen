@@ -53,12 +53,9 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       const routes = contracted(ctx);
       const hasGet = routes.some((r) => r.method === 'GET');
       const hasMutation = routes.some((r) => r.method !== 'GET');
-      // Compat: a filter route pulls in queryOptions too (matches the pre-extraction
-      // emitter). Revisit when the filter extension owns its own imports.
-      const hasFilters = routes.some((r) => r.contract?.contractSource.filterFields?.length);
 
       const named: string[] = [];
-      if (hasGet || hasFilters) named.push('queryOptions as _queryOptions');
+      if (hasGet) named.push('queryOptions as _queryOptions');
       if (hasGet) named.push('infiniteQueryOptions as _infiniteQueryOptions');
       if (hasMutation) named.push('mutationOptions as _mutationOptions');
       if (named.length === 0) return [];

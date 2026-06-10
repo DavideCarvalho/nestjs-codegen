@@ -85,12 +85,19 @@ describe('@FilterFor method-parameter type inference (emit)', () => {
       /import type \{ Status \} from '\.\.?\/[^']*filter-for-param\.controller(\.js)?';/,
     );
 
-    // Map line: primitive inferred (number), enum referenced by name (Status),
-    // literal union inlined (mode), hint override (score → number); blob absent.
-    expect(content).toContain(
-      'filterQuery: () => _filterQueryTyped<"minAge" | "state" | "mode" | "score", ' +
-        '{ "minAge": number; "state": Status; "mode": "draft" | "published"; "score": number }>(),',
+    // Discovered field types (the map @dudousxd/nestjs-filter-codegen renders): primitive
+    // inferred (number), enum referenced by name (Status), literal union (mode), hint
+    // override (score → number); blob absent.
+    const cs = routes.find((r) => r.contract?.contractSource.filterFields?.length)?.contract
+      ?.contractSource;
+    const byName = Object.fromEntries(
+      (cs?.filterFieldTypes as FilterFieldType[]).map((f) => [f.name, f]),
     );
+    expect(byName.minAge.kind).toBe('number');
+    expect(byName.state.typeRef?.name).toBe('Status');
+    expect(byName.mode.enumValues).toEqual(['draft', 'published']);
+    expect(byName.score.kind).toBe('number');
+    expect(byName.blob).toBeUndefined();
   });
 
   it('emits a relative import to another file for cross-file enums/aliases', async () => {
@@ -108,7 +115,13 @@ describe('@FilterFor method-parameter type inference (emit)', () => {
     expect(content).toMatch(
       /import type \{[^}]*\bTier\b[^}]*\} from '[^']*dto\/role\.enum(\.js)?';/,
     );
-    expect(content).toContain('{ "role": Role; "tier": Tier }');
+    const cs = routes.find((r) => r.contract?.contractSource.filterFields?.length)?.contract
+      ?.contractSource;
+    const byName = Object.fromEntries(
+      (cs?.filterFieldTypes as FilterFieldType[]).map((f) => [f.name, f]),
+    );
+    expect(byName.role.typeRef?.name).toBe('Role');
+    expect(byName.tier.typeRef?.name).toBe('Tier');
   });
 
   // Regression: a NON-exported named type can't be `import type`-ed. The codegen
@@ -135,9 +148,16 @@ describe('@FilterFor method-parameter type inference (emit)', () => {
     // Non-exported numeric enum → expanded to its numeric VALUES 1 | 2 (not the
     // member names). Non-exported alias union (mode) + interface (shape) →
     // skipped (absent). Primitive (name) intact.
-    expect(content).toContain(
-      'filterQuery: () => _filterQueryTyped<"state" | "level" | "name", ' +
-        '{ "state": "open" | "closed"; "level": 1 | 2; "name": string }>(),',
+    const cs = routes.find((r) => r.contract?.contractSource.filterFields?.length)?.contract
+      ?.contractSource;
+    const byName = Object.fromEntries(
+      (cs?.filterFieldTypes as FilterFieldType[]).map((f) => [f.name, f]),
     );
+    expect(byName.state.enumValues).toEqual(['open', 'closed']);
+    expect(byName.level.enumValues).toEqual(['1', '2']);
+    expect(byName.level.numericEnum).toBe(true);
+    expect(byName.name.kind).toBe('string');
+    expect(byName.mode).toBeUndefined();
+    expect(byName.shape).toBeUndefined();
   });
 });

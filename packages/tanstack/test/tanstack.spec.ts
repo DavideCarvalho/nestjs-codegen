@@ -94,10 +94,10 @@ describe('tanstackQuery', () => {
     ]);
   });
 
-  it('a filter-only mutation route still pulls in queryOptions (parity with the legacy emitter)', () => {
+  it('is decoupled from filter — a filter-only POST imports only mutationOptions', () => {
     const layer = tanstackQuery().apiClientLayer!;
     expect(layer.imports?.(ctxWith([{ method: 'POST', filterFields: ['status'] }]))).toEqual([
-      "import { queryOptions as _queryOptions, mutationOptions as _mutationOptions } from '@tanstack/react-query';",
+      "import { mutationOptions as _mutationOptions } from '@tanstack/react-query';",
     ]);
   });
 });

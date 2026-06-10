@@ -45,12 +45,10 @@ describe('@ApplyFilter query type extraction', () => {
       const content = await readFile(join(outDir, 'api.ts'), 'utf8');
       // The query TYPE position (in ApiRouter) is byte-identical to the args
       // used by the `_filterQueryTyped<...>` factory.
+      // The `filterQuery()` runtime member moved to @dudousxd/nestjs-filter-codegen; core
+      // still renders the discovered fields into the query TYPE position (TypedFilterQuery).
       expect(content).toContain(
         `query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"name" | "minAge" | "status", { "name": string | null; "minAge": number | null; "status": string | null }>;`,
-      );
-      expect(content).toContain(
-        'filterQuery: () => _filterQueryTyped<"name" | "minAge" | "status", ' +
-          '{ "name": string | null; "minAge": number | null; "status": string | null }>(),',
       );
     } finally {
       await rm(outDir, { recursive: true, force: true });
@@ -90,7 +88,6 @@ describe('@ApplyFilter query-type vs factory-type consistency', () => {
       expect(content).toContain(
         `query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<${union}, ${map}>;`,
       );
-      expect(content).toContain(`filterQuery: () => _filterQueryTyped<${union}, ${map}>(),`);
     } finally {
       await rm(outDir, { recursive: true, force: true });
     }

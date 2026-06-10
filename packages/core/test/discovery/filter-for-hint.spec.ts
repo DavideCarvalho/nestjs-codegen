@@ -73,20 +73,18 @@ describe('@FilterFor type hint emit', () => {
     if (outDir) await rm(outDir, { recursive: true, force: true });
   });
 
-  it('emits virtual field types into the _filterQueryTyped<...> map line', async () => {
+  it('discovers virtual field types (the type map @dudousxd/nestjs-filter-codegen renders)', async () => {
     const routes = await discoverContractsFast({
       cwd: FIXTURES,
       glob: 'filter-for-hint.controller.ts',
     });
-    outDir = await mkdtemp(join(tmpdir(), 'filter-for-hint-emit-'));
-    await emitApi(routes, outDir, { extensions: [tanstackQuery()] });
-    const content = await readFile(join(outDir, 'api.ts'), 'utf8');
-
-    // The emitted per-field type map M carries the virtual fields with their
-    // upgraded types (number, enum union) and the unhinted one stays unknown.
-    expect(content).toContain(
-      'filterQuery: () => _filterQueryTyped<"name" | "minAge" | "state", ' +
-        '{ "name": string; "minAge": number; "state": "active" | "archived" }>(),',
-    );
+    const cs = routes.find((r) => r.contract?.contractSource.filterFields?.length)?.contract
+      ?.contractSource;
+    const fts = cs?.filterFieldTypes as FilterFieldType[];
+    const byName = Object.fromEntries(fts.map((f) => [f.name, f]));
+    // The virtual fields carry their upgraded types (number, enum union).
+    expect(byName.minAge.kind).toBe('number');
+    expect(byName.state.enumValues).toEqual(['active', 'archived']);
+    expect(byName.name.kind).toBe('string');
   });
 });

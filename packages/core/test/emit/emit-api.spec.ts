@@ -120,10 +120,14 @@ describe('emitApi', () => {
       expect(c).toContain('mutationOptions: () => _mutationOptions(');
     });
 
-    it('filter route emits filterQuery + TypedFilter type args', async () => {
+    it('does NOT emit the filterQuery runtime member — that is the nestjs-filter extension', async () => {
       const c = await gen(true);
-      expect(c).toContain('filterQuery: () => _filterQueryTyped<');
-      expect(c).toContain('"status"');
+      // The runtime helper + its value import are gone from core (this fixture has a
+      // method-level filter route, so no query-source TypedFilterQuery type either).
+      expect(c).not.toContain('filterQuery:');
+      expect(c).not.toContain('filterQueryTyped');
+      // but filterFields are still discovered + emitted into the ApiRouter types.
+      expect(c).toContain('filterFields: "status" | "name"');
     });
   });
 

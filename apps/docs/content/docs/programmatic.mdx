@@ -49,9 +49,11 @@ your own tooling or adapters.
 `emitApi(routes, outDir, opts)` accepts:
 
 ```ts
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
+
 emitApi(routes, 'src/generated', {
-  mutationClient: 'fetcher',          // omit the Inertia navigate() helper
-  queryImport: '@tanstack/vue-query', // tanstack adapter to import from
+  mutationClient: 'fetcher',                    // omit the Inertia navigate() helper
+  extensions: [tanstackQuery()],                // api.ts hooks (TanStack handles, etc.)
   fetcherImportPath: '@dudousxd/nestjs-client', // where the Fetcher type comes from
 });
 ```

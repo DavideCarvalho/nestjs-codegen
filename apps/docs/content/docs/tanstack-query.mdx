@@ -3,38 +3,44 @@ title: TanStack Query
 description: queryOptions / mutationOptions from your framework adapter.
 ---
 
-TanStack Query is **opt-in**. By default the client is a [plain typed
-fetch](/docs/api-client#calling-endpoints) with no TanStack dependency. Set `query: true`
-(in `forRoot()` or your config file) and each endpoint returns a handle exposing TanStack's
+TanStack Query is an **extension**, not a core flag. By default the client is a [plain typed
+fetch](/docs/api-client#calling-endpoints) with no TanStack dependency. Install the extension
+and register it, and each endpoint returns a handle exposing TanStack's
 **`queryOptions`/`mutationOptions`** helpers — GET routes get `queryOptions()`, everything
 else `mutationOptions()`.
 
+```bash
+pnpm add -D @dudousxd/nestjs-codegen-tanstack
+```
+
 ```ts
-NestjsCodegenModule.forRoot({ /* … */ query: true });
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
+
+NestjsCodegenModule.forRoot({ /* … */ extensions: [tanstackQuery()] });
 ```
 
 ## Which package?
 
 You don't install `@tanstack/query-core` directly (nobody does) — your framework
-adapter re-exports the helpers. Point `queryImport` at the package you already have
-(`@tanstack/react-query` is the default):
+adapter re-exports the helpers. Point the extension's `import` at the package you already
+have (`@tanstack/react-query` is the default):
 
 <Tabs items={['React', 'Vue', 'Svelte', 'Solid']}>
 
 ```ts tab="React"
-NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/react-query' }); // default
+tanstackQuery(); // import defaults to '@tanstack/react-query'
 ```
 
 ```ts tab="Vue"
-NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/vue-query' });
+tanstackQuery({ import: '@tanstack/vue-query' });
 ```
 
 ```ts tab="Svelte"
-NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/svelte-query' });
+tanstackQuery({ import: '@tanstack/svelte-query' });
 ```
 
 ```ts tab="Solid"
-NestjsCodegenModule.forRoot({ query: true, queryImport: '@tanstack/solid-query' });
+tanstackQuery({ import: '@tanstack/solid-query' });
 ```
 
 </Tabs>

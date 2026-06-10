@@ -38,7 +38,7 @@ import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
 
       validation: 'zod',          // 'zod' (bundled) | valibotAdapter | arktypeAdapter
       mutationClient: 'fetcher',  // 'fetcher' (no Inertia) | 'inertia'
-      query: false,               // true → TanStack Query handles (see below)
+      // extensions: [tanstackQuery()],  // opt into TanStack Query handles (see below)
     }),
   ],
 })
@@ -78,7 +78,6 @@ export default defineConfig({
   codegen: { outDir: 'src/generated' },
   validation: 'zod',
   mutationClient: 'fetcher',
-  query: false,
 });
 ```
 
@@ -123,8 +122,22 @@ const users = await api.users.list();              // typed User[]
 const created = await api.users.create({ body });  // typed body + response
 ```
 
-Want **TanStack Query**? Set `query: true` and each call returns a handle with
-`.queryOptions()` / `.mutationOptions()`:
+Want **TanStack Query**? Install the extension and register it — each call then returns a
+handle with `.queryOptions()` / `.mutationOptions()`:
+
+```bash
+pnpm add -D @dudousxd/nestjs-codegen-tanstack
+```
+
+```ts title="src/app.module.ts"
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
+// ...
+NestjsCodegenModule.forRoot({
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: 'src/generated' },
+  extensions: [tanstackQuery()],
+});
+```
 
 ```tsx title="users-page.tsx"
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -135,6 +148,6 @@ const create = useMutation(api.users.create().mutationOptions());
 ```
 
 <Callout type="info">
-  Default `query: false` keeps the client TanStack-free (plain fetch). Not using
-  Inertia? `mutationClient: 'fetcher'` drops the `@inertiajs/*` import too.
+  Without the extension the client is TanStack-free (plain fetch). Not using Inertia?
+  `mutationClient: 'fetcher'` drops the `@inertiajs/*` import too.
 </Callout>

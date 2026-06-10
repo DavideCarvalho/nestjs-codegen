@@ -21,7 +21,7 @@ from your contracts.
 
 ## Calling endpoints
 
-By default (`query: false`) **each endpoint is a plain typed fetch** — call it and you
+By default **each endpoint is a plain typed fetch** — call it and you
 get a `Promise` resolved with the typed response. Params, query, and body are all typed
 from your contracts:
 
@@ -40,7 +40,7 @@ const created = await api.users.create({ body: { email: 'a@b.com', password: 'se
 
 ## TanStack Query handles
 
-Set `query: true` and every endpoint instead returns a **handle** carrying its own
+Register the [`tanstackQuery()`](/docs/tanstack-query) extension and every endpoint instead returns a **handle** carrying its own
 `fetch`, `queryKey`, and `queryOptions()` (GET) or `mutationOptions()` (the rest) — the
 helpers from your TanStack adapter (see [TanStack Query](/docs/tanstack-query)):
 
@@ -63,7 +63,7 @@ calling anything:
 ```ts
 import type { Api } from '../generated/api';
 // default: Awaited<ReturnType<typeof api.users.show>> is the response type
-// query: true: ReturnType<typeof api.users.show> is the handle
+// with tanstackQuery(): ReturnType<typeof api.users.show> is the handle
 ```
 
 ## Inertia mode

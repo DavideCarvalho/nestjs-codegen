@@ -18,6 +18,7 @@ a single source of truth.
 ```ts title="nestjs-codegen.config.ts"
 import { defineConfig } from '@dudousxd/nestjs-codegen';
 import { valibotAdapter } from '@dudousxd/nestjs-codegen-valibot';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 
 export default defineConfig({
   contracts: { glob: 'src/**/*.controller.ts', debounceMs: 500 },
@@ -25,7 +26,7 @@ export default defineConfig({
 
   validation: valibotAdapter,        // 'zod' | valibotAdapter | arktypeAdapter
   mutationClient: 'fetcher',         // 'fetcher' | 'inertia'
-  queryImport: '@tanstack/vue-query',
+  extensions: [tanstackQuery({ import: '@tanstack/vue-query' })],
 
   forms: { enabled: true, watch: 'src/**/*.dto.ts' },
 
@@ -49,10 +50,10 @@ export default defineConfig({
       type: "'fetcher' | 'inertia'",
       default: "'inertia'",
     },
-    queryImport: {
-      description: "Module the generated api.ts imports queryOptions/mutationOptions from. Point it at your framework adapter.",
-      type: 'string',
-      default: "'@tanstack/react-query'",
+    extensions: {
+      description: "Codegen extensions, applied in order. e.g. [tanstackQuery()] adds TanStack Query handles to api.ts. TanStack's import module is set via tanstackQuery({ import }).",
+      type: 'CodegenExtension[]',
+      default: '[]',
     },
     'pages.glob': {
       description: 'Glob for Inertia page components.',

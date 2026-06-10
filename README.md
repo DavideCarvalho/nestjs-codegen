@@ -19,19 +19,44 @@ that consumes this core.
 
 ## Packages
 
-| Package | Status |
+| Package | Role |
 |---|---|
-| `@dudousxd/nestjs-codegen` | Core: schema IR + validation adapter system + class-validator DTO discovery. **In progress.** |
-| `@dudousxd/nestjs-codegen-zod` | Default zod adapter (currently bundled in core). |
-| `@dudousxd/nestjs-codegen-valibot` | Planned. |
-| `@dudousxd/nestjs-codegen-arktype` | Planned. |
+| `@dudousxd/nestjs-codegen` | Core: schema IR, validation adapter system + bundled zod adapter, class-validator DTO discovery, and the `routes.ts`/`api.ts`/`forms.ts` emit pipeline. |
+| `@dudousxd/nestjs-codegen-valibot` | Valibot adapter. |
+| `@dudousxd/nestjs-codegen-arktype` | ArkType adapter. |
+| `@dudousxd/nestjs-client` | Framework-neutral runtime (typed fetcher + superjson hook) the generated `api.ts` imports in plain mode. |
 
 ## Status
 
-Early extraction from `nestjs-inertia`'s codegen. The foundation landing first is
-the **neutral validation IR + `ValidationAdapter`** with a zod adapter that
-reproduces the previous emitter byte-for-byte (see `packages/core`). Route/api/forms
-emit and the CLI are being ported next.
+Extracted from `nestjs-inertia`'s codegen into this standalone repo. All five
+foundations are implemented and tested (83 tests):
+
+- **Separate lib** — this repo, 4 packages.
+- **Pluggable validation** — neutral `SchemaNode` IR → zod / valibot / arktype adapters
+  (Standard-Schema-shaped interface; reproduces the original zod output byte-for-byte).
+- **Optional TanStack Query** — `query: true` emits framework-agnostic
+  `queryOptions`/`mutationOptions` from `@tanstack/query-core`.
+- **Optional superjson** — a `transformer` on the runtime fetcher round-trips rich
+  types (Date, Map, …) end-to-end.
+- **nestjs-inertia integration** — `mutationClient: 'inertia'` emits Inertia router
+  visits for mutations while keeping typed GET reads.
+
+Next: port the full NestJS controller/contract discovery (controllers → `RouteDescriptor[]`),
+the CLI/watch, and ship the Inertia preset package in `nestjs-inertia`.
+
+## Quick example
+
+```ts
+import { generate } from '@dudousxd/nestjs-codegen';
+
+await generate(routes, {
+  outDir: 'src/generated',
+  validation: 'zod',     // or import { valibotAdapter } / { arktypeAdapter }
+  query: true,           // emit TanStack queryOptions/mutationOptions
+  transformer: 'superjson',
+  mutationClient: 'fetcher', // or 'inertia'
+});
+```
 
 ## Development
 

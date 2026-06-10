@@ -10,12 +10,20 @@ Scope: extract and generalize the codegen into a **standalone repo**, `~/persona
 > `nestjs-inertia` keeps the **Inertia preset** (pages/shared-props/router mode) and
 > will consume the published `@dudousxd/nestjs-codegen`.
 >
-> **Implemented so far (sub-project #1 foundation):** `packages/core` with the
-> validation IR, `ValidationAdapter` + zod adapter, `resolveAdapter` registry, and
-> `extractSchemaFromDto` (class-validator → IR). Golden gate of 27 class-validator→zod
-> cases reproduces the previous emitter byte-for-byte; 47 tests + typecheck + build green.
-> Still to port: contract/route discovery, routes/api/forms emit, CLI, config, watch,
-> the query/superjson flags, and the valibot/arktype adapter packages.
+> **Implemented (all five pillars, 83 tests, typecheck + build + lint green):**
+> - `packages/core` — validation IR, `ValidationAdapter` + bundled zod adapter,
+>   `resolveAdapter` registry, `extractSchemaFromDto` (class-validator → IR, golden gate
+>   reproduces the old emitter byte-for-byte), route model + config, and the
+>   `routes.ts`/`api.ts`/`forms.ts` emit pipeline + `generate()`.
+> - `packages/valibot`, `packages/arktype` — the other two validation adapters.
+> - `packages/client` (`@dudousxd/nestjs-client`) — neutral runtime fetcher with the
+>   superjson transformer hook.
+> - api.ts emit: `query: true` → `@tanstack/query-core` queryOptions/mutationOptions;
+>   `mutationClient: 'inertia'` → Inertia router visits (the nestjs-inertia integration).
+>
+> **Still to port (productionization):** full NestJS controller/contract discovery
+> (controllers → `RouteDescriptor[]`), the CLI + watch mode, and the Inertia preset
+> package that lives in `nestjs-inertia` and consumes this core.
 
 ## 0. Goal
 

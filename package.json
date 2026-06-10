@@ -1,0 +1,28 @@
+{
+  "name": "nestjs-codegen",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Extensible codegen for NestJS — typed client artifacts with pluggable validation libs (zod/valibot/arktype), optional TanStack Query and superjson. Works with or without Inertia.",
+  "license": "MIT",
+  "author": "Davi Carvalho <davi@goflip.ai>",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.0"
+  }
+}

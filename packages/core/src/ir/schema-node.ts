@@ -1,0 +1,59 @@
+/**
+ * Neutral validation IR. Produced by `dto-to-ir` (class-validator AST → IR) and,
+ * later, by parsing `defineContract` zod schemas back into the same shape. A
+ * `ValidationAdapter` renders a `SchemaNode` to source text in a concrete lib
+ * (zod today; valibot/arktype later).
+ *
+ * Design note: a few nodes (`raw`, `annotated`, message-carrying checks) preserve
+ * source-level detail so the zod adapter can reproduce the previous emitter's
+ * output byte-for-byte. Adapters for other libs read the semantic fields and may
+ * normalize incidental formatting (quote style, comment wording).
+ */
+
+/** A `{ message: '...' }` options arg, stored as the verbatim source text (e.g. `'Bad email'`). */
+export type MessageRaw = string;
+
+export type StringCheck =
+  | { check: 'email'; messageRaw?: MessageRaw }
+  | { check: 'url'; messageRaw?: MessageRaw }
+  | { check: 'uuid'; messageRaw?: MessageRaw }
+  | { check: 'regex'; pattern: string } // full regex literal text incl. slashes + flags
+  | { check: 'min'; value: string } // raw numeric source text
+  | { check: 'max'; value: string };
+
+export type NumberCheck =
+  | { check: 'int' }
+  | { check: 'min'; value: string }
+  | { check: 'max'; value: string }
+  | { check: 'positive' }
+  | { check: 'negative' };
+
+export type SchemaNode =
+  | { kind: 'string'; checks: StringCheck[] }
+  | { kind: 'number'; checks: NumberCheck[] }
+  | { kind: 'boolean' }
+  | { kind: 'date' }
+  | { kind: 'unknown' }
+  | { kind: 'instanceof'; ctor: string }
+  /** Members are verbatim literal source texts (quote style preserved). */
+  | { kind: 'enum'; literals: string[] }
+  | { kind: 'literal'; raw: string }
+  | { kind: 'union'; options: SchemaNode[] }
+  | { kind: 'object'; fields: Array<{ key: string; value: SchemaNode }>; passthrough: boolean }
+  | { kind: 'array'; element: SchemaNode }
+  | { kind: 'optional'; inner: SchemaNode }
+  /** Reference to a hoisted named schema (emitted in `SchemaModule.named`). */
+  | { kind: 'ref'; name: string }
+  /** Lazy reference to a hoisted named schema (recursion site). */
+  | { kind: 'lazyRef'; name: string }
+  /** Wraps a node with trailing comments for unmappable decorators (by name). */
+  | { kind: 'annotated'; inner: SchemaNode; unmappable: string[] }
+  /** Verbatim escape hatch (recursion degradation, unresolvable-enum fallback). */
+  | { kind: 'raw'; text: string };
+
+/** A root schema plus hoisted named (nested/recursive) schemas. */
+export interface SchemaModule {
+  root: SchemaNode;
+  named: Map<string, SchemaNode>;
+  warnings: string[];
+}

@@ -1,0 +1,91 @@
+import { describe, expect, it } from 'vitest';
+import { zodAdapter } from '../../src/adapters/zod.js';
+import type { SchemaModule, SchemaNode } from '../../src/ir/schema-node.js';
+
+function render(root: SchemaNode, named = new Map<string, SchemaNode>(), warnings: string[] = []) {
+  const mod: SchemaModule = { root, named, warnings };
+  return zodAdapter.renderModule(mod);
+}
+const obj = (fields: Array<{ key: string; value: SchemaNode }>): SchemaNode => ({
+  kind: 'object',
+  fields,
+  passthrough: false,
+});
+
+describe('zodAdapter', () => {
+  it('string with email check', () => {
+    expect(
+      render(obj([{ key: 'a', value: { kind: 'string', checks: [{ check: 'email' }] } }]))
+        .schemaText,
+    ).toBe('z.object({ a: z.string().email() })');
+  });
+
+  it('email check forwards a verbatim message', () => {
+    expect(
+      render(
+        obj([
+          {
+            key: 'a',
+            value: { kind: 'string', checks: [{ check: 'email', messageRaw: "'Bad'" }] },
+          },
+        ]),
+      ).schemaText,
+    ).toBe("z.object({ a: z.string().email({ message: 'Bad' }) })");
+  });
+
+  it('int number', () => {
+    expect(
+      render(obj([{ key: 'a', value: { kind: 'number', checks: [{ check: 'int' }] } }])).schemaText,
+    ).toBe('z.object({ a: z.number().int() })');
+  });
+
+  it('date → coerce.date', () => {
+    expect(render(obj([{ key: 'a', value: { kind: 'date' } }])).schemaText).toBe(
+      'z.object({ a: z.coerce.date() })',
+    );
+  });
+
+  it('optional wrapper', () => {
+    expect(
+      render(
+        obj([{ key: 'a', value: { kind: 'optional', inner: { kind: 'string', checks: [] } } }]),
+      ).schemaText,
+    ).toBe('z.object({ a: z.string().optional() })');
+  });
+
+  it('array of strings', () => {
+    expect(
+      render(obj([{ key: 'a', value: { kind: 'array', element: { kind: 'string', checks: [] } } }]))
+        .schemaText,
+    ).toBe('z.object({ a: z.array(z.string()) })');
+  });
+
+  it('enum preserves verbatim literals', () => {
+    expect(
+      render(obj([{ key: 'a', value: { kind: 'enum', literals: ['"x"', '"y"'] } }])).schemaText,
+    ).toBe('z.object({ a: z.enum(["x", "y"]) })');
+  });
+
+  it('empty object → passthrough', () => {
+    expect(render({ kind: 'object', fields: [], passthrough: true }).schemaText).toBe(
+      'z.object({}).passthrough()',
+    );
+  });
+
+  it('renders hoisted named schemas', () => {
+    const named = new Map<string, SchemaNode>([
+      ['AddressSchema', obj([{ key: 'city', value: { kind: 'string', checks: [] } }])],
+    ]);
+    const out = render(
+      obj([{ key: 'address', value: { kind: 'ref', name: 'AddressSchema' } }]),
+      named,
+    );
+    expect(out.schemaText).toBe('z.object({ address: AddressSchema })');
+    expect(out.namedNestedSchemas.get('AddressSchema')).toBe('z.object({ city: z.string() })');
+  });
+
+  it('importStatements only when used', () => {
+    expect(zodAdapter.importStatements({ used: true })).toEqual(["import { z } from 'zod';"]);
+    expect(zodAdapter.importStatements({ used: false })).toEqual([]);
+  });
+});

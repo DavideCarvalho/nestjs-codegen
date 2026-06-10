@@ -85,7 +85,6 @@ function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
 
   return {
     validation: resolveAdapter(userConfig.validation ?? 'zod'),
-    transformer: userConfig.transformer ?? false,
     mutationClient: userConfig.mutationClient ?? 'inertia',
     queryImport: userConfig.queryImport ?? '@tanstack/react-query',
     pages: {

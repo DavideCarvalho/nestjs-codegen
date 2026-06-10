@@ -9,12 +9,6 @@ export interface UserConfig {
    */
   validation?: ValidationOption;
   /**
-   * Payload transformer wired into the generated fetcher (plain mutationClient).
-   * `'superjson'` preserves rich types (Date, Map, …) end-to-end.
-   * @default false
-   */
-  transformer?: 'superjson' | false;
-  /**
    * How `api.ts` issues mutations. `'inertia'` (default) uses the Inertia router;
    * `'fetcher'` uses the typed fetcher from `@dudousxd/nestjs-client` (no Inertia).
    * @default 'inertia'
@@ -115,7 +109,6 @@ export interface ResolvedFormsConfig {
 
 export interface ResolvedConfig {
   validation: ValidationAdapter;
-  transformer: 'superjson' | false;
   mutationClient: 'fetcher' | 'inertia';
   queryImport: string;
   pages: ResolvedPagesConfig;

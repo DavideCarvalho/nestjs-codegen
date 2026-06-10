@@ -1,6 +1,6 @@
 {
   "name": "@dudousxd/nestjs-codegen-tanstack",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "TanStack Query client layer for @dudousxd/nestjs-codegen — emits queryOptions/mutationOptions handles in the generated api.ts.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -15,7 +15,11 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

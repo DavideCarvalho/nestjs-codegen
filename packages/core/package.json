@@ -1,6 +1,6 @@
 {
   "name": "@dudousxd/nestjs-codegen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Extensible codegen core for NestJS: class-validator/contract discovery → neutral schema IR → pluggable validation adapters.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -28,7 +28,12 @@
       "require": "./dist/extension/index.cjs"
     }
   },
-  "files": ["dist", "bin", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -47,8 +52,12 @@
     "typescript": ">=5.0.0"
   },
   "peerDependenciesMeta": {
-    "@nestjs/common": { "optional": true },
-    "tsx": { "optional": true }
+    "@nestjs/common": {
+      "optional": true
+    },
+    "tsx": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@nestjs/common": "11.1.26",

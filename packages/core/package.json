@@ -1,6 +1,11 @@
 {
   "name": "@dudousxd/nestjs-codegen",
   "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
+    "directory": "packages/core"
+  },
   "description": "Extensible codegen core for NestJS: class-validator/contract discovery → neutral schema IR → pluggable validation adapters.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",

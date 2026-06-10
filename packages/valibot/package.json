@@ -1,6 +1,11 @@
 {
   "name": "@dudousxd/nestjs-codegen-valibot",
   "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
+    "directory": "packages/valibot"
+  },
   "description": "Valibot validation adapter for @dudousxd/nestjs-codegen — renders the schema IR to valibot source.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",

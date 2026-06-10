@@ -1,6 +1,11 @@
 {
   "name": "@dudousxd/nestjs-codegen-arktype",
   "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
+    "directory": "packages/arktype"
+  },
   "description": "ArkType validation adapter for @dudousxd/nestjs-codegen — renders the schema IR to arktype source.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",

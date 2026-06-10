@@ -1,6 +1,11 @@
 {
   "name": "@dudousxd/nestjs-codegen-tanstack",
   "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
+    "directory": "packages/tanstack"
+  },
   "description": "TanStack Query client layer for @dudousxd/nestjs-codegen — emits queryOptions/mutationOptions handles in the generated api.ts.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",

@@ -1,6 +1,11 @@
 {
   "name": "@dudousxd/nestjs-client",
   "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
+    "directory": "packages/client"
+  },
   "description": "Framework-neutral runtime for nestjs-codegen output: typed fetcher with optional superjson transformer. No Inertia dependency.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",

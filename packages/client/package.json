@@ -1,6 +1,6 @@
 {
   "name": "@dudousxd/nestjs-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-neutral runtime for nestjs-codegen output: typed fetcher with optional superjson transformer. No Inertia dependency.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -15,7 +15,11 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

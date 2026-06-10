@@ -3,6 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
+    'cli/main': 'src/cli/main.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
@@ -10,5 +11,5 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   outDir: 'dist',
-  external: ['ts-morph', 'typescript'],
+  external: ['ts-morph', 'typescript', 'cac'],
 });

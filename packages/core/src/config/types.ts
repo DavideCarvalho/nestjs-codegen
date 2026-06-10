@@ -1,7 +1,15 @@
 import type { ValidationOption } from '../adapters/registry.js';
 import type { ValidationAdapter } from '../adapters/types.js';
+import type { CodegenExtension } from '../extension/types.js';
 
 export interface UserConfig {
+  /**
+   * Codegen extensions, applied in order. Each may augment the route IR
+   * (`transformRoutes`), contribute extra output files (`emitFiles`), and — once a
+   * client layer is active — shape `api.ts`. Registered explicitly, e.g.
+   * `extensions: [nestjsInertiaCodegen(), tanstackQuery()]`.
+   */
+  extensions?: CodegenExtension[];
   /**
    * Validation library for emitted `forms.ts` schemas. `'zod'` (bundled, default)
    * or an imported adapter instance (`valibotAdapter`/`arktypeAdapter`).
@@ -116,6 +124,7 @@ export interface ResolvedFormsConfig {
 }
 
 export interface ResolvedConfig {
+  extensions: CodegenExtension[];
   validation: ValidationAdapter;
   mutationClient: 'fetcher' | 'inertia';
   queryImport: string;

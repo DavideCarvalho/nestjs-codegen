@@ -40,7 +40,7 @@ describe('@ApplyFilter query type extraction', () => {
     });
     const outDir = await mkdtemp(join(tmpdir(), 'apply-filter-emit-'));
     try {
-      await emitApi(routes, outDir);
+      await emitApi(routes, outDir, { query: true });
       const content = await readFile(join(outDir, 'api.ts'), 'utf8');
       // The query TYPE position (in ApiRouter) is byte-identical to the args
       // used by the `_filterQueryTyped<...>` factory.
@@ -79,7 +79,7 @@ describe('@ApplyFilter query-type vs factory-type consistency', () => {
     });
     const outDir = await mkdtemp(join(tmpdir(), 'apply-filter-enum-emit-'));
     try {
-      await emitApi(routes, outDir);
+      await emitApi(routes, outDir, { query: true });
       const content = await readFile(join(outDir, 'api.ts'), 'utf8');
       const map =
         '{ "minAge": number; "state": Status; "mode": "draft" | "published"; "score": number }';

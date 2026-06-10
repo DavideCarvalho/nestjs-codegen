@@ -78,7 +78,7 @@ describe('@FilterFor type hint emit', () => {
       glob: 'filter-for-hint.controller.ts',
     });
     outDir = await mkdtemp(join(tmpdir(), 'filter-for-hint-emit-'));
-    await emitApi(routes, outDir);
+    await emitApi(routes, outDir, { query: true });
     const content = await readFile(join(outDir, 'api.ts'), 'utf8');
 
     // The emitted per-field type map M carries the virtual fields with their

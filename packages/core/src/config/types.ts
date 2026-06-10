@@ -22,6 +22,13 @@ export interface UserConfig {
    * @default '@tanstack/react-query'
    */
   queryImport?: string;
+  /**
+   * Emit TanStack Query handles. `false` (default): each endpoint is a plain typed
+   * fetch — `api.users.show({ params }) → Promise`. `true`: the call returns a handle
+   * — `api.users.show({ params }).queryOptions()` / `.mutationOptions()`.
+   * @default false
+   */
+  query?: boolean;
   /** Inertia page discovery. Omit when you don't use Inertia. */
   pages?: {
     glob: string;
@@ -112,6 +119,7 @@ export interface ResolvedConfig {
   validation: ValidationAdapter;
   mutationClient: 'fetcher' | 'inertia';
   queryImport: string;
+  query: boolean;
   pages: ResolvedPagesConfig | null;
   contracts: ResolvedContractsConfig;
   scopes: Record<string, ScopeConfig>;

@@ -19,6 +19,8 @@ export interface ApiEmitOptions {
   mutationClient?: 'fetcher' | 'inertia';
   /** Module to import `queryOptions`/`mutationOptions` from. Default `@tanstack/react-query`. */
   queryImport?: string;
+  /** Emit TanStack handles (`.queryOptions()`/`.mutationOptions()`). Default false (plain fetch). */
+  query?: boolean;
 }
 
 export async function emitApi(
@@ -309,141 +311,69 @@ function emitRouterTypeBlock(
 /**
  * Emit the nested `api` object body.
  */
-function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number): string[] {
+function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, query: boolean): string[] {
   const pad = ' '.repeat(indent);
   const lines: string[] = [];
 
   for (const [key, node] of tree) {
     const objKey = toObjectKey(key);
-    if (node.kind === 'leaf') {
-      const c = node;
-      const method = c.method.toUpperCase();
-      const flatName = JSON.stringify(c.name); // e.g. "users.list"
-      const safePath = JSON.stringify(c.path);
-      const fetcherMethod = method.toLowerCase();
-
-      if (method === 'GET') {
-        const typeAccess = buildRouterTypeAccess(c.name);
-        const withParams = hasPathParams(c.params);
-        lines.push(`${pad}${objKey}: {`);
-        if (withParams) {
-          lines.push(
-            `${pad}  queryKey: (params: ${typeAccess}['params'], query?: ${typeAccess}['query']) => query !== undefined ? [${flatName}, params, query] as const : [${flatName}, params] as const,`,
-          );
-          lines.push(
-            `${pad}  queryOptions: (params: ${typeAccess}['params'], query?: ${typeAccess}['query']) =>`,
-          );
-          lines.push(`${pad}    _queryOptions({`);
-          lines.push(
-            `${pad}      queryKey: query !== undefined ? [${flatName}, params, query] as const : [${flatName}, params] as const,`,
-          );
-          lines.push(
-            `${pad}      queryFn: () => fetcher.get<${typeAccess}['response']>(route(${flatName} as never, params as never) || ${safePath}, { query: query as Record<string, unknown> | undefined }),`,
-          );
-          lines.push(`${pad}    }),`);
-          // infiniteQueryOptions for GET with params
-          lines.push(
-            `${pad}  infiniteQueryOptions: (params: ${typeAccess}['params'], query?: ${typeAccess}['query']) => ({`,
-          );
-          lines.push(
-            `${pad}    queryKey: query !== undefined ? [${flatName}, params, query] as const : [${flatName}, params] as const,`,
-          );
-          lines.push(
-            `${pad}    queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<${typeAccess}['response']>(route(${flatName} as never, params as never) || ${safePath}, { query: { ...(query != null ? query : {}), page: pageParam } as Record<string, unknown> }),`,
-          );
-          lines.push(`${pad}    initialPageParam: 1,`);
-          lines.push(`${pad}    getNextPageParam: (lastPage: ${typeAccess}['response']) => {`);
-          lines.push(`${pad}      const meta = (lastPage as any)?.meta;`);
-          lines.push(`${pad}      if (meta?.page != null && meta?.lastPage != null) {`);
-          lines.push(`${pad}        return meta.page < meta.lastPage ? meta.page + 1 : undefined;`);
-          lines.push(`${pad}      }`);
-          lines.push(`${pad}      return undefined;`);
-          lines.push(`${pad}    },`);
-          lines.push(`${pad}  }),`);
-        } else {
-          lines.push(
-            `${pad}  queryKey: (query?: ${typeAccess}['query']) => query !== undefined ? [${flatName}, query] as const : [${flatName}] as const,`,
-          );
-          lines.push(`${pad}  queryOptions: (query?: ${typeAccess}['query']) =>`);
-          lines.push(`${pad}    _queryOptions({`);
-          lines.push(
-            `${pad}      queryKey: query !== undefined ? [${flatName}, query] as const : [${flatName}] as const,`,
-          );
-          lines.push(
-            `${pad}      queryFn: () => fetcher.get<${typeAccess}['response']>(route(${flatName} as never) || ${safePath}, { query: query as Record<string, unknown> | undefined }),`,
-          );
-          lines.push(`${pad}    }),`);
-          // infiniteQueryOptions for GET without params
-          lines.push(`${pad}  infiniteQueryOptions: (query?: ${typeAccess}['query']) => ({`);
-          lines.push(
-            `${pad}    queryKey: query !== undefined ? [${flatName}, query] as const : [${flatName}] as const,`,
-          );
-          lines.push(
-            `${pad}    queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<${typeAccess}['response']>(route(${flatName} as never) || ${safePath}, { query: { ...(query != null ? query : {}), page: pageParam } as Record<string, unknown> }),`,
-          );
-          lines.push(`${pad}    initialPageParam: 1,`);
-          lines.push(`${pad}    getNextPageParam: (lastPage: ${typeAccess}['response']) => {`);
-          lines.push(`${pad}      const meta = (lastPage as any)?.meta;`);
-          lines.push(`${pad}      if (meta?.page != null && meta?.lastPage != null) {`);
-          lines.push(`${pad}        return meta.page < meta.lastPage ? meta.page + 1 : undefined;`);
-          lines.push(`${pad}      }`);
-          lines.push(`${pad}      return undefined;`);
-          lines.push(`${pad}    },`);
-          lines.push(`${pad}  }),`);
-        }
-        if (c.contractSource.filterFields?.length) {
-          const typeArgs = emitFilterQueryTypeArgs(c);
-          lines.push(`${pad}  filterQuery: () => _filterQueryTyped<${typeArgs}>(),`);
-        }
-        lines.push(`${pad}},`);
-      } else {
-        const typeAccess = buildRouterTypeAccess(c.name);
-        const withParams = hasPathParams(c.params);
-        // When the controller has no @Body() param the body type resolves to
-        // `never`. Emit the body field as optional so callers can pass just
-        // `{ params }` without manually constructing `{ body: undefined as never }`.
-        const hasBody =
-          !!c.contractSource.bodyRef ||
-          (c.contractSource.body != null && c.contractSource.body !== 'never');
-        lines.push(`${pad}${objKey}: {`);
-        lines.push(`${pad}  queryKey: () => [${flatName}] as const,`);
-        lines.push(`${pad}  mutationOptions: () =>`);
-        lines.push(`${pad}    _mutationOptions({`);
-        if (withParams) {
-          const bodyField = hasBody
-            ? `body: ${typeAccess}['body']`
-            : `body?: ${typeAccess}['body']`;
-          lines.push(
-            `${pad}      mutationFn: (input: { params: ${typeAccess}['params']; ${bodyField} }) => fetcher.${fetcherMethod}<${typeAccess}['response']>(route(${flatName} as never, input.params as never) || ${safePath}, { body: input.body }),`,
-          );
-        } else if (hasBody) {
-          lines.push(
-            `${pad}      mutationFn: (body: ${typeAccess}['body']) => fetcher.${fetcherMethod}<${typeAccess}['response']>(route(${flatName} as never) || ${safePath}, { body }),`,
-          );
-        } else {
-          lines.push(
-            `${pad}      mutationFn: (_input?: { body?: ${typeAccess}['body'] }) => fetcher.${fetcherMethod}<${typeAccess}['response']>(route(${flatName} as never) || ${safePath}, {}),`,
-          );
-        }
-        lines.push(`${pad}    }),`);
-        if (c.contractSource.filterFields?.length) {
-          const typeArgs = emitFilterQueryTypeArgs(c);
-          lines.push(`${pad}  filterQuery: () => _filterQueryTyped<${typeArgs}>(),`);
-          lines.push(`${pad}  queryOptions: (body: ${typeAccess}['body']) =>`);
-          lines.push(`${pad}    _queryOptions({`);
-          lines.push(`${pad}      queryKey: [${flatName}, body] as const,`);
-          lines.push(
-            `${pad}      queryFn: () => fetcher.${fetcherMethod}<${typeAccess}['response']>(route(${flatName} as never${withParams ? ', input.params as never' : ''}) || ${safePath}, { body }),`,
-          );
-          lines.push(`${pad}    }),`);
-        }
-        lines.push(`${pad}},`);
-      }
-    } else {
+    if (node.kind === 'branch') {
       lines.push(`${pad}${objKey}: {`);
-      lines.push(...emitApiObjectBlock(node.children, indent + 2));
+      lines.push(...emitApiObjectBlock(node.children, indent + 2, query));
       lines.push(`${pad}},`);
+      continue;
     }
+
+    const c = node;
+    const isGet = c.method.toUpperCase() === 'GET';
+    const m = c.method.toLowerCase();
+    const flat = JSON.stringify(c.name);
+    const path = JSON.stringify(c.path);
+    const TA = buildRouterTypeAccess(c.name);
+    const withParams = hasPathParams(c.params);
+    const hasBody =
+      !!c.contractSource.bodyRef ||
+      (c.contractSource.body != null && c.contractSource.body !== 'never');
+    const hasFilter = !!c.contractSource.filterFields?.length;
+
+    // Input passed when calling the leaf: params (path), query (GET), body (writes).
+    const fields: string[] = [];
+    if (withParams) fields.push(`params: ${TA}['params']`);
+    if (isGet) fields.push(`query?: ${TA}['query']`);
+    if (!isGet && hasBody) fields.push(`body?: ${TA}['body']`);
+    const inputType = fields.length ? `{ ${fields.join('; ')} }` : 'Record<string, never>';
+    const url = withParams
+      ? `route(${flat} as never, input?.params as never) || ${path}`
+      : `route(${flat} as never) || ${path}`;
+    const reqOpts = isGet
+      ? '{ query: input?.query as Record<string, unknown> | undefined }'
+      : '{ body: input?.body }';
+    const fetchExpr = `fetcher.${m}<${TA}['response']>(${url}, ${reqOpts})`;
+    const keyExpr = `[${flat}, input] as const`;
+
+    // Default: the leaf IS a typed fetch call (Promise). No TanStack dependency.
+    if (!query) {
+      lines.push(`${pad}${objKey}: (input?: ${inputType}) => ${fetchExpr},`);
+      continue;
+    }
+
+    // query: true — the leaf returns a handle with .fetch() + TanStack helpers.
+    lines.push(`${pad}${objKey}: (input?: ${inputType}) => ({`);
+    lines.push(`${pad}  fetch: () => ${fetchExpr},`);
+    lines.push(`${pad}  queryKey: () => ${keyExpr},`);
+    if (isGet) {
+      lines.push(
+        `${pad}  queryOptions: () => _queryOptions({ queryKey: ${keyExpr}, queryFn: () => ${fetchExpr} }),`,
+      );
+    } else {
+      lines.push(
+        `${pad}  mutationOptions: () => _mutationOptions({ mutationFn: (body: ${TA}['body']) => fetcher.${m}<${TA}['response']>(${url}, { body }) }),`,
+      );
+    }
+    if (hasFilter) {
+      lines.push(`${pad}  filterQuery: () => _filterQueryTyped<${emitFilterQueryTypeArgs(c)}>(),`);
+    }
+    lines.push(`${pad}}),`);
   }
 
   return lines;
@@ -470,6 +400,7 @@ function buildApiFile(
   const fetcherImportPath = opts.fetcherImportPath;
   const inertia = opts.mutationClient !== 'fetcher';
   const queryModule = opts.queryImport ?? '@tanstack/react-query';
+  const query = opts.query ?? false;
   const contracted = routes.filter((r) => r.contract);
 
   // Collect all type refs for import generation
@@ -509,17 +440,19 @@ function buildApiFile(
 
   const lines: string[] = ['// Generated by @dudousxd/nestjs-codegen. Do not edit.', ''];
 
-  // Import TanStack Query helpers (aliased to avoid name collision with generated api methods)
-  const tqImports: string[] = [];
-  if (hasGetRoutes || hasFilters) tqImports.push('queryOptions as _queryOptions');
-  if (hasMutationRoutes) tqImports.push('mutationOptions as _mutationOptions');
-  if (tqImports.length > 0) {
-    lines.push(`import { ${tqImports.join(', ')} } from '${queryModule}';`);
-  }
-  if (hasFilters) {
-    lines.push(
-      "import { filterQueryTyped as _filterQueryTyped } from '@dudousxd/nestjs-filter-client';",
-    );
+  // TanStack Query helpers — only when `query` is enabled (opt-in).
+  if (query) {
+    const tqImports: string[] = [];
+    if (hasGetRoutes || hasFilters) tqImports.push('queryOptions as _queryOptions');
+    if (hasMutationRoutes) tqImports.push('mutationOptions as _mutationOptions');
+    if (tqImports.length > 0) {
+      lines.push(`import { ${tqImports.join(', ')} } from '${queryModule}';`);
+    }
+    if (hasFilters) {
+      lines.push(
+        "import { filterQueryTyped as _filterQueryTyped } from '@dudousxd/nestjs-filter-client';",
+      );
+    }
   }
 
   // The Inertia router is only needed for the navigate() helper (inertia mode).
@@ -645,7 +578,7 @@ function buildApiFile(
   // --- api factory (inject your fetcher at runtime) ---
   lines.push('export function createApi(fetcher: Fetcher) {');
   lines.push('  return {');
-  lines.push(...emitApiObjectBlock(tree, 4));
+  lines.push(...emitApiObjectBlock(tree, 4, query));
   lines.push('  };');
   lines.push('}');
   lines.push('');

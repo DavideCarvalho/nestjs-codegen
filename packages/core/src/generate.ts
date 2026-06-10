@@ -80,6 +80,7 @@ export async function generate(
       ...(config.fetcher?.importPath ? { fetcherImportPath: config.fetcher.importPath } : {}),
       mutationClient: config.mutationClient,
       queryImport: config.queryImport,
+      query: config.query,
     });
   }
 

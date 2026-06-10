@@ -1,0 +1,123 @@
+---
+title: Pluggable Validation
+description: zod, valibot, or arktype from one neutral schema IR.
+---
+
+`nestjs-codegen` translates your `@Body()`/`@Query()` DTOs (class-validator decorators)
+and `defineContract` schemas into a neutral **`SchemaNode` IR**, then renders that IR
+with a **validation adapter**. zod ships in the box; valibot and arktype are separate
+packages. Adding a new library is one `render` function away (the interface is shaped
+around [Standard Schema](https://standardschema.dev)).
+
+## Choosing an adapter
+
+<Tabs items={['zod', 'valibot', 'arktype']}>
+
+```ts tab="zod"
+import { defineConfig } from '@dudousxd/nestjs-codegen';
+
+export default defineConfig({
+  validation: 'zod', // bundled — nothing else to install
+});
+```
+
+```ts tab="valibot"
+import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { valibotAdapter } from '@dudousxd/nestjs-codegen-valibot';
+
+export default defineConfig({
+  validation: valibotAdapter,
+});
+```
+
+```ts tab="arktype"
+import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { arktypeAdapter } from '@dudousxd/nestjs-codegen-arktype';
+
+export default defineConfig({
+  validation: arktypeAdapter,
+});
+```
+
+</Tabs>
+
+## What gets generated
+
+Given this DTO:
+
+```ts
+class CreateUserDto {
+  @IsEmail() email!: string;
+  @MinLength(8) password!: string;
+}
+```
+
+each adapter renders `forms.ts` in its own idiom:
+
+<Tabs items={['zod', 'valibot', 'arktype']}>
+
+```ts tab="zod"
+import { z } from 'zod';
+
+export const CreateBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+export type CreateBody = z.infer<typeof CreateBodySchema>;
+```
+
+```ts tab="valibot"
+import * as v from 'valibot';
+
+export const CreateBodySchema = v.object({
+  email: v.pipe(v.string(), v.email()),
+  password: v.pipe(v.string(), v.minLength(8)),
+});
+export type CreateBody = v.InferOutput<typeof CreateBodySchema>;
+```
+
+```ts tab="arktype"
+import { type } from 'arktype';
+
+export const CreateBodySchema = type({
+  email: 'string.email',
+  password: 'string >= 8',
+});
+export type CreateBody = (typeof CreateBodySchema).infer;
+```
+
+</Tabs>
+
+## Decorator coverage
+
+The class-validator → IR translator understands the common decorators: `@IsString`,
+`@IsNumber`/`@IsInt`, `@IsBoolean`, `@IsDate`, `@IsEmail`/`@IsUrl`/`@IsUUID`,
+`@Matches`, `@MinLength`/`@MaxLength`/`@Length`, `@Min`/`@Max`, `@IsPositive`/
+`@IsNegative`, `@IsEnum`/`@IsIn`, `@IsOptional`/`@IsDefined`, `@IsNotEmpty`,
+`@ValidateNested` + `@Type(() => X)` (nested + arrays), `@IsObject`, `@Allow`.
+
+Unmappable decorators are kept as a comment with a warning — the schema still compiles.
+
+<Callout type="warn">
+  `defineContract` schemas are hand-written **zod**. They render verbatim under the zod
+  adapter; under valibot/arktype they're skipped with a warning (use class-validator
+  DTOs for cross-adapter forms, or the zod adapter for contracts).
+</Callout>
+
+## Writing your own adapter
+
+A `ValidationAdapter` renders the IR to source text:
+
+```ts
+import type { ValidationAdapter } from '@dudousxd/nestjs-codegen';
+
+export const myAdapter: ValidationAdapter = {
+  name: 'my-lib',
+  importStatements: ({ used }) => (used ? ["import * as m from 'my-lib';"] : []),
+  render(node, ctx) { /* SchemaNode → string */ return '…'; },
+  renderModule(mod) { /* root + hoisted named schemas */ return { schemaText: '…', namedNestedSchemas: new Map(), warnings: [] }; },
+  inferType: (constName) => `m.Infer<typeof ${constName}>`,
+};
+```
+
+Pass the instance to `validation` and you're done.

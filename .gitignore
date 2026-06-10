@@ -5,3 +5,9 @@ coverage/
 .turbo/
 .DS_Store
 *.log
+
+# Next.js / fumadocs (docs app)
+.next/
+out/
+.source/
+next-env.d.ts

@@ -1,0 +1,57 @@
+---
+title: Programmatic API
+description: Generate from a build script without the CLI.
+---
+
+Everything the CLI does is available as functions from `@dudousxd/nestjs-codegen`.
+
+## generate
+
+```ts
+import { loadConfig, generate } from '@dudousxd/nestjs-codegen';
+
+const config = await loadConfig(process.cwd()); // reads nestjs-codegen.config.ts
+await generate(config /*, routes */);
+```
+
+`generate` emits `pages.d.ts`/`components.json` from the resolved config, plus
+`routes.ts`/`api.ts`/`forms.ts` when routes are provided.
+
+## watch
+
+```ts
+import { loadConfig, watch } from '@dudousxd/nestjs-codegen';
+
+const config = await loadConfig();
+const watcher = watch(config); // regenerates on change; holds a lock file
+// later: await watcher.close();
+```
+
+## Lower-level building blocks
+
+```ts
+import {
+  extractSchemaFromDto, // class-validator class → SchemaModule (IR)
+  zodAdapter,           // render a SchemaModule to zod text
+  resolveAdapter,       // 'zod' | adapter instance → ValidationAdapter
+  emitRoutes,
+  emitApi,
+  emitForms,
+} from '@dudousxd/nestjs-codegen';
+```
+
+The validation IR (`SchemaNode`/`SchemaModule`), the `ValidationAdapter` interface, and
+the discovery types (`RouteDescriptor`, `ContractSource`) are all exported for building
+your own tooling or adapters.
+
+## emit-api options
+
+`emitApi(routes, outDir, opts)` accepts:
+
+```ts
+emitApi(routes, 'src/generated', {
+  mutationClient: 'fetcher',          // omit the Inertia navigate() helper
+  queryImport: '@tanstack/vue-query', // tanstack adapter to import from
+  fetcherImportPath: '@dudousxd/nestjs-client', // where the Fetcher type comes from
+});
+```

@@ -1,0 +1,85 @@
+---
+title: Fetcher & Transports
+description: createFetcher, custom transports (axios), and serializers (superjson).
+---
+
+`@dudousxd/nestjs-client` provides `createFetcher` — the typed client the generated
+`api.ts` calls. It owns URL building, headers, error mapping (`ApiHttpError`), and the
+payload transformer. The actual network call is a **pluggable transport**.
+
+```ts
+import { createFetcher } from '@dudousxd/nestjs-client';
+
+const fetcher = createFetcher({
+  baseUrl: '/api',
+  headers: () => ({ authorization: `Bearer ${getToken()}` }),
+});
+```
+
+## Bring your own HTTP client
+
+By default the transport is native `fetch`. Pass `transport` to use anything else.
+
+### Use your existing axios instance
+
+```ts
+import axios from 'axios';
+import { createFetcher, axiosTransport } from '@dudousxd/nestjs-client';
+
+const http = axios.create({ baseURL: '/api', withCredentials: true });
+
+const fetcher = createFetcher({ transport: axiosTransport(http) });
+```
+
+<Callout type="info">
+  Set the base URL on the axios instance (not `createFetcher.baseUrl`) so it isn't
+  prefixed twice.
+</Callout>
+
+### A fully custom transport
+
+A `Transport` takes a normalized request and returns a normalized response:
+
+```ts
+import type { Transport } from '@dudousxd/nestjs-client';
+
+const transport: Transport = async (req) => {
+  const res = await myClient(req.url, { method: req.method, headers: req.headers, body: req.body });
+  return {
+    ok: res.ok,
+    status: res.status,
+    statusText: res.statusText,
+    contentType: res.headers.get('content-type'),
+    text: () => res.text(),
+  };
+};
+
+createFetcher({ transport });
+```
+
+## superjson & transformer pipelines
+
+A **transformer** is a `{ stringify, parse }` pair. Pass superjson to round-trip rich
+types (Date, Map, Set, BigInt) — the server must use the same transformer.
+
+```ts
+import superjson from 'superjson';
+import { createFetcher } from '@dudousxd/nestjs-client';
+
+const fetcher = createFetcher({ transformer: superjson });
+```
+
+You can pass an **array** to compose a pipeline: a base value↔string serializer first,
+then string↔string wrappers (compression, encryption) applied in order and unwound on
+parse.
+
+```ts
+import superjson from 'superjson';
+import { createFetcher } from '@dudousxd/nestjs-client';
+import { compress } from './my-compress'; // { stringify, parse } over strings
+
+const fetcher = createFetcher({ transformer: [superjson, compress] });
+```
+
+Bring your own — a transformer is just an object that implements
+`{ stringify(value): string; parse(text): T }`.

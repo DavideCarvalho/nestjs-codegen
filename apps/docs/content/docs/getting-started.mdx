@@ -1,0 +1,77 @@
+---
+title: Getting Started
+description: Install, configure, and generate your typed client.
+---
+
+## Install
+
+```bash
+pnpm add -D @dudousxd/nestjs-codegen
+# the runtime the generated client imports its Fetcher type from:
+pnpm add @dudousxd/nestjs-client
+```
+
+If you want TanStack Query helpers in the generated client, install your framework
+adapter (you almost certainly already have it):
+
+```bash
+pnpm add @tanstack/react-query   # or @tanstack/vue-query, -svelte-query, -solid-query
+```
+
+## Configure
+
+Create `nestjs-codegen.config.ts` at your project root:
+
+```ts title="nestjs-codegen.config.ts"
+import { defineConfig } from '@dudousxd/nestjs-codegen';
+
+export default defineConfig({
+  // where to read pages from (Inertia only — omit if you don't use Inertia)
+  pages: { glob: 'resources/pages/**/*.tsx' },
+  // controllers to scan for routes + contracts
+  contracts: { glob: 'src/**/*.controller.ts' },
+  // output directory for the generated files
+  codegen: { outDir: 'src/generated' },
+
+  validation: 'zod',          // 'zod' (bundled) | valibotAdapter | arktypeAdapter
+  mutationClient: 'fetcher',  // 'fetcher' (no Inertia) | 'inertia'
+  queryImport: '@tanstack/react-query',
+});
+```
+
+See [Configuration](/docs/configuration) for every option.
+
+## Generate
+
+```bash
+npx nestjs-codegen codegen          # one-shot
+npx nestjs-codegen codegen --watch  # regenerate on change
+```
+
+## Use the client
+
+The generated `api.ts` exports a `createApi(fetcher)` factory — you create the client
+once, injecting your fetcher:
+
+```ts title="src/lib/api.ts"
+import { createApi } from '../generated/api';
+import { createFetcher } from '@dudousxd/nestjs-client';
+
+export const api = createApi(createFetcher({ baseUrl: '/api' }));
+```
+
+```tsx title="users-page.tsx"
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { api } from '../lib/api';
+
+function UsersPage() {
+  const users = useQuery(api.users.list());
+  const create = useMutation(api.users.create());
+  // users.data is typed as User[]; create.mutate({ body: { … } }) is typed too.
+}
+```
+
+<Callout type="info">
+  Don't use Inertia? Set `mutationClient: 'fetcher'` and the generated `api.ts` won't
+  import `@inertiajs/*` at all.
+</Callout>

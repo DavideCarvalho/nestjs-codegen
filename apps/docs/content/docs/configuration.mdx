@@ -1,0 +1,73 @@
+---
+title: Configuration
+description: Every option in nestjs-codegen.config.ts.
+---
+
+The config is authored with `defineConfig` and loaded from `nestjs-codegen.config.ts`
+(the legacy `nestjs-inertia.config.ts` name is still accepted).
+
+```ts title="nestjs-codegen.config.ts"
+import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { valibotAdapter } from '@dudousxd/nestjs-codegen-valibot';
+
+export default defineConfig({
+  pages: { glob: 'resources/pages/**/*.tsx' },
+  contracts: { glob: 'src/**/*.controller.ts', debounceMs: 500 },
+  codegen: { outDir: 'src/generated', cwd: process.cwd() },
+
+  validation: valibotAdapter,        // 'zod' | valibotAdapter | arktypeAdapter
+  mutationClient: 'fetcher',         // 'fetcher' | 'inertia'
+  queryImport: '@tanstack/vue-query',
+
+  // Inertia shared props (optional)
+  app: { moduleEntry: 'src/app.module.ts', tsconfig: 'tsconfig.json' },
+
+  forms: { enabled: true, watch: 'src/**/*.dto.ts' },
+});
+```
+
+## Options
+
+<TypeTable
+  type={{
+    validation: {
+      description: "Validation library for forms.ts. 'zod' is bundled; pass an imported adapter instance for others.",
+      type: "'zod' | ValidationAdapter",
+      default: "'zod'",
+    },
+    mutationClient: {
+      description: "How api.ts issues mutations. 'inertia' uses the Inertia router + navigate(); 'fetcher' uses the typed fetcher (no @inertiajs import).",
+      type: "'fetcher' | 'inertia'",
+      default: "'inertia'",
+    },
+    queryImport: {
+      description: "Module the generated api.ts imports queryOptions/mutationOptions from. Point it at your framework adapter.",
+      type: 'string',
+      default: "'@tanstack/react-query'",
+    },
+    'pages.glob': {
+      description: 'Glob for Inertia page components.',
+      type: 'string',
+    },
+    'contracts.glob': {
+      description: 'Glob for controller files to scan for routes + contracts.',
+      type: 'string',
+      default: "'src/**/*.controller.ts'",
+    },
+    'codegen.outDir': {
+      description: 'Output directory for generated files.',
+      type: 'string',
+    },
+    'forms.enabled': {
+      description: 'Emit forms.ts.',
+      type: 'boolean',
+      default: 'true',
+    },
+  }}
+/>
+
+<Callout>
+  The **fetcher** is no longer a config concern. The generated `api.ts` is a
+  `createApi(fetcher)` factory — you inject the fetcher (with its baseUrl, transport,
+  and transformer) at runtime. See [API client](/docs/api-client).
+</Callout>

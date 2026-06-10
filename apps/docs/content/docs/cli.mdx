@@ -1,0 +1,44 @@
+---
+title: CLI
+description: The codegen, init, and doctor commands.
+---
+
+```bash
+npx nestjs-codegen <command>
+```
+
+## `codegen`
+
+Discover controllers/pages and emit the generated files. Reads
+`nestjs-codegen.config.ts`.
+
+```bash
+npx nestjs-codegen codegen           # one-shot
+npx nestjs-codegen codegen --watch   # regenerate on file changes
+```
+
+The watcher debounces and holds a lock file so two watchers don't fight over the
+output directory.
+
+## `init`
+
+Scaffold a starter `nestjs-codegen.config.ts` (and, for Inertia projects, the app
+entry + page wiring).
+
+```bash
+npx nestjs-codegen init
+```
+
+## `doctor`
+
+Diagnose a project's setup — missing config, unscanned controllers, output drift —
+and print suggested fixes.
+
+```bash
+npx nestjs-codegen doctor
+```
+
+<Callout type="info">
+  Loading a TypeScript config requires `tsx` (an optional peer). Install it if you see
+  a config-loading error: `pnpm add -D tsx`.
+</Callout>

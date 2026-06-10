@@ -1,0 +1,36 @@
+---
+title: nestjs-filter
+description: Typed query filters from @FilterFor / @ApplyFilter.
+---
+
+If you use [`nestjs-filter`](https://github.com/DavideCarvalho/nestjs-filter), the
+codegen discovers `@ApplyFilter`/`@FilterFor` on your controllers and emits a
+**`TypedFilterQuery<…>`** type for the route's query, wired against
+`@dudousxd/nestjs-filter-client`.
+
+```ts
+@Controller('tasks')
+export class TasksController {
+  @Get()
+  @ApplyFilter(TaskFilter)
+  list(@FilterFor(TaskFilter) query: FilterQuery) { /* … */ }
+}
+```
+
+The generated `api.ts` types `tasks.list`'s query as a `TypedFilterQuery` over the
+filterable fields (with their resolved types — enums, dates, relations), so building a
+filter on the client is fully typed:
+
+```ts
+import { filterQueryTyped } from '@dudousxd/nestjs-filter-client';
+import { api } from '../lib/api';
+
+const query = filterQueryTyped<'status' | 'createdAt'>()
+  .where('status', 'eq', 'open')
+  .build();
+
+useQuery(api.tasks.list({ query }));
+```
+
+Field types come from the filter class / `@FilterFor` parameter — named enums and type
+aliases are imported into the generated file and referenced by name.

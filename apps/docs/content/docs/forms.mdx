@@ -1,0 +1,52 @@
+---
+title: Forms
+description: forms.ts — a validation schema per validated endpoint.
+---
+
+For every route whose `@Body()`/`@Query()` is a validated DTO (or a `defineContract`
+schema), the codegen emits a schema into `forms.ts`, plus a `formSchemas` map keyed by
+route name.
+
+```ts title="src/generated/forms.ts (zod)"
+import { z } from 'zod';
+
+export const LoginBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+export type LoginBody = z.infer<typeof LoginBodySchema>;
+
+export const formSchemas = {
+  'auth.login': LoginBodySchema,
+} as const;
+```
+
+## Using it with react-hook-form
+
+```tsx
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { LoginBodySchema, type LoginBody } from '../generated/forms';
+import { api } from '../lib/api';
+import { useMutation } from '@tanstack/react-query';
+
+function LoginForm() {
+  const form = useForm<LoginBody>({ resolver: zodResolver(LoginBodySchema) });
+  const login = useMutation(api.auth.login());
+
+  return (
+    <form onSubmit={form.handleSubmit((body) => login.mutate({ body }))}>
+      <input {...form.register('email')} />
+      <input type="password" {...form.register('password')} />
+    </form>
+  );
+}
+```
+
+The same schema validates on the client and matches what the server enforces — one
+source of truth, derived from your DTO.
+
+<Callout>
+  Switch the validation lib in [config](/docs/configuration) and `forms.ts` is rendered
+  with that library instead. See [Pluggable validation](/docs/validation).
+</Callout>

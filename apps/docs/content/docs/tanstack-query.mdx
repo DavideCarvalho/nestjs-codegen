@@ -1,0 +1,54 @@
+---
+title: TanStack Query
+description: queryOptions / mutationOptions from your framework adapter.
+---
+
+The generated `api.ts` uses TanStack Query's **`queryOptions`/`mutationOptions`**
+helpers — the same pattern nestjs-inertia uses. GET routes become `queryOptions`,
+everything else `mutationOptions`.
+
+## Which package?
+
+You don't install `@tanstack/query-core` directly (nobody does) — your framework
+adapter re-exports the helpers. Point `queryImport` at the package you already have:
+
+<Tabs items={['React', 'Vue', 'Svelte', 'Solid']}>
+
+```ts tab="React"
+export default defineConfig({ queryImport: '@tanstack/react-query' }); // default
+```
+
+```ts tab="Vue"
+export default defineConfig({ queryImport: '@tanstack/vue-query' });
+```
+
+```ts tab="Svelte"
+export default defineConfig({ queryImport: '@tanstack/svelte-query' });
+```
+
+```ts tab="Solid"
+export default defineConfig({ queryImport: '@tanstack/solid-query' });
+```
+
+</Tabs>
+
+## Usage
+
+```tsx
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../lib/api';
+
+function Users() {
+  const qc = useQueryClient();
+  const list = useQuery(api.users.list());
+  const create = useMutation({
+    ...api.users.create(),
+    onSuccess: () => qc.invalidateQueries(api.users.list()),
+  });
+  // …
+}
+```
+
+Because each route returns a real `queryOptions`/`mutationOptions` object, you compose
+it with your own `onSuccess`, `select`, `staleTime`, etc. — and the `queryKey` is
+derived from the route name + input for you.

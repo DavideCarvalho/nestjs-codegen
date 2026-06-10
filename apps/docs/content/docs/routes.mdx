@@ -1,0 +1,33 @@
+---
+title: Routes
+description: routes.ts — typed route names, params, and a route() helper.
+---
+
+`routes.ts` is the typed source of truth for your URLs.
+
+```ts title="src/generated/routes.ts"
+export const ROUTES = {
+  'users.list': '/users',
+  'users.show': '/users/:id',
+} as const;
+
+export type RouteName = 'users.list' | 'users.show';
+```
+
+It also emits `RouteParams<K>` (path params as a typed object) and a runtime `route()`
+helper that interpolates params and appends a query string:
+
+```ts
+import { route } from '../generated/routes';
+
+route('users.show', { id: '42' });            // → '/users/42'
+route('users.list', undefined, { page: 2 });  // → '/users?page=2'
+```
+
+Passing the wrong params (or an unknown route name) is a type error, and missing a
+required param throws at runtime with a clear message listing the available routes.
+
+## Naming
+
+Route names are `<controllerSegment>.<method>` — e.g. `UsersController#list` →
+`users.list`. Override either segment with `@As('…')` at the class or method level.

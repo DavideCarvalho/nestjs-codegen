@@ -15,6 +15,7 @@
     "tanstack-query",
     "routes",
     "---Integrations---",
+    "extensions",
     "inertia",
     "filters",
     "---Reference---",

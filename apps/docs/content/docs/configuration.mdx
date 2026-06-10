@@ -25,7 +25,6 @@ export default defineConfig({
   codegen: { outDir: 'src/generated', cwd: process.cwd() },
 
   validation: valibotAdapter,        // 'zod' | valibotAdapter | arktypeAdapter
-  mutationClient: 'fetcher',         // 'fetcher' | 'inertia'
   extensions: [tanstackQuery({ import: '@tanstack/vue-query' })],
 
   forms: { enabled: true, watch: 'src/**/*.dto.ts' },
@@ -45,13 +44,8 @@ export default defineConfig({
       type: "'zod' | ValidationAdapter",
       default: "'zod'",
     },
-    mutationClient: {
-      description: "How api.ts issues mutations. 'inertia' uses the Inertia router + navigate(); 'fetcher' uses the typed fetcher (no @inertiajs import).",
-      type: "'fetcher' | 'inertia'",
-      default: "'inertia'",
-    },
     extensions: {
-      description: "Codegen extensions, applied in order. e.g. [tanstackQuery()] adds TanStack Query handles to api.ts. TanStack's import module is set via tanstackQuery({ import }).",
+      description: "Codegen extensions, applied in registration order. Each may augment routes, emit extra files, and shape api.ts. e.g. tanstackQuery() adds TanStack Query handles, nestjsFilterCodegen() adds typed filterQuery helpers, nestjsInertiaCodegen() adds the Inertia router + navigate(). See /docs/extensions.",
       type: 'CodegenExtension[]',
       default: '[]',
     },

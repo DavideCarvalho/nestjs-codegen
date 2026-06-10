@@ -70,8 +70,8 @@ import type { Api } from '../generated/api';
 // Awaited<ReturnType<typeof api.users.show>>
 ```
 
-## Inertia mode
+## Inertia navigation
 
-With `mutationClient: 'inertia'`, the generated client additionally exposes a typed
-`navigate()` helper backed by the Inertia `router`, and mutations integrate with
-Inertia visits. See [nestjs-inertia](/docs/inertia).
+Register the [`nestjsInertiaCodegen()`](/docs/inertia) extension and the generated
+client additionally exposes a typed `navigate()` helper backed by the Inertia `router`,
+so links and mutations can drive Inertia visits. See [nestjs-inertia](/docs/inertia).

@@ -27,6 +27,7 @@ controllers. No config file, no extra process to run.
 ```ts title="src/app.module.ts"
 import { Module } from '@nestjs/common';
 import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 
 @Module({
   imports: [
@@ -36,14 +37,19 @@ import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
       // output directory for the generated files
       codegen: { outDir: 'src/generated' },
 
-      validation: 'zod',          // 'zod' (bundled) | valibotAdapter | arktypeAdapter
-      mutationClient: 'fetcher',  // 'fetcher' (no Inertia) | 'inertia'
-      // extensions: [tanstackQuery()],  // opt into TanStack Query handles (see below)
+      validation: 'zod',              // 'zod' (bundled) | valibotAdapter | arktypeAdapter
+      extensions: [tanstackQuery()],  // opt into TanStack Query handles (see below)
     }),
   ],
 })
 export class AppModule {}
 ```
+
+Integrations are **extensions** you register in `extensions: [...]`. Besides
+`tanstackQuery()` there's `nestjsFilterCodegen()` (typed `filterQuery` helpers, see
+[nestjs-filter](/docs/filters)) and `nestjsInertiaCodegen()` (Inertia `router` +
+`navigate()`, see [nestjs-inertia](/docs/inertia)). Leave the array empty for a plain
+typed-fetch client. See [Extensions](/docs/extensions).
 
 Now run your app as usual (`nest start --watch`) and the generated files appear in
 `src/generated` — kept in sync while the server runs.
@@ -72,12 +78,13 @@ source of truth**, put your options in that file and import it into `forRoot()`:
 
 ```ts title="nestjs-codegen.config.ts"
 import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 
 export default defineConfig({
   contracts: { glob: 'src/**/*.controller.ts' },
   codegen: { outDir: 'src/generated' },
   validation: 'zod',
-  mutationClient: 'fetcher',
+  extensions: [tanstackQuery()],
 });
 ```
 
@@ -131,7 +138,7 @@ pnpm add -D @dudousxd/nestjs-codegen-tanstack
 
 ```ts title="src/app.module.ts"
 import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
-// ...
+
 NestjsCodegenModule.forRoot({
   contracts: { glob: 'src/**/*.controller.ts' },
   codegen: { outDir: 'src/generated' },
@@ -149,5 +156,6 @@ const create = useMutation(api.users.create().mutationOptions());
 
 <Callout type="info">
   Without the extension the client is TanStack-free (plain fetch). Not using Inertia?
-  `mutationClient: 'fetcher'` drops the `@inertiajs/*` import too.
+  Just don't register the inertia extension — there's no `@inertiajs/*` import unless
+  `nestjsInertiaCodegen()` is in `extensions: [...]`.
 </Callout>

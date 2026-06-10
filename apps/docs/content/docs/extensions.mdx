@@ -1,0 +1,78 @@
+---
+title: Extensions
+description: Register integrations via extensions, and write your own.
+---
+
+Integrations aren't config flags — they're **extensions** you register in
+`extensions: [...]`. An extension is a build-time object (usually a factory so it can take
+options) that the host runs around the core discovery → IR → emit pipeline. Without any,
+the generated client is a plain typed-fetch `createApi(fetcher)`; each extension you add
+shapes routes, emits extra files, or augments `api.ts`.
+
+```ts title="src/app.module.ts"
+import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
+import { nestjsFilterCodegen } from '@dudousxd/nestjs-filter-codegen';
+
+NestjsCodegenModule.forRoot({
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: 'src/generated' },
+  extensions: [tanstackQuery(), nestjsFilterCodegen()],
+});
+```
+
+Extensions run in registration order. The same array works in
+`nestjs-codegen.config.ts` (`defineConfig`) for CLI/CI runs — keep one source of truth and
+import it into `forRoot()`.
+
+## Companion extensions
+
+| Extension | Package | What it adds |
+| --- | --- | --- |
+| `tanstackQuery()` | `@dudousxd/nestjs-codegen-tanstack` | Wraps each leaf into a handle exposing `queryOptions`/`mutationOptions`/`infiniteQueryOptions`/`queryKey`. See [TanStack Query](/docs/tanstack-query). |
+| `nestjsFilterCodegen()` | `@dudousxd/nestjs-filter-codegen` | Adds a typed `filterQuery()` member to leaves whose route is decorated with `@ApplyFilter`/`@FilterFor`. See [nestjs-filter](/docs/filters). |
+| `nestjsInertiaCodegen()` | `@dudousxd/nestjs-inertia-codegen-extension` | Adds the Inertia `router` import and a typed `navigate()` helper to `api.ts`. See [nestjs-inertia](/docs/inertia). |
+
+## Write your own
+
+The extension contract is published from `@dudousxd/nestjs-codegen/extension`. Author one
+with `defineExtension` (an identity helper for type inference) and return it from a
+factory so callers can pass options:
+
+```ts
+import { defineExtension } from '@dudousxd/nestjs-codegen/extension';
+
+export function myExtension() {
+  return defineExtension({
+    name: 'my-extension',
+    apiHeader(ctx) {
+      return { imports: ["import { thing } from 'my-lib';"] };
+    },
+  });
+}
+```
+
+A `CodegenExtension` has a unique `name` and any of these hooks. They split into **multi**
+hooks (every extension runs; results accumulate or chain) and **single-slot** hooks (at
+most one extension may claim each — two claimers is a hard error):
+
+- **`transformRoutes(routes, ctx)`** — mutate/augment the route IR before emit (chained in
+  registration order). e.g. the filter extension attaches `filterFields` to matching routes.
+- **`emitFiles(ctx)`** — contribute extra output files (paths relative to `outDir`; a path
+  claimed twice throws). e.g. Inertia page discovery emitting `pages.d.ts`/`components.json`.
+- **`apiHeader(ctx)`** — contribute top-level `api.ts` imports + statements (imports deduped
+  by the host). e.g. the Inertia `router` import and `navigate()` helper.
+- **`apiMembers(leaf, ctx)`** — add named members to a **handle** leaf (only when a client
+  layer is active; name collisions across extensions throw). e.g. the filter `filterQuery`.
+- **`apiTransport`** *(single-slot)* — claim **how** an endpoint issues its request; unset
+  falls back to the neutral fetcher transport.
+- **`apiClientLayer`** *(single-slot)* — claim **what** a leaf returns; unset leaves a bare
+  callable returning a `Promise`. e.g. TanStack wraps each leaf into a handle.
+
+Every hook receives a read-only `ExtensionContext` (`cwd`, `outDir`, `routes`, `config`,
+and a lazily-created shared ts-morph `project()`).
+
+<Callout type="info">
+  The extension contract is semver 0.x — the shape may change until 1.0. Out-of-repo
+  extensions should pin a compatible `@dudousxd/nestjs-codegen` peer range.
+</Callout>

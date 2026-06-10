@@ -3,22 +3,27 @@ title: nestjs-inertia
 description: Pages, shared props, and Inertia router navigation.
 ---
 
-When you build a NestJS + Inertia app, set `mutationClient: 'inertia'` and point
+When you build a NestJS + Inertia app, register the **inertia extension** and point
 `pages.glob`/`app.moduleEntry` at your app. The codegen then additionally:
 
 - discovers your **Inertia pages** and emits `pages.d.ts` + `components.json`;
 - reads **shared props** from `InertiaModule.forRoot({ share })`;
 - emits a typed **`navigate()`** helper backed by the Inertia `router`.
 
+```bash
+pnpm add -D @dudousxd/nestjs-inertia-codegen-extension
+```
+
 ```ts title="nestjs-codegen.config.ts"
 import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { nestjsInertiaCodegen } from '@dudousxd/nestjs-inertia-codegen-extension';
 
 export default defineConfig({
   pages: { glob: 'resources/pages/**/*.tsx' },
   contracts: { glob: 'src/**/*.controller.ts' },
   app: { moduleEntry: 'src/app.module.ts' },
   codegen: { outDir: 'resources/generated' },
-  mutationClient: 'inertia',
+  extensions: [nestjsInertiaCodegen()],
 });
 ```
 
@@ -30,8 +35,8 @@ import { navigate } from '../generated/api';
 navigate('users.show', { params: { id: '42' } }); // typed route + params
 ```
 
-In inertia mode the generated `api.ts` imports `router` from `@inertiajs/react` only for
-this helper; in `fetcher` mode it isn't imported at all.
+When `nestjsInertiaCodegen()` is registered, the generated `api.ts` imports `router`
+from `@inertiajs/react` for this helper; without the extension it isn't imported at all.
 
 <Callout type="info">
   The pages typing augments `@dudousxd/nestjs-inertia`'s `InertiaPages` interface, so

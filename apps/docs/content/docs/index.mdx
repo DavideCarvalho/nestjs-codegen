@@ -34,6 +34,9 @@ deploy if the committed client drifts. See [Getting started](/docs/getting-start
   <Card title="@dudousxd/nestjs-codegen-valibot" description="Valibot validation adapter." href="/docs/validation" />
   <Card title="@dudousxd/nestjs-codegen-arktype" description="ArkType validation adapter." href="/docs/validation" />
   <Card title="@dudousxd/nestjs-client" description="Framework-neutral runtime: a typed fetcher with a pluggable transport (axios, …) and a superjson transformer hook." href="/docs/fetcher" />
+  <Card title="@dudousxd/nestjs-codegen-tanstack" description="Extension: TanStack Query queryOptions/mutationOptions handles in api.ts." href="/docs/tanstack-query" />
+  <Card title="@dudousxd/nestjs-filter-codegen" description="Extension: typed filterQuery() helpers from @FilterFor / @ApplyFilter." href="/docs/filters" />
+  <Card title="@dudousxd/nestjs-inertia-codegen-extension" description="Extension: Inertia router import + a typed navigate() helper in api.ts." href="/docs/inertia" />
 </Cards>
 
 ## What you get
@@ -50,12 +53,16 @@ The codegen writes these files into your output directory:
 - **Pluggable validation** — one neutral `SchemaNode` IR, rendered by [zod](https://zod.dev)
   (bundled), [valibot](https://valibot.dev), or [arktype](https://arktype.io) adapters.
 - **Typed API client** — `createApi(fetcher)`: inject your own client at runtime.
-- **Optional TanStack Query** — emits `queryOptions`/`mutationOptions` from *your* adapter
-  package (react/vue/svelte/solid); never forces `@tanstack/query-core`.
+- **Extension-based integrations** — register integrations in `extensions: [...]`; each
+  shapes the generated `api.ts`. See [Extensions](/docs/extensions).
+  - **TanStack Query** (`tanstackQuery()`) — emits `queryOptions`/`mutationOptions` from
+    *your* adapter package (react/vue/svelte/solid); never forces `@tanstack/query-core`.
+  - **nestjs-filter** (`nestjsFilterCodegen()`) — `@FilterFor`/`@ApplyFilter` → typed
+    `filterQuery()` helpers.
+  - **nestjs-inertia** (`nestjsInertiaCodegen()`) — pages, shared props, and the Inertia
+    `router` + `navigate()` helper.
 - **Bring your own fetcher** — native `fetch` by default, or an axios instance via
   `axiosTransport()`. superjson and transformer pipelines supported.
-- **nestjs-inertia integration** — pages, shared props, and Inertia router navigation.
-- **nestjs-filter integration** — `@FilterFor`/`@ApplyFilter` → `TypedFilterQuery<…>`.
 
 <Callout title="Coming from nestjs-inertia?">
   This is the same codegen, extracted into its own repo. The config file

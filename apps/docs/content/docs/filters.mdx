@@ -3,10 +3,24 @@ title: nestjs-filter
 description: Typed query filters from @FilterFor / @ApplyFilter.
 ---
 
-If you use [`nestjs-filter`](https://github.com/DavideCarvalho/nestjs-filter), the
-codegen discovers `@ApplyFilter`/`@FilterFor` on your controllers and emits a
-**`TypedFilterQuery<…>`** type for the route's query, wired against
+If you use [`nestjs-filter`](https://github.com/DavideCarvalho/nestjs-filter), register
+the **filter extension**. It discovers `@ApplyFilter`/`@FilterFor` on your controllers and
+adds a typed **`filterQuery()`** helper to every matching `api.ts` leaf, backed by
 `@dudousxd/nestjs-filter-client`.
+
+```bash
+pnpm add -D @dudousxd/nestjs-filter-codegen
+```
+
+```ts title="src/app.module.ts"
+import { nestjsFilterCodegen } from '@dudousxd/nestjs-filter-codegen';
+
+NestjsCodegenModule.forRoot({
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: 'src/generated' },
+  extensions: [nestjsFilterCodegen()],
+});
+```
 
 ```ts
 @Controller('tasks')
@@ -17,20 +31,22 @@ export class TasksController {
 }
 ```
 
-The generated `api.ts` types `tasks.list`'s query as a `TypedFilterQuery` over the
-filterable fields (with their resolved types — enums, dates, relations), so building a
-filter on the client is fully typed:
+The extension types `filterQuery()` over the route's filterable fields (with their
+resolved types — enums, dates, relations), so building a filter on the client is fully
+typed. The leaf exposes it directly:
 
 ```ts
-import { filterQueryTyped } from '@dudousxd/nestjs-filter-client';
 import { api } from '../lib/api';
 
-const query = filterQueryTyped<'status' | 'createdAt'>()
+const query = api.tasks.list().filterQuery()
   .where('status', 'eq', 'open')
   .build();
 
-useQuery(api.tasks.list({ query }));
+useQuery(api.tasks.list({ query }).queryOptions());
 ```
 
+It's the same builder as `filterQueryTyped()` from `@dudousxd/nestjs-filter-client`, but
+pre-typed to the route's fields so you don't repeat the field union by hand.
+
 Field types come from the filter class / `@FilterFor` parameter — named enums and type
-aliases are imported into the generated file and referenced by name.
+aliases are referenced by name in the generated types.

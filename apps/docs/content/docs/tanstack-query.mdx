@@ -13,10 +13,14 @@ else `mutationOptions()`.
 pnpm add -D @dudousxd/nestjs-codegen-tanstack
 ```
 
-```ts
+```ts title="src/app.module.ts"
 import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 
-NestjsCodegenModule.forRoot({ /* … */ extensions: [tanstackQuery()] });
+NestjsCodegenModule.forRoot({
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: 'src/generated' },
+  extensions: [tanstackQuery()],
+});
 ```
 
 ## Which package?

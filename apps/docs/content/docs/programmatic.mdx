@@ -52,7 +52,6 @@ your own tooling or adapters.
 import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 
 emitApi(routes, 'src/generated', {
-  mutationClient: 'fetcher',                    // omit the Inertia navigate() helper
   extensions: [tanstackQuery()],                // api.ts hooks (TanStack handles, etc.)
   fetcherImportPath: '@dudousxd/nestjs-client', // where the Fetcher type comes from
 });

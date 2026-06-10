@@ -345,7 +345,9 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     : `route(${flat} as never) || ${path}`;
   const optsExpr = isGet
     ? '{ query: input?.query as Record<string, unknown> | undefined }'
-    : '{ body: input?.body }';
+    : hasBody
+      ? '{ body: input?.body }'
+      : '{}';
 
   return {
     routeName: c.name,

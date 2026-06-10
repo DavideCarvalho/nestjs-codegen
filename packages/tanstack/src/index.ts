@@ -42,7 +42,7 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       if (req.isGet) {
         members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
         // Cursor/page pagination over the same endpoint (adds `page` to the query).
-        members.infiniteQueryOptions = `() => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ${req.responseType}) => { const meta = (lastPage as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } })`;
+        members.infiniteQueryOptions = `() => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ${req.responseType}) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } })`;
       } else {
         members.mutationOptions = `() => _mutationOptions({ mutationFn: (body: ${req.bodyType}) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { body }) })`;
       }

@@ -115,6 +115,8 @@ export interface RequestModel {
   optsExpr: string;
   /** Response type access, e.g. `ApiRouter['users']['show']['response']`. */
   responseType: string;
+  /** Body type access, e.g. `ApiRouter['users']['create']['body']` (for mutation layers). */
+  bodyType: string;
   /** Stable query-key expression, e.g. `["users.show", input] as const`. */
   queryKeyExpr: string;
 }

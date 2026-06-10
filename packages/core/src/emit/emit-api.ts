@@ -7,6 +7,7 @@ import type {
   FilterFieldType,
   RouteDescriptor,
 } from '../discovery/types.js';
+import type { RequestModel } from '../extension/types.js';
 
 /**
  * Emits `api.ts` into `outDir` for all routes that carry a `.contract`.
@@ -309,7 +310,114 @@ function emitRouterTypeBlock(
 }
 
 /**
- * Emit the nested `api` object body.
+ * Build the neutral per-leaf {@link RequestModel} from a discovered leaf. This is the
+ * input every transport/layer/member-contributor reads — the seam the extension system
+ * plugs into. Pure string-building; no I/O.
+ */
+function buildRequestModel(c: LeafEntry): RequestModel {
+  const isGet = c.method.toUpperCase() === 'GET';
+  const m = c.method.toLowerCase() as RequestModel['method'];
+  const flat = JSON.stringify(c.name);
+  const path = JSON.stringify(c.path);
+  const TA = buildRouterTypeAccess(c.name);
+  const withParams = hasPathParams(c.params);
+  const hasBody =
+    !!c.contractSource.bodyRef ||
+    (c.contractSource.body != null && c.contractSource.body !== 'never');
+
+  const fields: string[] = [];
+  if (withParams) fields.push(`params: ${TA}['params']`);
+  if (isGet) fields.push(`query?: ${TA}['query']`);
+  if (!isGet && hasBody) fields.push(`body?: ${TA}['body']`);
+  const inputType = fields.length ? `{ ${fields.join('; ')} }` : 'Record<string, never>';
+
+  const urlExpr = withParams
+    ? `route(${flat} as never, input?.params as never) || ${path}`
+    : `route(${flat} as never) || ${path}`;
+  const optsExpr = isGet
+    ? '{ query: input?.query as Record<string, unknown> | undefined }'
+    : '{ body: input?.body }';
+
+  return {
+    routeName: c.name,
+    method: m,
+    isGet,
+    hasParams: withParams,
+    hasBody,
+    inputType,
+    urlExpr,
+    optsExpr,
+    responseType: `${TA}['response']`,
+    bodyType: `${TA}['body']`,
+    queryKeyExpr: `[${flat}, input] as const`,
+  };
+}
+
+/**
+ * The bundled default transport: a typed call on the injected `fetcher`. This is the
+ * fallback when no extension claims `apiTransport`. Kept byte-identical to the legacy
+ * `fetchExpr`. In Phase 3 the TanStack-specific layer below moves to a package; this
+ * fetcher transport stays in core as the default.
+ */
+function renderFetcherRequest(req: RequestModel): string {
+  return `fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, ${req.optsExpr})`;
+}
+
+/**
+ * The bundled TanStack client layer (Phase 1: still flag-driven; Phase 3: extracted to
+ * `@dudousxd/nestjs-codegen-tanstack`). Wraps a leaf into a handle exposing
+ * `fetch`/`queryKey`/`queryOptions`|`mutationOptions`. Returns ordered members.
+ */
+function tanstackLayerMembers(requestExpr: string, req: RequestModel): Record<string, string> {
+  const members: Record<string, string> = {
+    fetch: `() => ${requestExpr}`,
+    queryKey: `() => ${req.queryKeyExpr}`,
+  };
+  if (req.isGet) {
+    members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
+  } else {
+    members.mutationOptions = `() => _mutationOptions({ mutationFn: (body: ${req.bodyType}) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { body }) })`;
+  }
+  return members;
+}
+
+/**
+ * The bundled nestjs-filter member contributor (Phase 4: extracted to
+ * `@dudousxd/nestjs-filter-codegen`). Adds `filterQuery` to handle leaves whose route
+ * carries `filterFields`.
+ */
+function filterMembers(c: LeafEntry): Record<string, string> {
+  if (!c.contractSource.filterFields?.length) return {};
+  return { filterQuery: `() => _filterQueryTyped<${emitFilterQueryTypeArgs(c)}>()` };
+}
+
+/**
+ * Render one leaf from its model. A bare callable when `members` is undefined (default
+ * fetch); a handle object when a layer contributed members.
+ */
+function renderLeaf(
+  pad: string,
+  objKey: string,
+  req: RequestModel,
+  requestExpr: string,
+  members: Record<string, string> | undefined,
+): string[] {
+  if (!members) {
+    return [`${pad}${objKey}: (input?: ${req.inputType}) => ${requestExpr},`];
+  }
+  const lines = [`${pad}${objKey}: (input?: ${req.inputType}) => ({`];
+  for (const [name, value] of Object.entries(members)) {
+    lines.push(`${pad}  ${name}: ${value},`);
+  }
+  lines.push(`${pad}}),`);
+  return lines;
+}
+
+/**
+ * Emit the nested `api` object body via the LeafModel pipeline:
+ * build model → transport (fetcher) → layer (TanStack, when `query`) → members (filter)
+ * → render. The default (no layer) is a bare typed-fetch callable; `query` flips leaves
+ * into TanStack handles.
  */
 function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, query: boolean): string[] {
   const pad = ' '.repeat(indent);
@@ -324,56 +432,17 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, query: 
       continue;
     }
 
-    const c = node;
-    const isGet = c.method.toUpperCase() === 'GET';
-    const m = c.method.toLowerCase();
-    const flat = JSON.stringify(c.name);
-    const path = JSON.stringify(c.path);
-    const TA = buildRouterTypeAccess(c.name);
-    const withParams = hasPathParams(c.params);
-    const hasBody =
-      !!c.contractSource.bodyRef ||
-      (c.contractSource.body != null && c.contractSource.body !== 'never');
-    const hasFilter = !!c.contractSource.filterFields?.length;
+    const req = buildRequestModel(node);
+    const requestExpr = renderFetcherRequest(req);
 
-    // Input passed when calling the leaf: params (path), query (GET), body (writes).
-    const fields: string[] = [];
-    if (withParams) fields.push(`params: ${TA}['params']`);
-    if (isGet) fields.push(`query?: ${TA}['query']`);
-    if (!isGet && hasBody) fields.push(`body?: ${TA}['body']`);
-    const inputType = fields.length ? `{ ${fields.join('; ')} }` : 'Record<string, never>';
-    const url = withParams
-      ? `route(${flat} as never, input?.params as never) || ${path}`
-      : `route(${flat} as never) || ${path}`;
-    const reqOpts = isGet
-      ? '{ query: input?.query as Record<string, unknown> | undefined }'
-      : '{ body: input?.body }';
-    const fetchExpr = `fetcher.${m}<${TA}['response']>(${url}, ${reqOpts})`;
-    const keyExpr = `[${flat}, input] as const`;
-
-    // Default: the leaf IS a typed fetch call (Promise). No TanStack dependency.
-    if (!query) {
-      lines.push(`${pad}${objKey}: (input?: ${inputType}) => ${fetchExpr},`);
-      continue;
+    // No client layer → bare callable (Promise). The TanStack layer (gated on `query`)
+    // turns the leaf into a handle, then the filter member contributor adds filterQuery.
+    let members: Record<string, string> | undefined;
+    if (query) {
+      members = { ...tanstackLayerMembers(requestExpr, req), ...filterMembers(node) };
     }
 
-    // query: true — the leaf returns a handle with .fetch() + TanStack helpers.
-    lines.push(`${pad}${objKey}: (input?: ${inputType}) => ({`);
-    lines.push(`${pad}  fetch: () => ${fetchExpr},`);
-    lines.push(`${pad}  queryKey: () => ${keyExpr},`);
-    if (isGet) {
-      lines.push(
-        `${pad}  queryOptions: () => _queryOptions({ queryKey: ${keyExpr}, queryFn: () => ${fetchExpr} }),`,
-      );
-    } else {
-      lines.push(
-        `${pad}  mutationOptions: () => _mutationOptions({ mutationFn: (body: ${TA}['body']) => fetcher.${m}<${TA}['response']>(${url}, { body }) }),`,
-      );
-    }
-    if (hasFilter) {
-      lines.push(`${pad}  filterQuery: () => _filterQueryTyped<${emitFilterQueryTypeArgs(c)}>(),`);
-    }
-    lines.push(`${pad}}),`);
+    lines.push(...renderLeaf(pad, objKey, req, requestExpr, members));
   }
 
   return lines;

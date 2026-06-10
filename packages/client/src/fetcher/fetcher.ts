@@ -110,8 +110,11 @@ export interface Fetcher {
 }
 
 interface RequestOpts {
-  params?: Record<string, unknown>;
-  query?: Record<string, unknown>;
+  // `| undefined` (not just optional) so callers can pass an explicit `undefined` — the
+  // generated client does `{ query: input?.query }` etc. and must stay clean under
+  // `exactOptionalPropertyTypes`.
+  params?: Record<string, unknown> | undefined;
+  query?: Record<string, unknown> | undefined;
   body?: unknown;
 }
 

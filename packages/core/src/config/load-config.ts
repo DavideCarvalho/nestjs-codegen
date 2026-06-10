@@ -1,6 +1,7 @@
 import { access } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { resolveAdapter } from '../adapters/registry.js';
 import { ConfigError } from '../exceptions.js';
 import type { ResolvedConfig, UserConfig } from './types.js';
 
@@ -83,6 +84,9 @@ function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
   }
 
   return {
+    validation: resolveAdapter(userConfig.validation ?? 'zod'),
+    transformer: userConfig.transformer ?? false,
+    mutationClient: userConfig.mutationClient ?? 'inertia',
     pages: {
       glob: userConfig.pages.glob,
       propsExport: userConfig.pages.propsExport ?? 'ComponentProps',

@@ -1,4 +1,25 @@
+import type { ValidationOption } from '../adapters/registry.js';
+import type { ValidationAdapter } from '../adapters/types.js';
+
 export interface UserConfig {
+  /**
+   * Validation library for emitted `forms.ts` schemas. `'zod'` (bundled, default)
+   * or an imported adapter instance (`valibotAdapter`/`arktypeAdapter`).
+   * @default 'zod'
+   */
+  validation?: ValidationOption;
+  /**
+   * Payload transformer wired into the generated fetcher (plain mutationClient).
+   * `'superjson'` preserves rich types (Date, Map, …) end-to-end.
+   * @default false
+   */
+  transformer?: 'superjson' | false;
+  /**
+   * How `api.ts` issues mutations. `'inertia'` (default) uses the Inertia router;
+   * `'fetcher'` uses the typed fetcher from `@dudousxd/nestjs-client` (no Inertia).
+   * @default 'inertia'
+   */
+  mutationClient?: 'fetcher' | 'inertia';
   pages: {
     glob: string;
     propsExport?: string;
@@ -85,6 +106,9 @@ export interface ResolvedFormsConfig {
 }
 
 export interface ResolvedConfig {
+  validation: ValidationAdapter;
+  transformer: 'superjson' | false;
+  mutationClient: 'fetcher' | 'inertia';
   pages: ResolvedPagesConfig;
   contracts: ResolvedContractsConfig;
   scopes: Record<string, ScopeConfig>;

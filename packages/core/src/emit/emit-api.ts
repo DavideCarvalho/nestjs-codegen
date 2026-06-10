@@ -63,6 +63,13 @@ function leafExpr(route: RouteDescriptor, config: ResolvedConfig): string {
     ? '{ params?: Record<string, string>; query?: Record<string, unknown> }'
     : `{ params?: Record<string, string>; query?: Record<string, unknown>; body?: ${bodyType} }`;
 
+  // Inertia preset mode: mutations are Inertia router visits, not fetcher calls.
+  // GET reads still go through the typed fetcher (queryOptions when enabled).
+  if (config.mutationClient === 'inertia' && !isGet) {
+    const visitInput = `{ params?: Record<string, string>; body?: ${bodyType}; options?: VisitOptions }`;
+    return `(input?: ${visitInput}) => router.${method}(withParams(${path}, input?.params), input?.body, input?.options)`;
+  }
+
   if (config.query) {
     if (isGet) {
       return `(input?: ${inputType}) =>\n      queryOptions({\n        queryKey: [${JSON.stringify(route.name)}, input] as const,\n        queryFn: () => fetcher.get<${res}>(${path}, input),\n      })`;
@@ -94,11 +101,40 @@ export function buildApiFile(routes: RouteDescriptor[], config: ResolvedConfig):
     lines.push('export const api = {} as const;', '');
     return lines.join('\n');
   }
-  if (config.query) {
-    lines.push("import { mutationOptions, queryOptions } from '@tanstack/query-core';");
+  const inertia = config.mutationClient === 'inertia';
+  const hasMutation = routes.some((r) => r.method !== 'GET');
+  const hasGet = routes.some((r) => r.method === 'GET');
+
+  if (config.query && hasGet) {
+    // In inertia mode only GET readers use query-core (mutations are router visits).
+    lines.push(
+      inertia
+        ? "import { queryOptions } from '@tanstack/query-core';"
+        : "import { mutationOptions, queryOptions } from '@tanstack/query-core';",
+    );
   }
-  lines.push(`import { fetcher } from '${config.fetcherModule}';`);
+  if (inertia && hasMutation) {
+    lines.push("import { router, type VisitOptions } from '@inertiajs/react';");
+  }
+  // The fetcher is needed for GET reads (always) and for mutations in plain mode.
+  if (hasGet || !inertia) {
+    lines.push(`import { fetcher } from '${config.fetcherModule}';`);
+  }
   lines.push('');
+  if (inertia && hasMutation) {
+    lines.push(
+      '/** Interpolate `:param` segments in a path template. */',
+      'function withParams(path: string, params?: Record<string, string>): string {',
+      '  if (!params) return path;',
+      '  return path.replace(/:([^/]+)/g, (_, key) => {',
+      '    const val = params[key];',
+      '    if (val === undefined) throw new Error(`Missing route param: ${key}`);',
+      '    return encodeURIComponent(val);',
+      '  });',
+      '}',
+      '',
+    );
+  }
   const tree = buildTree(routes);
   lines.push(`export const api = ${renderNode(tree, config, '')};`);
   lines.push('');

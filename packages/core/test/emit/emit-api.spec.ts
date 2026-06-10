@@ -45,4 +45,39 @@ describe('buildApiFile', () => {
   it('empty routes → empty api', () => {
     expect(buildApiFile([], resolveConfig({ outDir: '/tmp' }))).toContain('export const api = {}');
   });
+
+  describe("mutationClient: 'inertia' (nestjs-inertia integration)", () => {
+    const cfg = resolveConfig({ outDir: '/tmp', mutationClient: 'inertia', query: true });
+
+    it('mutations become Inertia router visits; GET reads stay typed via fetcher', () => {
+      const out = buildApiFile(routes, cfg);
+      expect(out).toContain("import { router, type VisitOptions } from '@inertiajs/react';");
+      expect(out).toContain('function withParams(');
+      // create (POST) → router.post visit, not fetcher/mutationOptions
+      expect(out).toContain(
+        'router.post(withParams("/users", input?.params), input?.body, input?.options)',
+      );
+      expect(out).not.toContain('mutationOptions');
+      // GET reads still use query-core + fetcher
+      expect(out).toContain("import { queryOptions } from '@tanstack/query-core';");
+      expect(out).toContain('fetcher.get<User[]>("/users", input)');
+    });
+
+    it('PUT with path params interpolates via withParams', () => {
+      const out = buildApiFile(
+        [
+          {
+            name: 'users.update',
+            method: 'PUT',
+            path: '/users/:id',
+            contract: { bodyType: 'UpdateUserDto' },
+          },
+        ],
+        cfg,
+      );
+      expect(out).toContain(
+        'router.put(withParams("/users/:id", input?.params), input?.body, input?.options)',
+      );
+    });
+  });
 });

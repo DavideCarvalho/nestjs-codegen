@@ -76,14 +76,11 @@ export function extractSchemaFromDto(
     depth: 0,
   };
   const root = buildObject(classDecl, sourceFile, ctx);
-  // Recursive schemas cannot be hoisted as a plain `const X = z.object({... X ...})`
-  // without a type annotation. Degrade any self-referential nested schema to a
-  // valid verbatim placeholder.
+  // Recursive schemas cannot be hoisted as a plain `const X = (... X ...)` without
+  // a type annotation. Degrade any self-referential nested schema to a neutral
+  // `unknown` placeholder; each adapter renders its own lib's `unknown` + comment.
   for (const schemaName of ctx.recursiveSchemas) {
-    ctx.named.set(schemaName, {
-      kind: 'raw',
-      text: 'z.unknown() /* recursive type — not expanded */',
-    });
+    ctx.named.set(schemaName, { kind: 'unknown', note: 'recursive type — not expanded' });
   }
   return { root, named: ctx.named, warnings: ctx.warnings };
 }
@@ -228,9 +225,9 @@ function buildProperty(
       unmappable.push(name);
       if (!ctx.warnedDecorators.has(name)) {
         ctx.warnedDecorators.add(name);
-        const msg = `@${name} is not translatable to zod and was skipped (server-only validation).`;
+        const msg = `@${name} is not translatable to a client validation schema and was skipped (server-only validation).`;
         ctx.warnings.push(msg);
-        console.warn(`[nestjs-inertia-codegen/forms] ${msg}`);
+        console.warn(`[nestjs-codegen] ${msg}`);
       }
     }
   }
@@ -302,9 +299,9 @@ function buildNestedReference(
     ctx.recursiveSchemas.add(reserved);
     if (!ctx.warnedDecorators.has(`recursive:${reserved}`)) {
       ctx.warnedDecorators.add(`recursive:${reserved}`);
-      const msg = `${className} is a recursive type and was not expanded; the generated form schema uses z.unknown() for it.`;
+      const msg = `${className} is a recursive type and was not expanded; the generated schema uses unknown for it.`;
       ctx.warnings.push(msg);
-      console.warn(`[nestjs-inertia-codegen/forms] ${msg}`);
+      console.warn(`[nestjs-codegen] ${msg}`);
     }
     return { kind: 'lazyRef', name: reserved };
   }
@@ -415,16 +412,13 @@ function enumSchemaFromDecorator(
     if (resolved && resolved.kind === 'enum') {
       return { kind: 'enum', literals: resolved.members };
     }
-    const msg = `@IsEnum(${name}): enum could not be resolved to literal members and is not importable into the generated form schema; falling back to z.unknown().`;
+    const msg = `@IsEnum(${name}): enum could not be resolved to literal members and is not importable into the generated schema; falling back to unknown.`;
     if (!ctx.warnedDecorators.has(`IsEnum:${name}`)) {
       ctx.warnedDecorators.add(`IsEnum:${name}`);
       ctx.warnings.push(msg);
-      console.warn(`[nestjs-inertia-codegen/forms] ${msg}`);
+      console.warn(`[nestjs-codegen] ${msg}`);
     }
-    return {
-      kind: 'raw',
-      text: `z.unknown() /* @IsEnum(${name}): enum not resolvable to literals */`,
-    };
+    return { kind: 'unknown', note: `@IsEnum(${name}): enum not resolvable to literals` };
   }
   if (Node.isObjectLiteralExpression(arg)) {
     const values: string[] = [];

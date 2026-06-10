@@ -58,7 +58,7 @@ function render(node: SchemaNode, ctx: RenderContext): string {
     case 'date':
       return 'z.coerce.date()';
     case 'unknown':
-      return 'z.unknown()';
+      return node.note ? `z.unknown() /* ${node.note} */` : 'z.unknown()';
     case 'instanceof':
       return `z.instanceof(${node.ctor})`;
     case 'enum':
@@ -90,8 +90,6 @@ function render(node: SchemaNode, ctx: RenderContext): string {
         .join(' ');
       return `${render(node.inner, ctx)} ${comments}`;
     }
-    case 'raw':
-      return node.text;
   }
 }
 

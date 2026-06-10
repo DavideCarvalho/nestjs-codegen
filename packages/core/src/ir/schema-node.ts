@@ -33,7 +33,10 @@ export type SchemaNode =
   | { kind: 'number'; checks: NumberCheck[] }
   | { kind: 'boolean' }
   | { kind: 'date' }
-  | { kind: 'unknown' }
+  /** Unknown/opaque value. `note`, when present, becomes a trailing comment
+   * (e.g. recursion degradation or unresolvable-enum fallback reasons). Kept
+   * neutral so each adapter renders its own lib's `unknown` + comment. */
+  | { kind: 'unknown'; note?: string }
   | { kind: 'instanceof'; ctor: string }
   /** Members are verbatim literal source texts (quote style preserved). */
   | { kind: 'enum'; literals: string[] }
@@ -47,9 +50,7 @@ export type SchemaNode =
   /** Lazy reference to a hoisted named schema (recursion site). */
   | { kind: 'lazyRef'; name: string }
   /** Wraps a node with trailing comments for unmappable decorators (by name). */
-  | { kind: 'annotated'; inner: SchemaNode; unmappable: string[] }
-  /** Verbatim escape hatch (recursion degradation, unresolvable-enum fallback). */
-  | { kind: 'raw'; text: string };
+  | { kind: 'annotated'; inner: SchemaNode; unmappable: string[] };
 
 /** A root schema plus hoisted named (nested/recursive) schemas. */
 export interface SchemaModule {

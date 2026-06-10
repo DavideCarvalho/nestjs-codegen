@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     'cli/main': 'src/cli/main.ts',
+    'nest/index': 'src/nest/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
@@ -11,5 +12,5 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   outDir: 'dist',
-  external: ['ts-morph', 'typescript', 'cac'],
+  external: ['ts-morph', 'typescript', 'cac', '@nestjs/common'],
 });

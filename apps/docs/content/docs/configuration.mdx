@@ -3,8 +3,17 @@ title: Configuration
 description: Every option in nestjs-codegen.config.ts.
 ---
 
-The config is authored with `defineConfig` and loaded from `nestjs-codegen.config.ts`
-(the legacy `nestjs-inertia.config.ts` name is still accepted).
+These are the same options you pass to [`NestjsCodegenModule.forRoot()`](/docs/getting-started#wire-the-module).
+The module is the primary way to run the codegen in dev; this config file is what the
+**CLI** loads for CI runs. Author it with `defineConfig` (the legacy
+`nestjs-inertia.config.ts` name is still accepted), and import it into `forRoot()` to keep
+a single source of truth.
+
+<Callout type="info">
+  `forRoot()` accepts two module-only fields on top of everything below: `enabled`
+  (boolean — defaults on outside `NODE_ENV=production`) and `cwd` (project root,
+  defaults to `process.cwd()`).
+</Callout>
 
 ```ts title="nestjs-codegen.config.ts"
 import { defineConfig } from '@dudousxd/nestjs-codegen';

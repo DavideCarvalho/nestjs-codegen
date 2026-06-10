@@ -7,6 +7,12 @@ description: The codegen, init, and doctor commands.
 npx nestjs-codegen <command>
 ```
 
+<Callout type="info">
+  In dev, prefer [`NestjsCodegenModule.forRoot()`](/docs/getting-started#wire-the-module) —
+  it starts the codegen with your app, no separate process. The CLI is for **CI**: a
+  watch-free run that fails the build if the committed client has drifted before you deploy.
+</Callout>
+
 ## `codegen`
 
 Discover controllers/pages and emit the generated files. Reads

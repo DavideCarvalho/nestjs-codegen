@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Install, configure, and generate your typed client.
+description: Wire the module into your NestJS app and generate a typed client.
 ---
 
 ## Install
@@ -18,23 +18,82 @@ adapter (you almost certainly already have it):
 pnpm add @tanstack/react-query   # or @tanstack/vue-query, -svelte-query, -solid-query
 ```
 
-## Configure
+## Wire the module
 
-Create `nestjs-codegen.config.ts` at your project root:
+This is the recommended setup. Import `NestjsCodegenModule` into your root module —
+the codegen starts with your dev server and regenerates the client as you edit your
+controllers. No config file, no extra process to run.
+
+```ts title="src/app.module.ts"
+import { Module } from '@nestjs/common';
+import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+
+@Module({
+  imports: [
+    NestjsCodegenModule.forRoot({
+      // controllers to scan for routes + contracts
+      contracts: { glob: 'src/**/*.controller.ts' },
+      // output directory for the generated files
+      codegen: { outDir: 'src/generated' },
+
+      validation: 'zod',          // 'zod' (bundled) | valibotAdapter | arktypeAdapter
+      mutationClient: 'fetcher',  // 'fetcher' (no Inertia) | 'inertia'
+      query: false,               // true → TanStack Query handles (see below)
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+Now run your app as usual (`nest start --watch`) and the generated files appear in
+`src/generated` — kept in sync while the server runs.
+
+<Callout type="info">
+  The watcher is a **dev/CI concern**, so the module skips it automatically when
+  `NODE_ENV === 'production'`. Force it with `enabled: true` or turn it off with
+  `enabled: false`. `@nestjs/common` is an optional peer dependency — your Nest app
+  already has it.
+</Callout>
+
+See [Configuration](/docs/configuration) for every option.
+
+## Generate in CI
+
+In CI (before you deploy) you want a one-shot, watch-free run that fails the build if
+the committed client has drifted from your routes. That's the CLI:
+
+```bash
+npx nestjs-codegen codegen          # one-shot
+npx nestjs-codegen codegen --watch  # same watcher the module runs, standalone
+```
+
+The CLI reads `nestjs-codegen.config.ts` from your project root. To keep a **single
+source of truth**, put your options in that file and import it into `forRoot()`:
 
 ```ts title="nestjs-codegen.config.ts"
 import { defineConfig } from '@dudousxd/nestjs-codegen';
 
 export default defineConfig({
-  // controllers to scan for routes + contracts
   contracts: { glob: 'src/**/*.controller.ts' },
-  // output directory for the generated files
   codegen: { outDir: 'src/generated' },
-
-  validation: 'zod',          // 'zod' (bundled) | valibotAdapter | arktypeAdapter
-  mutationClient: 'fetcher',  // 'fetcher' (no Inertia) | 'inertia'
-  queryImport: '@tanstack/react-query',
+  validation: 'zod',
+  mutationClient: 'fetcher',
+  query: false,
 });
+```
+
+```ts title="src/app.module.ts"
+import codegenConfig from '../nestjs-codegen.config';
+// ...
+NestjsCodegenModule.forRoot(codegenConfig);
+```
+
+Now the module (dev) and the CLI (CI) share one config. In CI, run the generator and
+fail on any diff:
+
+```bash
+npx nestjs-codegen codegen
+git diff --exit-code src/generated   # non-zero if the client is stale
 ```
 
 <Callout type="info">
@@ -42,15 +101,6 @@ export default defineConfig({
   Inertia app (see [nestjs-inertia](/docs/inertia)). A plain NestJS API needs just
   `contracts` + `codegen`.
 </Callout>
-
-See [Configuration](/docs/configuration) for every option.
-
-## Generate
-
-```bash
-npx nestjs-codegen codegen          # one-shot
-npx nestjs-codegen codegen --watch  # regenerate on change
-```
 
 ## Use the client
 
@@ -73,8 +123,8 @@ const users = await api.users.list();              // typed User[]
 const created = await api.users.create({ body });  // typed body + response
 ```
 
-Want **TanStack Query**? Set `query: true` in the config and each call returns a
-handle with `.queryOptions()` / `.mutationOptions()`:
+Want **TanStack Query**? Set `query: true` and each call returns a handle with
+`.queryOptions()` / `.mutationOptions()`:
 
 ```tsx title="users-page.tsx"
 import { useQuery, useMutation } from '@tanstack/react-query';

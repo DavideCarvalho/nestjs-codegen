@@ -16,6 +16,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./nest": {
+      "types": "./dist/nest/index.d.ts",
+      "import": "./dist/nest/index.js",
+      "require": "./dist/nest/index.cjs"
     }
   },
   "files": ["dist", "bin", "README.md", "CHANGELOG.md"],
@@ -32,10 +37,12 @@
     "ts-morph": "28.0.0"
   },
   "peerDependencies": {
+    "@nestjs/common": ">=9.0.0",
     "tsx": ">=4.0.0",
     "typescript": ">=5.0.0"
   },
   "peerDependenciesMeta": {
+    "@nestjs/common": { "optional": true },
     "tsx": { "optional": true }
   },
   "devDependencies": {

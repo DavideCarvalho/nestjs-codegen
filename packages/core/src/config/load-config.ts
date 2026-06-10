@@ -59,6 +59,18 @@ function assertInsideCwd(cwd: string, resolvedPath: string, fieldName: string): 
   }
 }
 
+/**
+ * Resolve a {@link UserConfig} (e.g. `NestjsCodegenModule.forRoot()` options) into a
+ * fully-defaulted {@link ResolvedConfig} — without reading a config file. Used by the
+ * Nest module and any programmatic caller that already holds the config in memory.
+ *
+ * @param userConfig the raw user config (forRoot options minus module-only fields)
+ * @param cwd project root used to resolve globs / outDir. Defaults to `process.cwd()`.
+ */
+export function resolveConfig(userConfig: UserConfig, cwd?: string): ResolvedConfig {
+  return applyDefaults(userConfig, cwd ?? process.cwd());
+}
+
 function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
   const outDir = userConfig.codegen?.outDir
     ? resolveAbsolute(cwd, userConfig.codegen.outDir)

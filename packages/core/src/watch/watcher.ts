@@ -4,10 +4,6 @@ import chokidar from 'chokidar';
 import type { ResolvedConfig } from '../config/types.js';
 import { discoverContractsFast } from '../discovery/contracts-fast.js';
 import type { RouteDescriptor } from '../discovery/types.js';
-import { emitApi } from '../emit/emit-api.js';
-import { emitForms } from '../emit/emit-forms.js';
-import { emitIndex } from '../emit/emit-index.js';
-import { emitRoutes } from '../emit/emit-routes.js';
 import { generate } from '../generate.js';
 import { acquireLock } from './lock-file.js';
 
@@ -127,17 +123,11 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
           ...(config.app?.tsconfig ? { tsconfig: config.app.tsconfig } : {}),
         });
 
-        await emitRoutes(routes, config.codegen.outDir);
-
-        const hasContracts = routes.some((r) => r.contract);
-
-        if (hasContracts) {
-          await emitApi(routes, config.codegen.outDir);
-        }
-
-        const hasForms = await emitForms(routes, config.codegen.outDir, config.forms);
-
-        await emitIndex(config.codegen.outDir, hasContracts, hasForms);
+        // Route through generate() so the incremental pass honors the SAME emit
+        // options as the initial pass (query / mutationClient / queryImport / fetcher
+        // importPath + the validation adapter). Emitting api.ts/forms.ts directly here
+        // would silently drop those settings on every contract edit.
+        await generate(config, routes);
       } catch (err) {
         console.error(
           '[nestjs-codegen] Contracts generation failed:',

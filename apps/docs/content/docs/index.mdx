@@ -8,10 +8,24 @@ description: A typed-client codegen for NestJS — routes, API client, and valid
 schemas. It works **with or without Inertia.js**, and every moving part is pluggable —
 the validation library, the HTTP client, the serializer, and the query layer.
 
-```bash
-pnpm add -D @dudousxd/nestjs-codegen
-npx nestjs-codegen codegen
+```ts title="src/app.module.ts"
+import { Module } from '@nestjs/common';
+import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+
+@Module({
+  imports: [
+    NestjsCodegenModule.forRoot({
+      contracts: { glob: 'src/**/*.controller.ts' },
+      codegen: { outDir: 'src/generated' },
+    }),
+  ],
+})
+export class AppModule {}
 ```
+
+Import the module and the client regenerates with your dev server. For CI, the same
+generator ships as a CLI — `npx nestjs-codegen codegen` — to fail the build before
+deploy if the committed client drifts. See [Getting started](/docs/getting-started).
 
 ## The packages
 

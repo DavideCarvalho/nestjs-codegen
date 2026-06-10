@@ -358,45 +358,93 @@ function FeatureCard({ feature }: { feature: Feature }) {
   );
 }
 
-const INIT_LINES: readonly { tokens: CodeToken[] }[] = [
+const MODULE_LINES: readonly { tokens: CodeToken[] }[] = [
   {
     tokens: [
-      { text: '$ ', cls: 'text-zinc-600' },
-      { text: 'pnpm add -D ', cls: 'text-zinc-300' },
-      { text: '@dudousxd/nestjs-codegen', cls: 'text-violet-400' },
+      { text: 'import', cls: 'text-violet-400' },
+      { text: ' { Module } ', cls: 'text-zinc-300' },
+      { text: 'from', cls: 'text-violet-400' },
+      { text: " '@nestjs/common'", cls: 'text-emerald-400' },
+      { text: ';', cls: 'text-zinc-300' },
     ],
   },
   {
     tokens: [
-      { text: '$ ', cls: 'text-zinc-600' },
-      { text: 'pnpm add ', cls: 'text-zinc-300' },
-      { text: '@dudousxd/nestjs-client', cls: 'text-violet-400' },
+      { text: 'import', cls: 'text-violet-400' },
+      { text: ' { NestjsCodegenModule } ', cls: 'text-zinc-300' },
+      { text: 'from', cls: 'text-violet-400' },
+      { text: " '@dudousxd/nestjs-codegen/nest'", cls: 'text-emerald-400' },
+      { text: ';', cls: 'text-zinc-300' },
     ],
   },
   { tokens: [] },
+  {
+    tokens: [
+      { text: '@Module', cls: 'text-amber-300' },
+      { text: '({', cls: 'text-zinc-300' },
+    ],
+  },
+  {
+    tokens: [
+      { text: '  imports: [', cls: 'text-zinc-300' },
+    ],
+  },
+  {
+    tokens: [
+      { text: '    NestjsCodegenModule.', cls: 'text-zinc-300' },
+      { text: 'forRoot', cls: 'text-sky-300' },
+      { text: '({', cls: 'text-zinc-300' },
+    ],
+  },
+  {
+    tokens: [
+      { text: '      contracts: { glob: ', cls: 'text-zinc-300' },
+      { text: "'src/**/*.controller.ts'", cls: 'text-emerald-400' },
+      { text: ' },', cls: 'text-zinc-300' },
+    ],
+  },
+  {
+    tokens: [
+      { text: '      codegen: { outDir: ', cls: 'text-zinc-300' },
+      { text: "'src/generated'", cls: 'text-emerald-400' },
+      { text: ' },', cls: 'text-zinc-300' },
+    ],
+  },
+  {
+    tokens: [{ text: '    }),', cls: 'text-zinc-300' }],
+  },
+  {
+    tokens: [{ text: '  ],', cls: 'text-zinc-300' }],
+  },
+  {
+    tokens: [{ text: '})', cls: 'text-zinc-300' }],
+  },
+  {
+    tokens: [
+      { text: 'export', cls: 'text-violet-400' },
+      { text: ' class ', cls: 'text-violet-400' },
+      { text: 'AppModule', cls: 'text-amber-300' },
+      { text: ' {}', cls: 'text-zinc-300' },
+    ],
+  },
+];
+
+const CI_LINES: readonly { tokens: CodeToken[] }[] = [
+  {
+    tokens: [
+      { text: '# CI / pre-deploy — fail the build if the client drifts', cls: 'text-zinc-500' },
+    ],
+  },
   {
     tokens: [
       { text: '$ ', cls: 'text-zinc-600' },
       { text: 'npx nestjs-codegen codegen', cls: 'text-zinc-300' },
     ],
   },
-  { tokens: [] },
   {
     tokens: [
       { text: '✓', cls: 'text-emerald-400' },
-      { text: ' routes.ts  — typed route map + route() helper', cls: 'text-zinc-500' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '✓', cls: 'text-emerald-400' },
-      { text: ' api.ts     — createApi(fetcher), nested + typed', cls: 'text-zinc-500' },
-    ],
-  },
-  {
-    tokens: [
-      { text: '✓', cls: 'text-emerald-400' },
-      { text: ' forms.ts   — validation schemas (zod/valibot/arktype)', cls: 'text-zinc-500' },
+      { text: ' routes.ts · api.ts · forms.ts regenerated', cls: 'text-zinc-500' },
     ],
   },
 ];
@@ -410,17 +458,24 @@ function WireItIn() {
             Wire it in
           </span>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            One command. That&apos;s the codegen.
+            Import the module. It runs itself.
           </h2>
           <p className="mt-4 text-fd-muted-foreground">
+            Add{' '}
+            <code className="rounded bg-fd-muted px-1.5 py-0.5 font-mono text-sm">
+              NestjsCodegenModule.forRoot()
+            </code>{' '}
+            to your{' '}
+            <code className="rounded bg-fd-muted px-1.5 py-0.5 font-mono text-sm">AppModule</code> and
+            the codegen starts with your dev server — the typed client regenerates as you edit your
+            controllers. No config file, no extra process.
+          </p>
+          <p className="mt-4 text-fd-muted-foreground">
+            Shipping? The same generator ships as a CLI — run{' '}
             <code className="rounded bg-fd-muted px-1.5 py-0.5 font-mono text-sm">
               nestjs-codegen codegen
             </code>{' '}
-            scans your controllers and writes the typed client. Add{' '}
-            <code className="rounded bg-fd-muted px-1.5 py-0.5 font-mono text-sm">--watch</code> and
-            it regenerates as you edit — no config required beyond your{' '}
-            <code className="rounded bg-fd-muted px-1.5 py-0.5 font-mono text-sm">contracts</code>{' '}
-            glob and an output dir.
+            in CI before you deploy so the committed client can never drift from your routes.
           </p>
           <Link
             href="/docs/getting-started"
@@ -431,25 +486,33 @@ function WireItIn() {
           </Link>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl shadow-black/30 ring-1 ring-white/5">
-          <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/70 px-4 py-2.5">
-            <Terminal className="size-3.5 text-zinc-500" />
-            <span className="font-mono text-xs text-zinc-500">terminal</span>
+        <div className="space-y-4">
+          <CodePane
+            title="app.module.ts"
+            badge="auto-starts in dev"
+            badgeCls="text-violet-400"
+            lines={MODULE_LINES}
+          />
+          <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl shadow-black/30 ring-1 ring-white/5">
+            <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/70 px-4 py-2.5">
+              <Terminal className="size-3.5 text-zinc-500" />
+              <span className="font-mono text-xs text-zinc-500">terminal</span>
+            </div>
+            <pre className="overflow-x-auto p-4 font-mono text-[13px] leading-relaxed">
+              <code>
+                {CI_LINES.map((line, lineIndex) => (
+                  <div key={lineIndex} className="whitespace-pre">
+                    {line.tokens.map((token, tokenIndex) => (
+                      <span key={tokenIndex} className={token.cls ?? 'text-zinc-300'}>
+                        {token.text}
+                      </span>
+                    ))}
+                    {line.tokens.length === 0 ? ' ' : null}
+                  </div>
+                ))}
+              </code>
+            </pre>
           </div>
-          <pre className="overflow-x-auto p-4 font-mono text-[13px] leading-relaxed">
-            <code>
-              {INIT_LINES.map((line, lineIndex) => (
-                <div key={lineIndex} className="whitespace-pre">
-                  {line.tokens.map((token, tokenIndex) => (
-                    <span key={tokenIndex} className={token.cls ?? 'text-zinc-300'}>
-                      {token.text}
-                    </span>
-                  ))}
-                  {line.tokens.length === 0 ? ' ' : null}
-                </div>
-              ))}
-            </code>
-          </pre>
         </div>
       </div>
     </section>

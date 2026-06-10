@@ -153,8 +153,11 @@ export async function loadConfig(cwd?: string): Promise<ResolvedConfig> {
     );
   }
 
-  if (!userConfig.pages || typeof userConfig.pages.glob !== 'string') {
-    throw new ConfigError(`Config validation failed: \`pages.glob\` is required (${configPath})`);
+  // `pages` is Inertia-only and optional — but if present, `glob` must be a string.
+  if (userConfig.pages && typeof userConfig.pages.glob !== 'string') {
+    throw new ConfigError(
+      `Config validation failed: \`pages.glob\` must be a string when \`pages\` is set (${configPath})`,
+    );
   }
 
   return applyDefaults(userConfig, resolvedCwd);

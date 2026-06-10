@@ -21,6 +21,11 @@
       "types": "./dist/nest/index.d.ts",
       "import": "./dist/nest/index.js",
       "require": "./dist/nest/index.cjs"
+    },
+    "./extension": {
+      "types": "./dist/extension/index.d.ts",
+      "import": "./dist/extension/index.js",
+      "require": "./dist/extension/index.cjs"
     }
   },
   "files": ["dist", "bin", "README.md", "CHANGELOG.md"],

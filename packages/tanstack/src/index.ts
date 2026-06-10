@@ -39,11 +39,16 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       const members: Record<string, string> = {
         queryKey: `() => ${req.queryKeyExpr}`,
       };
-      if (req.isGet) {
+      // Reads (GET or filter-search) get query helpers...
+      if (req.isQuery) {
         members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
-        // Cursor/page pagination over the same endpoint (adds `page` to the query).
+      }
+      // ...page pagination is GET-only (it appends `page` to the query string).
+      if (req.isGet) {
         members.infiniteQueryOptions = `() => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ${req.responseType}) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } })`;
-      } else {
+      }
+      // ...and any non-GET (incl. filter-search POSTs) also gets a mutation entry.
+      if (!req.isGet) {
         members.mutationOptions = `() => _mutationOptions({ mutationFn: (body: ${req.bodyType}) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { body }) })`;
       }
       return members;
@@ -52,10 +57,13 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
     imports(ctx: ExtensionContext): string[] {
       const routes = contracted(ctx);
       const hasGet = routes.some((r) => r.method === 'GET');
+      const hasQuery = routes.some(
+        (r) => r.method === 'GET' || r.contract?.contractSource.filterFields?.length,
+      );
       const hasMutation = routes.some((r) => r.method !== 'GET');
 
       const named: string[] = [];
-      if (hasGet) named.push('queryOptions as _queryOptions');
+      if (hasQuery) named.push('queryOptions as _queryOptions');
       if (hasGet) named.push('infiniteQueryOptions as _infiniteQueryOptions');
       if (hasMutation) named.push('mutationOptions as _mutationOptions');
       if (named.length === 0) return [];

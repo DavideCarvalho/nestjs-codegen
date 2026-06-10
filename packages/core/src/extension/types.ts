@@ -105,6 +105,9 @@ export interface RequestModel {
   routeName: string;
   method: 'get' | 'post' | 'put' | 'patch' | 'delete';
   isGet: boolean;
+  /** True for reads: a GET, or a filter-search route (has `filterFields`) even when POST.
+   *  Client layers use this (not `isGet`) to decide query vs mutation helpers. */
+  isQuery: boolean;
   hasParams: boolean;
   hasBody: boolean;
   /** Type of the leaf's `input` arg, e.g. `{ params: ...; query?: ... }` or `Record<string, never>`. */

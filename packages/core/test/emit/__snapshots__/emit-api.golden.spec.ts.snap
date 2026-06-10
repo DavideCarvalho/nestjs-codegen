@@ -254,6 +254,7 @@ export function createApi(fetcher: Fetcher) {
       search: (input?: Record<string, never>) => ({
         ...__req<ApiRouter["pipelineRuns"]["search"]['response']>(() => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {})),
         queryKey: () => ["pipelineRuns.search", input] as const,
+        queryOptions: () => _queryOptions({ queryKey: ["pipelineRuns.search", input] as const, queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
         mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["pipelineRuns"]["search"]['body']) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { body }) }),
       }),
     },
@@ -402,6 +403,7 @@ export function createApi(fetcher: Fetcher) {
       search: (input?: Record<string, never>) => ({
         ...__req<ApiRouter["pipelineRuns"]["search"]['response']>(() => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {})),
         queryKey: () => ["pipelineRuns.search", input] as const,
+        queryOptions: () => _queryOptions({ queryKey: ["pipelineRuns.search", input] as const, queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
         mutationOptions: () => _mutationOptions({ mutationFn: (body: ApiRouter["pipelineRuns"]["search"]['body']) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { body }) }),
       }),
     },

@@ -7,6 +7,7 @@ function req(over: Partial<RequestModel> = {}): RequestModel {
     routeName: 'users.show',
     method: 'get',
     isGet: true,
+    isQuery: true,
     hasParams: true,
     hasBody: false,
     inputType: "{ params: ApiRouter['users']['show']['params'] }",
@@ -68,17 +69,16 @@ describe('tanstackQuery', () => {
     expect(members.infiniteQueryOptions).toContain('initialPageParam: 1');
   });
 
-  it('mutation leaf gets queryKey/mutationOptions with a typed body (no infinite/query)', () => {
-    const r = req({ method: 'post', isGet: false, hasBody: true });
-    const members = tanstackQuery().apiClientLayer!.buildMembers(
-      'fetcher.post<R>(u, o)',
-      leaf(r),
-      {} as never,
-    );
+  it('plain mutation (POST, no filter) gets queryKey/mutationOptions only', () => {
+    const r = req({ method: 'post', isGet: false, isQuery: false, hasBody: true });
+    const members = tanstackQuery().apiClientLayer!.buildMembers('fetcher.post<R>(u, o)', leaf(r), {} as never);
     expect(Object.keys(members)).toEqual(['queryKey', 'mutationOptions']);
-    expect(members.mutationOptions).toContain(
-      "mutationFn: (body: ApiRouter['users']['show']['body'])",
-    );
+  });
+
+  it('filter-search (POST + filterFields) gets BOTH queryOptions and mutationOptions', () => {
+    const r = req({ method: 'post', isGet: false, isQuery: true, hasBody: true });
+    const members = tanstackQuery().apiClientLayer!.buildMembers('fetcher.post<R>(u, o)', leaf(r), {} as never);
+    expect(Object.keys(members)).toEqual(['queryKey', 'queryOptions', 'mutationOptions']);
   });
 
   it('imports only what the routes use, from the configured module', () => {
@@ -94,10 +94,10 @@ describe('tanstackQuery', () => {
     ]);
   });
 
-  it('is decoupled from filter — a filter-only POST imports only mutationOptions', () => {
+  it('a filter-search POST imports both queryOptions and mutationOptions', () => {
     const layer = tanstackQuery().apiClientLayer!;
     expect(layer.imports?.(ctxWith([{ method: 'POST', filterFields: ['status'] }]))).toEqual([
-      "import { mutationOptions as _mutationOptions } from '@tanstack/react-query';",
+      "import { queryOptions as _queryOptions, mutationOptions as _mutationOptions } from '@tanstack/react-query';",
     ]);
   });
 });

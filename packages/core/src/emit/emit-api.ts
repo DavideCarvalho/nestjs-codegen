@@ -333,6 +333,8 @@ function buildRequestModel(c: LeafEntry): RequestModel {
   const hasBody =
     !!c.contractSource.bodyRef ||
     (c.contractSource.body != null && c.contractSource.body !== 'never');
+  // A filter-search route is a read even when POST — treat it as a query too.
+  const isQuery = isGet || !!c.contractSource.filterFields?.length;
 
   const fields: string[] = [];
   if (withParams) fields.push(`params: ${TA}['params']`);
@@ -353,6 +355,7 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     routeName: c.name,
     method: m,
     isGet,
+    isQuery,
     hasParams: withParams,
     hasBody,
     inputType,

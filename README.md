@@ -1,82 +1,67 @@
 # nestjs-codegen
 
-Extensible codegen for **NestJS** — generate typed client artifacts from your
-controllers, contracts, and DTOs. Designed to work **with or without Inertia.js**.
-
-Three independent extension axes:
-
-1. **Pluggable validation** — emit [zod](https://zod.dev) (default),
-   [valibot](https://valibot.dev), or [arktype](https://arktype.io) from one
-   neutral schema IR, via adapters designed around the
-   [Standard Schema](https://standardschema.dev) spec.
-2. **Optional TanStack Query** — opt-in, framework-agnostic `queryOptions` /
-   `mutationOptions` from `@tanstack/query-core`.
-3. **Optional superjson** — opt-in transformer wiring that preserves rich types.
-
-The Inertia.js integration lives in
-[`nestjs-inertia`](https://github.com/DavideCarvalho/nestjs-inertia) as a preset
-that consumes this core.
+Codegen for **NestJS** — generates typed client artifacts (routes, typed API
+client, validation schemas) from your controllers, contracts, and DTOs. This is
+the full codegen extracted from
+[`nestjs-inertia`](https://github.com/DavideCarvalho/nestjs-inertia) into its own
+repo, with pluggable validation, optional TanStack Query / superjson, and built-in
+**nestjs-inertia** and **nestjs-filter** integrations.
 
 ## Packages
 
 | Package | Role |
 |---|---|
-| `@dudousxd/nestjs-codegen` | Core: schema IR, validation adapter system + bundled zod adapter, class-validator DTO discovery, and the `routes.ts`/`api.ts`/`forms.ts` emit pipeline. |
-| `@dudousxd/nestjs-codegen-valibot` | Valibot adapter. |
-| `@dudousxd/nestjs-codegen-arktype` | ArkType adapter. |
-| `@dudousxd/nestjs-client` | Framework-neutral runtime (typed fetcher + superjson hook) the generated `api.ts` imports in plain mode. |
+| `@dudousxd/nestjs-codegen` | The codegen: discovery (controllers, `defineContract`, DTOs, pages, shared props, filters), emitters (`routes.ts`/`api.ts`/`forms.ts`/`pages.d.ts`/`components.json`), config loader, watch mode, and the `codegen`/`init`/`doctor` CLI. Bundles the schema IR + zod adapter. |
+| `@dudousxd/nestjs-codegen-valibot` | Valibot validation adapter. |
+| `@dudousxd/nestjs-codegen-arktype` | ArkType validation adapter. |
+| `@dudousxd/nestjs-client` | Framework-neutral runtime (typed fetcher + superjson transformer hook) for generated `api.ts` in plain (non-Inertia) mode. |
 
-## Status
+## Features
 
-Extracted from `nestjs-inertia`'s codegen into this standalone repo. All five
-foundations plus end-to-end discovery and a CLI are implemented and tested (89 tests):
-
-- **Separate lib** — this repo, 4 packages.
-- **Pluggable validation** — neutral `SchemaNode` IR → zod / valibot / arktype adapters
-  (Standard-Schema-shaped interface; reproduces the original zod output byte-for-byte).
-- **Optional TanStack Query** — `query: true` emits framework-agnostic
-  `queryOptions`/`mutationOptions` from `@tanstack/query-core`.
+- **Pluggable validation** — a neutral `SchemaNode` IR with adapters for
+  [zod](https://zod.dev) (bundled), [valibot](https://valibot.dev), and
+  [arktype](https://arktype.io), designed around the
+  [Standard Schema](https://standardschema.dev) shape.
+- **Optional TanStack Query** — framework-agnostic `queryOptions`/`mutationOptions`.
 - **Optional superjson** — a `transformer` on the runtime fetcher round-trips rich
   types (Date, Map, …) end-to-end.
-- **nestjs-inertia integration** — `mutationClient: 'inertia'` emits Inertia router
-  visits for mutations while keeping typed GET reads.
-- **Discovery + CLI** — `@Controller` + verb decorators + `@Body`/`@Query` DTOs →
-  `RouteDescriptor[]`; the `nestjs-codegen generate` CLI runs discovery → emit.
-
-Next (productionization): richer discovery (cross-file response-type expansion,
-`defineContract`), watch mode, and an Inertia **preset package** in `nestjs-inertia`
-(pages/shared-props) that consumes this core.
+- **nestjs-inertia integration** — `pages.d.ts` + `components.json` + shared-props
+  discovery, and Inertia `router` mutations in `api.ts`.
+- **nestjs-filter integration** — `@FilterFor`/`@ApplyFilter` discovery emits
+  `TypedFilterQuery<…>` against `@dudousxd/nestjs-filter-client`.
 
 ## CLI
 
 ```bash
-nestjs-codegen generate \
-  --controllers "src/**/*.controller.ts" \
-  --out src/generated \
-  --query --transformer superjson
-# or: nestjs-codegen generate --config nestjs-codegen.config.mjs
+# one-shot generate (reads nestjs-inertia.config.ts)
+nestjs-codegen codegen
+nestjs-codegen codegen --watch     # regenerate on change
+nestjs-codegen init                # scaffold config + Inertia app
+nestjs-codegen doctor              # diagnose setup
 ```
 
 ## Programmatic
 
 ```ts
-import { runCodegen } from '@dudousxd/nestjs-codegen';
+import { defineConfig, loadConfig, generate, watch } from '@dudousxd/nestjs-codegen';
 
-await runCodegen({
-  controllers: ['src/**/*.controller.ts'],
-  outDir: 'src/generated',
-  validation: 'zod',     // or import { valibotAdapter } / { arktypeAdapter } and pass it
-  query: true,           // emit TanStack queryOptions/mutationOptions
-  transformer: 'superjson',
-  mutationClient: 'fetcher', // or 'inertia'
-});
+const config = await loadConfig(process.cwd());
+await generate(config /*, routes */);
+```
+
+Use a validation lib other than zod by passing the adapter instance:
+
+```ts
+import { valibotAdapter } from '@dudousxd/nestjs-codegen-valibot';
+// (wired via config — see docs/superpowers/specs)
 ```
 
 ## Development
 
 ```bash
 pnpm install
-pnpm test
+pnpm test        # 522 tests
 pnpm typecheck
 pnpm build
+pnpm lint
 ```

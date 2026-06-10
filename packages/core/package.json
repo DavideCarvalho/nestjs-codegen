@@ -28,12 +28,7 @@
       "require": "./dist/extension/index.cjs"
     }
   },
-  "files": [
-    "dist",
-    "bin",
-    "README.md",
-    "CHANGELOG.md"
-  ],
+  "files": ["dist", "bin", "README.md", "CHANGELOG.md"],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

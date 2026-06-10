@@ -2,7 +2,20 @@
 
 Status: Design (architecture overview + decomposition)
 Date: 2026-06-10
-Scope: `nestjs-inertia` monorepo — extract and generalize `packages/codegen`
+Scope: extract and generalize the codegen into a **standalone repo**, `~/personal/nestjs-codegen`
+
+> **Relocation note (2026-06-10):** this is now its own repository
+> (`~/personal/nestjs-codegen`), not a set of packages inside the `nestjs-inertia`
+> monorepo. The new repo owns the **generic core + validation adapters**;
+> `nestjs-inertia` keeps the **Inertia preset** (pages/shared-props/router mode) and
+> will consume the published `@dudousxd/nestjs-codegen`.
+>
+> **Implemented so far (sub-project #1 foundation):** `packages/core` with the
+> validation IR, `ValidationAdapter` + zod adapter, `resolveAdapter` registry, and
+> `extractSchemaFromDto` (class-validator → IR). Golden gate of 27 class-validator→zod
+> cases reproduces the previous emitter byte-for-byte; 47 tests + typecheck + build green.
+> Still to port: contract/route discovery, routes/api/forms emit, CLI, config, watch,
+> the query/superjson flags, and the valibot/arktype adapter packages.
 
 ## 0. Goal
 

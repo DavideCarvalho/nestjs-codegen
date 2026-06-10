@@ -29,7 +29,7 @@ that consumes this core.
 ## Status
 
 Extracted from `nestjs-inertia`'s codegen into this standalone repo. All five
-foundations are implemented and tested (83 tests):
+foundations plus end-to-end discovery and a CLI are implemented and tested (89 tests):
 
 - **Separate lib** — this repo, 4 packages.
 - **Pluggable validation** — neutral `SchemaNode` IR → zod / valibot / arktype adapters
@@ -40,18 +40,32 @@ foundations are implemented and tested (83 tests):
   types (Date, Map, …) end-to-end.
 - **nestjs-inertia integration** — `mutationClient: 'inertia'` emits Inertia router
   visits for mutations while keeping typed GET reads.
+- **Discovery + CLI** — `@Controller` + verb decorators + `@Body`/`@Query` DTOs →
+  `RouteDescriptor[]`; the `nestjs-codegen generate` CLI runs discovery → emit.
 
-Next: port the full NestJS controller/contract discovery (controllers → `RouteDescriptor[]`),
-the CLI/watch, and ship the Inertia preset package in `nestjs-inertia`.
+Next (productionization): richer discovery (cross-file response-type expansion,
+`defineContract`), watch mode, and an Inertia **preset package** in `nestjs-inertia`
+(pages/shared-props) that consumes this core.
 
-## Quick example
+## CLI
+
+```bash
+nestjs-codegen generate \
+  --controllers "src/**/*.controller.ts" \
+  --out src/generated \
+  --query --transformer superjson
+# or: nestjs-codegen generate --config nestjs-codegen.config.mjs
+```
+
+## Programmatic
 
 ```ts
-import { generate } from '@dudousxd/nestjs-codegen';
+import { runCodegen } from '@dudousxd/nestjs-codegen';
 
-await generate(routes, {
+await runCodegen({
+  controllers: ['src/**/*.controller.ts'],
   outDir: 'src/generated',
-  validation: 'zod',     // or import { valibotAdapter } / { arktypeAdapter }
+  validation: 'zod',     // or import { valibotAdapter } / { arktypeAdapter } and pass it
   query: true,           // emit TanStack queryOptions/mutationOptions
   transformer: 'superjson',
   mutationClient: 'fetcher', // or 'inertia'

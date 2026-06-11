@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { findAfterLastImport, insertImport, patchJsonFile } from './patch-utils.js';
 
 export interface RunInitOptions {
   cwd?: string;
@@ -253,25 +254,6 @@ export async function patchPackageJsonScripts(
 // ---------------------------------------------------------------------------
 
 /**
- * Find the position just after the last import statement in a file.
- * Handles files where the first line starts with `import` (no leading newline).
- */
-function findAfterLastImport(content: string): number {
-  // Try \nimport first (import not on the first line)
-  const lastImportIndex = content.lastIndexOf('\nimport ');
-  if (lastImportIndex !== -1) {
-    const endOfLine = content.indexOf('\n', lastImportIndex + 1);
-    return endOfLine !== -1 ? endOfLine + 1 : content.length;
-  }
-  // Fallback: import at the very start of the file
-  if (content.startsWith('import ')) {
-    const endOfLine = content.indexOf('\n');
-    return endOfLine !== -1 ? endOfLine + 1 : content.length;
-  }
-  return 0;
-}
-
-/**
  * Patch `src/app.module.ts` to add InertiaModule.forRoot() and HomeController.
  * Returns 'patched' | 'already' | 'skipped'
  */
@@ -290,12 +272,11 @@ export function patchAppModule(
 
   // --- InertiaModule ---
   if (!content.includes('InertiaModule')) {
-    const insertAt = findAfterLastImport(content);
-    if (insertAt > 0) {
-      content = `${content.slice(0, insertAt)}import { InertiaModule } from '@dudousxd/nestjs-inertia';\n${content.slice(insertAt)}`;
-    }
+    content = insertImport(content, "import { InertiaModule } from '@dudousxd/nestjs-inertia';");
 
-    // Ensure `resolve` from node:path is imported (needed for rootView)
+    // Ensure `resolve` from node:path is imported (needed for rootView).
+    // Inserted unconditionally (even at offset 0, prepending) — matches the
+    // original behaviour for files that have no other imports.
     if (!content.includes("from 'node:path'") && !content.includes('from "node:path"')) {
       const insertAt2 = findAfterLastImport(content);
       content = `${content.slice(0, insertAt2)}import { resolve } from 'node:path';\n${content.slice(insertAt2)}`;
@@ -313,10 +294,7 @@ export function patchAppModule(
 
   // --- HomeController ---
   if (!content.includes('HomeController')) {
-    const insertAt = findAfterLastImport(content);
-    if (insertAt > 0) {
-      content = `${content.slice(0, insertAt)}import { HomeController } from './home.controller';\n${content.slice(insertAt)}`;
-    }
+    content = insertImport(content, "import { HomeController } from './home.controller';");
 
     // Find `controllers: [` and insert after the opening bracket
     const controllersMatch = content.match(/controllers\s*:\s*\[/);
@@ -349,10 +327,10 @@ export function patchMainTs(filePath: string): 'patched' | 'already' | 'skipped'
   if (content.includes('setupInertiaVite')) return 'already';
 
   // Add import after the last import statement
-  const insertAt = findAfterLastImport(content);
-  if (insertAt > 0) {
-    content = `${content.slice(0, insertAt)}import { setupInertiaVite } from '@dudousxd/nestjs-inertia-vite';\n${content.slice(insertAt)}`;
-  }
+  content = insertImport(
+    content,
+    "import { setupInertiaVite } from '@dudousxd/nestjs-inertia-vite';",
+  );
 
   // Find NestFactory.create assignment line
   const createMatch = content.match(
@@ -652,24 +630,18 @@ export function patchTsconfigExclude(
   filename = 'tsconfig.json',
 ): 'patched' | 'already' | 'skipped' {
   const filePath = join(cwd, filename);
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, 'utf8');
-  } catch {
-    return 'skipped';
-  }
-
-  // Strip single-line comments for JSON.parse, but keep the original for rewrite
-  const stripped = raw.replace(/\/\/.*$/gm, '');
-  const json = JSON.parse(stripped) as Record<string, unknown>;
-  const exclude = (json.exclude ?? []) as string[];
-
-  if (exclude.includes(dir)) return 'already';
-
-  exclude.push(dir);
-  json.exclude = exclude;
-  writeFileSync(filePath, `${JSON.stringify(json, null, 2)}\n`, 'utf8');
-  return 'patched';
+  return patchJsonFile(
+    filePath,
+    (json) => {
+      const exclude = (json.exclude ?? []) as string[];
+      if (exclude.includes(dir)) return false;
+      exclude.push(dir);
+      json.exclude = exclude;
+      return true;
+    },
+    // Strip single-line comments before JSON.parse
+    (raw) => raw.replace(/\/\/.*$/gm, ''),
+  );
 }
 
 /**
@@ -678,67 +650,61 @@ export function patchTsconfigExclude(
  */
 export function patchNestCliJson(cwd: string, shellDir: string): 'patched' | 'already' | 'skipped' {
   const filePath = join(cwd, 'nest-cli.json');
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, 'utf8');
-  } catch {
-    return 'skipped';
-  }
+  return patchJsonFile(filePath, (json) => {
+    const compiler = (json.compilerOptions ?? {}) as Record<string, unknown>;
+    const assets = (compiler.assets ?? []) as Array<string | Record<string, unknown>>;
 
-  const json = JSON.parse(raw) as Record<string, unknown>;
-  const compiler = (json.compilerOptions ?? {}) as Record<string, unknown>;
-  const assets = (compiler.assets ?? []) as Array<string | Record<string, unknown>>;
+    const alreadyHas = assets.some((a) => {
+      if (typeof a === 'string') return a.includes(shellDir);
+      return String(a.include ?? '').includes(shellDir);
+    });
+    if (alreadyHas) return false;
 
-  const alreadyHas = assets.some((a) => {
-    if (typeof a === 'string') return a.includes(shellDir);
-    return String(a.include ?? '').includes(shellDir);
+    assets.push({
+      include: `../${shellDir}/**/*`,
+      outDir: `dist/${shellDir}`,
+      watchAssets: true,
+    });
+    compiler.assets = assets;
+    json.compilerOptions = compiler;
+    return true;
   });
-  if (alreadyHas) return 'already';
-
-  assets.push({
-    include: `../${shellDir}/**/*`,
-    outDir: `dist/${shellDir}`,
-    watchAssets: true,
-  });
-  compiler.assets = assets;
-  json.compilerOptions = compiler;
-  writeFileSync(filePath, `${JSON.stringify(json, null, 2)}\n`, 'utf8');
-  return 'patched';
 }
 
 // ---------------------------------------------------------------------------
-// Main entry
+// Main entry — ordered init steps + runner
 // ---------------------------------------------------------------------------
 
 /**
- * `nestjs-inertia init` — scaffold a full Inertia.js project in `cwd`.
- *
- * Idempotent: each file is only written if it does not already exist.
- * Smart patching: existing files are checked and patched where safe.
+ * Shared context threaded through every init step. Computed once up front so
+ * the steps stay pure functions of detected framework/engine + derived paths.
  */
-export async function runInit(opts: RunInitOptions = {}): Promise<void> {
-  const cwd = opts.cwd ?? process.cwd();
+interface InitContext {
+  opts: RunInitOptions;
+  cwd: string;
+  framework: Framework;
+  engine: TemplateEngine;
+  /** Shell file name inside inertia/ (e.g. `index.html`, `index.hbs`). */
+  shellFileName: string;
+  /** Entry-point extension (`tsx` for react, `ts` otherwise). */
+  entryExt: string;
+  /** Sample page extension (`tsx` | `vue` | `svelte`). */
+  pageExt: string;
+  /** Project-relative rootView path (e.g. `inertia/index.html`). */
+  rootView: string;
+  /** Top-level shell dir (e.g. `inertia`). */
+  shellDir: string;
+}
 
-  console.log(`\n${bold('nestjs-inertia init')}`);
+interface InitStep {
+  /** Human-readable label, logged by the runner before the step runs. */
+  label: string;
+  run: (ctx: InitContext) => void | Promise<void>;
+}
 
-  // 1. Detect (or ask for) framework
-  let framework = await detectFramework(cwd);
-  if (!framework) {
-    framework = await promptFramework();
-  }
-
-  // 2. Detect template engine
-  const engine = await detectTemplateEngine(cwd);
-
-  const engineLabel = engine === 'html' ? 'plain HTML' : engine;
-  const frameworkLabel = framework.charAt(0).toUpperCase() + framework.slice(1);
-  console.log(`\n  Detected: ${bold(`${frameworkLabel} + ${engineLabel}`)}`);
-
-  // 3. Scaffold files
-  const shellFileName =
-    engine === 'html' ? 'index.html' : `index.${engine === 'handlebars' ? 'hbs' : engine}`;
-  const entryExt = framework === 'react' ? 'tsx' : 'ts';
-  const pageExt = framework === 'react' ? 'tsx' : framework === 'vue' ? 'vue' : 'svelte';
+/** Scaffold config, d.ts, tsconfigs, shell, vite config, entry, page, controller. */
+async function scaffoldFiles(ctx: InitContext): Promise<void> {
+  const { cwd, framework, engine, shellFileName, entryExt, pageExt } = ctx;
 
   logSection('Scaffold files');
 
@@ -793,15 +759,11 @@ export async function runInit(opts: RunInitOptions = {}): Promise<void> {
     SAMPLE_CONTROLLER,
     'src/home.controller.ts',
   );
+}
 
-  // 4. Patch app.module.ts and main.ts
-  logSection('Patch existing files');
-
-  const rootView =
-    engine === 'html'
-      ? 'inertia/index.html'
-      : `inertia/index.${engine === 'handlebars' ? 'hbs' : engine}`;
-
+/** Patch src/app.module.ts (InertiaModule.forRoot + HomeController). */
+function patchServerAppModule(ctx: InitContext): void {
+  const { cwd, rootView } = ctx;
   const appModulePath = join(cwd, 'src', 'app.module.ts');
   const appModuleResult = patchAppModule(appModulePath, rootView);
   if (appModuleResult === 'patched') {
@@ -814,8 +776,11 @@ export async function runInit(opts: RunInitOptions = {}): Promise<void> {
   } else {
     logWarning('src/app.module.ts not found — add InertiaModule.forRoot() manually');
   }
+}
 
-  const mainTsPath = join(cwd, 'src', 'main.ts');
+/** Patch src/main.ts (setupInertiaVite after NestFactory.create). */
+function patchServerMainTs(ctx: InitContext): void {
+  const mainTsPath = join(ctx.cwd, 'src', 'main.ts');
   const mainTsResult = patchMainTs(mainTsPath);
   if (mainTsResult === 'patched') {
     logPatched('src/main.ts', 'added setupInertiaVite after NestFactory.create');
@@ -824,9 +789,13 @@ export async function runInit(opts: RunInitOptions = {}): Promise<void> {
   } else {
     logWarning('src/main.ts not found — add setupInertiaVite() manually');
   }
+}
+
+/** Patch nest-cli.json + both tsconfigs (exclude inertia/, then dist/). */
+function patchBuildConfigs(ctx: InitContext): void {
+  const { cwd, shellDir } = ctx;
 
   // Patch nest-cli.json so `nest build` copies the shell template into dist/
-  const shellDir = rootView.split('/')[0]!; // e.g. "inertia" from "inertia/index.html"
   const nestCliResult = patchNestCliJson(cwd, shellDir);
   if (nestCliResult === 'patched') {
     logPatched('nest-cli.json', `added asset copy for ${shellDir}/ → dist/${shellDir}/`);
@@ -852,6 +821,11 @@ export async function runInit(opts: RunInitOptions = {}): Promise<void> {
     }
     // 'skipped' = file doesn't exist, silently move on
   }
+}
+
+/** Patch .gitignore, then exclude dist/ from tsconfig.json. */
+async function patchGitignoreAndDist(ctx: InitContext): Promise<void> {
+  const { cwd } = ctx;
 
   await patchGitignore(join(cwd, '.gitignore'));
 
@@ -864,15 +838,21 @@ export async function runInit(opts: RunInitOptions = {}): Promise<void> {
   } else if (tsconfigDistResult === 'already') {
     console.log(`  ${cyan('→')} tsconfig.json ${dim('(dist/ already excluded, skipped)')}`);
   }
+}
 
-  // 5. Add build scripts to package.json
-  await patchPackageJsonScripts(cwd, {
+/** Add build:client / build:ssr / typecheck:inertia scripts to package.json. */
+async function scaffoldPackageScripts(ctx: InitContext): Promise<void> {
+  await patchPackageJsonScripts(ctx.cwd, {
     'build:client': 'vite build',
     'build:ssr': 'VITE_SSR=1 vite build --ssr',
     'typecheck:inertia': 'tsc --noEmit -p tsconfig.inertia.json',
   });
+}
 
-  // 6. Install missing deps
+/** Install the missing common + framework deps (unless skipInstall). */
+async function installMissingDeps(ctx: InitContext): Promise<void> {
+  const { cwd, framework, opts } = ctx;
+
   logSection('Install dependencies');
 
   const pkg = await readPackageJson(cwd);
@@ -911,6 +891,79 @@ export async function runInit(opts: RunInitOptions = {}): Promise<void> {
   if (!opts.skipInstall) {
     installDeps(pkgManager, depsToInstall, false);
     installDeps(pkgManager, devDepsToInstall, true);
+  }
+}
+
+/**
+ * Ordered list of init steps. The first patch step prints the "Patch existing
+ * files" section header so it appears exactly once, before the first patcher.
+ */
+const INIT_STEPS: InitStep[] = [
+  { label: 'scaffold files', run: scaffoldFiles },
+  {
+    label: 'patch app.module.ts',
+    run: (ctx) => {
+      logSection('Patch existing files');
+      patchServerAppModule(ctx);
+    },
+  },
+  { label: 'patch main.ts', run: patchServerMainTs },
+  { label: 'patch build configs', run: patchBuildConfigs },
+  { label: 'patch .gitignore + dist exclude', run: patchGitignoreAndDist },
+  { label: 'add package.json scripts', run: scaffoldPackageScripts },
+  { label: 'install dependencies', run: installMissingDeps },
+];
+
+/**
+ * `nestjs-inertia init` — scaffold a full Inertia.js project in `cwd`.
+ *
+ * Idempotent: each file is only written if it does not already exist.
+ * Smart patching: existing files are checked and patched where safe.
+ */
+export async function runInit(opts: RunInitOptions = {}): Promise<void> {
+  const cwd = opts.cwd ?? process.cwd();
+
+  console.log(`\n${bold('nestjs-inertia init')}`);
+
+  // 1. Detect (or ask for) framework
+  let framework = await detectFramework(cwd);
+  if (!framework) {
+    framework = await promptFramework();
+  }
+
+  // 2. Detect template engine
+  const engine = await detectTemplateEngine(cwd);
+
+  const engineLabel = engine === 'html' ? 'plain HTML' : engine;
+  const frameworkLabel = framework.charAt(0).toUpperCase() + framework.slice(1);
+  console.log(`\n  Detected: ${bold(`${frameworkLabel} + ${engineLabel}`)}`);
+
+  // 3. Derive the paths every step needs, build the shared context.
+  const shellFileName =
+    engine === 'html' ? 'index.html' : `index.${engine === 'handlebars' ? 'hbs' : engine}`;
+  const rootView =
+    engine === 'html'
+      ? 'inertia/index.html'
+      : `inertia/index.${engine === 'handlebars' ? 'hbs' : engine}`;
+  const ctx: InitContext = {
+    opts,
+    cwd,
+    framework,
+    engine,
+    shellFileName,
+    entryExt: framework === 'react' ? 'tsx' : 'ts',
+    pageExt: framework === 'react' ? 'tsx' : framework === 'vue' ? 'vue' : 'svelte',
+    rootView,
+    shellDir: rootView.split('/')[0]!, // e.g. "inertia" from "inertia/index.html"
+  };
+
+  // 4. Run the ordered steps. Each step's label is traced only when
+  //    NESTJS_CODEGEN_DEBUG is set, so default stdout stays byte-identical.
+  for (const step of INIT_STEPS) {
+    if (process.env.NESTJS_CODEGEN_DEBUG) {
+      console.log(dim(`  · ${step.label}`));
+    }
+    await step.run(ctx);
   }
 
   console.log(`\n${green('✓')} Setup complete! Run: ${bold('nest start --watch')}\n`);

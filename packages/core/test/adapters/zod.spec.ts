@@ -1,5 +1,5 @@
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { describe, expect, it } from 'vitest';
-import { zodAdapter } from '../../src/adapters/zod.js';
 import type { SchemaModule, SchemaNode } from '../../src/ir/schema-node.js';
 
 function render(root: SchemaNode, named = new Map<string, SchemaNode>(), warnings: string[] = []) {

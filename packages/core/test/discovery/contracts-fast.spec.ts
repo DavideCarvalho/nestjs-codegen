@@ -6,9 +6,9 @@
  */
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { Project } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
-import { zodAdapter } from '../../src/adapters/zod.js';
 import {
   deriveClassSegment,
   deriveRouteName,

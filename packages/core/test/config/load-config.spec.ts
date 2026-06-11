@@ -10,6 +10,22 @@ function makeTmpDir(): string {
   return join(tmpdir(), `nestjs-inertia-codegen-test-${randomUUID()}`);
 }
 
+/**
+ * Inline validation adapter for config fixtures. `validation` is now required, but
+ * importing the real `@dudousxd/nestjs-codegen-zod` package from an arbitrary tmpdir
+ * (loaded via tsx) does not resolve reliably — and these tests only care that a
+ * `validation` adapter is present and passes through `resolveAdapter` (which accepts
+ * any non-string object verbatim). A minimal adapter object suffices.
+ */
+const VALIDATION = `validation: {
+    name: 'zod',
+    acceptsRawZodSource: true,
+    importStatements: () => [],
+    render: () => '',
+    renderModule: (m) => ({ schemaText: '', namedNestedSchemas: new Map(), warnings: m.warnings }),
+    inferType: (c) => c,
+  },`;
+
 describe('loadConfig', () => {
   let tmpDir: string;
 
@@ -30,6 +46,7 @@ describe('loadConfig', () => {
       join(tmpDir, 'nestjs-inertia.config.ts'),
       `
 const config = {
+  ${VALIDATION}
   pages: {
     glob: 'inertia/pages/**/*.tsx',
   },
@@ -56,7 +73,7 @@ export default config;
   it('applies all defaults when user config is minimal', async () => {
     await writeFile(
       join(tmpDir, 'nestjs-inertia.config.ts'),
-      `export default { pages: { glob: 'src/pages/**/*.vue' } };`,
+      `export default { ${VALIDATION} pages: { glob: 'src/pages/**/*.vue' } };`,
     );
 
     const config = await loadConfig(tmpDir);
@@ -75,6 +92,7 @@ export default config;
     await writeFile(
       join(tmpDir, 'nestjs-inertia.config.ts'),
       `export default {
+  ${VALIDATION}
   pages: { glob: 'src/pages/**/*.vue' },
   contracts: { glob: 'app/**/*.controller.ts', debounceMs: 1000 },
 };`,
@@ -92,6 +110,7 @@ export default config;
       await writeFile(
         join(tmpDir, 'nestjs-inertia.config.ts'),
         `export default {
+  ${VALIDATION}
   pages: { glob: 'src/pages/**/*.vue' },
   app: { moduleEntry: 'src/app.module.ts', tsconfig: 'tsconfig.json' },
 };`,
@@ -105,6 +124,7 @@ export default config;
       await writeFile(
         join(tmpDir, 'nestjs-inertia.config.ts'),
         `export default {
+  ${VALIDATION}
   pages: { glob: 'src/pages/**/*.vue' },
   app: { moduleEntry: 'src/app.module.ts', tsconfig: '../../etc/tsconfig.json' },
 };`,
@@ -117,6 +137,7 @@ export default config;
       await writeFile(
         join(tmpDir, 'nestjs-inertia.config.ts'),
         `export default {
+  ${VALIDATION}
   pages: { glob: 'src/pages/**/*.vue' },
   app: { moduleEntry: 'src/app.module.ts', tsconfig: '/etc/tsconfig.json' },
 };`,
@@ -132,6 +153,7 @@ export default config;
       await writeFile(
         join(tmpDir, 'nestjs-inertia.config.ts'),
         `export default {
+  ${VALIDATION}
   pages: { glob: 'src/pages/**/*.vue' },
   app: { moduleEntry: 'src/app.module.ts' },
 };`,
@@ -145,6 +167,7 @@ export default config;
       await writeFile(
         join(tmpDir, 'nestjs-inertia.config.ts'),
         `export default {
+  ${VALIDATION}
   pages: { glob: 'src/pages/**/*.vue' },
   app: { moduleEntry: '../../etc/passwd' },
 };`,
@@ -157,6 +180,7 @@ export default config;
       await writeFile(
         join(tmpDir, 'nestjs-inertia.config.ts'),
         `export default {
+  ${VALIDATION}
   pages: { glob: 'src/pages/**/*.vue' },
   app: { moduleEntry: '/etc/passwd' },
 };`,

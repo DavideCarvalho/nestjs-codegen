@@ -27,6 +27,12 @@ export interface RenderedModule {
 export interface ValidationAdapter {
   /** 'zod' | 'valibot' | 'arktype'. */
   name: string;
+  /**
+   * When `true`, the emitter may pass raw zod source from `defineContract`
+   * (`bodyZodText`/`bodyZodRef`) through verbatim and emit a `z` import. Only the
+   * zod adapter sets this; any other adapter skips raw-zod sources with a warning.
+   */
+  acceptsRawZodSource?: boolean;
   /** Import lines required for any rendered text (e.g. `import { z } from 'zod'`). */
   importStatements(usage: AdapterUsage): string[];
   /** Render a single node to this lib's source text. */

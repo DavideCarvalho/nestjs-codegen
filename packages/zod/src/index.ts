@@ -101,6 +101,7 @@ function render(node: SchemaNode, ctx: RenderContext): string {
 
 export const zodAdapter: ValidationAdapter = {
   name: 'zod',
+  acceptsRawZodSource: true,
   importStatements(usage: AdapterUsage): string[] {
     return usage.used ? ["import { z } from 'zod';"] : [];
   },

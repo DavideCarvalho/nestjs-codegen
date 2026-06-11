@@ -24,7 +24,6 @@ export type {
   RenderContext,
   RenderedModule,
 } from './adapters/types.js';
-export { zodAdapter } from './adapters/zod.js';
 export { resolveAdapter } from './adapters/registry.js';
 export type { ValidationOption } from './adapters/registry.js';
 

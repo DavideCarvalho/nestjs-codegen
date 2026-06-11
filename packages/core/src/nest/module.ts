@@ -26,7 +26,14 @@ import { watch } from '../watch/watcher.js';
  * export class AppModule {}
  * ```
  */
-export interface CodegenModuleOptions extends UserConfig {
+export interface CodegenModuleOptions extends Omit<UserConfig, 'validation'> {
+  /**
+   * Validation adapter for emitted `forms.ts` schemas. Required at runtime to emit
+   * forms — pass `zodAdapter` from `@dudousxd/nestjs-codegen-zod` (or the valibot/
+   * arktype adapter). Typed optional only so `forRoot()` stays terse; if omitted,
+   * the watcher logs and skips rather than crashing app boot.
+   */
+  validation?: UserConfig['validation'];
   /**
    * Master switch for the boot-time watcher. When omitted, the watcher runs in every
    * environment EXCEPT production (`process.env.NODE_ENV === 'production'`) — codegen is a

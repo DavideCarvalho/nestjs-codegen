@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ResolvedConfig } from '../../src/config/types.js';
 import { watch } from '../../src/watch/watcher.js';
@@ -24,6 +25,7 @@ async function waitForCondition(
 
 function makeConfig(pagesDir: string, outDir: string, contractsGlob?: string): ResolvedConfig {
   return {
+    validation: zodAdapter,
     pages: {
       glob: '**/*.tsx',
       propsExport: 'ComponentProps',

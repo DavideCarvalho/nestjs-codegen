@@ -67,16 +67,32 @@ function assertInsideCwd(cwd: string, resolvedPath: string, fieldName: string): 
  * @param userConfig the raw user config (forRoot options minus module-only fields)
  * @param cwd project root used to resolve globs / outDir. Defaults to `process.cwd()`.
  */
-export function resolveConfig(userConfig: UserConfig, cwd?: string): ResolvedConfig {
+export function resolveConfig(userConfig: UserConfigInput, cwd?: string): ResolvedConfig {
   return applyDefaults(userConfig, cwd ?? process.cwd());
 }
+
+/**
+ * Loosened {@link UserConfig} where `validation` may be absent. Both config entry
+ * points accept this shape and enforce `validation` at runtime (it throws a clear
+ * {@link ConfigError} when missing) — letting callers like the Nest module pass
+ * partial options without a compile-time `validation` requirement.
+ */
+type UserConfigInput = Omit<UserConfig, 'validation'> & {
+  validation?: UserConfig['validation'];
+};
 
 /**
  * Input validation shared by both config entry points ({@link loadConfig} and
  * {@link resolveConfig}). Guards user-provided fields before defaults are applied so
  * the file path and the programmatic `forRoot()` path reject the same bad input.
  */
-function validateUserConfig(userConfig: UserConfig): void {
+function validateUserConfig(userConfig: UserConfigInput): void {
+  // `validation` is required — no adapter is bundled in core.
+  if (userConfig.validation == null) {
+    throw new ConfigError(
+      'validation adapter is required — install @dudousxd/nestjs-codegen-zod and pass zodAdapter, or use @dudousxd/nestjs-codegen-valibot / -arktype',
+    );
+  }
   // `pages` is Inertia-only and optional — but if present, `glob` must be a string.
   if (userConfig.pages && typeof userConfig.pages.glob !== 'string') {
     throw new ConfigError(
@@ -85,7 +101,7 @@ function validateUserConfig(userConfig: UserConfig): void {
   }
 }
 
-function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
+function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig {
   validateUserConfig(userConfig);
 
   const outDir = userConfig.codegen?.outDir
@@ -113,7 +129,8 @@ function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
 
   return {
     extensions: userConfig.extensions ?? [],
-    validation: resolveAdapter(userConfig.validation ?? 'zod'),
+    // Non-null: validateUserConfig() above throws when `validation` is absent.
+    validation: resolveAdapter(userConfig.validation as NonNullable<typeof userConfig.validation>),
     pages: userConfig.pages
       ? {
           glob: userConfig.pages.glob,

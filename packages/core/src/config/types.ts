@@ -11,11 +11,11 @@ export interface UserConfig {
    */
   extensions?: CodegenExtension[];
   /**
-   * Validation library for emitted `forms.ts` schemas. `'zod'` (bundled, default)
-   * or an imported adapter instance (`valibotAdapter`/`arktypeAdapter`).
-   * @default 'zod'
+   * Validation library for emitted `forms.ts` schemas. Required — pass an imported
+   * adapter instance, e.g. `zodAdapter` from `@dudousxd/nestjs-codegen-zod`, or
+   * `valibotAdapter`/`arktypeAdapter` from their packages.
    */
-  validation?: ValidationOption;
+  validation: ValidationOption;
   /** Inertia page discovery. Omit when you don't use Inertia. */
   pages?: {
     glob: string;

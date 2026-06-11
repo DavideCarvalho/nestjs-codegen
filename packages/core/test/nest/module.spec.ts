@@ -1,3 +1,4 @@
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the watcher so the module never spawns real chokidar watchers in tests.
@@ -87,6 +88,7 @@ describe('NestjsCodegenService lifecycle', () => {
   it('starts the watcher with a resolved config in dev', async () => {
     vi.stubEnv('NODE_ENV', 'development');
     const svc = new NestjsCodegenService({
+      validation: zodAdapter,
       contracts: { glob: 'src/**/*.controller.ts' },
       cwd: '/tmp',
     });
@@ -98,7 +100,7 @@ describe('NestjsCodegenService lifecycle', () => {
 
   it('closes the watcher on module destroy', async () => {
     vi.stubEnv('NODE_ENV', 'development');
-    const svc = new NestjsCodegenService({ cwd: '/tmp' });
+    const svc = new NestjsCodegenService({ validation: zodAdapter, cwd: '/tmp' });
     await svc.onApplicationBootstrap();
     await svc.onModuleDestroy();
     expect(closeMock).toHaveBeenCalledTimes(1);

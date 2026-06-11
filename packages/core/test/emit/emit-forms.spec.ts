@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { RouteDescriptor } from '../../src/discovery/types.js';
 import { emitForms } from '../../src/emit/emit-forms.js';
@@ -37,7 +38,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    const wrote = await emitForms(routes, outDir);
+    const wrote = await emitForms(routes, outDir, undefined, zodAdapter);
     expect(wrote).toBe(true);
 
     const out = await read();
@@ -75,7 +76,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     expect(out).toContain("import { loginContract } from './auth.controller';");
     expect(out).toContain('export const LoginBodySchema = loginContract.body;');
@@ -98,7 +99,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     expect(out).toContain(
       'export const ListQuerySchema = z.object({ page: z.coerce.number().optional() });',
@@ -139,7 +140,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     expect(out).toContain('export const AdminLoginBodySchema =');
     expect(out).toContain('export const AuthLoginBodySchema =');
@@ -158,7 +159,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    const wrote = await emitForms(routes, outDir);
+    const wrote = await emitForms(routes, outDir, undefined, zodAdapter);
     expect(wrote).toBe(false);
   });
 
@@ -179,11 +180,16 @@ describe('emitForms', () => {
         },
       },
     ];
-    const wrote = await emitForms(routes, outDir, {
-      enabled: false,
-      watch: 'src/**/*.dto.ts',
-      zodImport: 'zod',
-    });
+    const wrote = await emitForms(
+      routes,
+      outDir,
+      {
+        enabled: false,
+        watch: 'src/**/*.dto.ts',
+        zodImport: 'zod',
+      },
+      zodAdapter,
+    );
     expect(wrote).toBe(false);
   });
 
@@ -205,7 +211,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     expect(out).toContain('const AddressDtoSchema = z.object({ city: z.string() });');
     expect(out).toContain(
@@ -234,7 +240,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     expect(out).toContain('// warning: @IsStrongPassword is not translatable');
   });
@@ -279,7 +285,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     // The shared schema is declared once and referenced from both endpoints.
     expect(countConstDecl(out, 'ColumnFilterSchema')).toBe(1);
@@ -314,7 +320,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     // Degraded to a valid placeholder.
     expect(out).toContain(
@@ -361,7 +367,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     // Both distinct shapes survive under distinct names.
     expect(out).toContain('const ColumnFilterSchema = z.object({ field: z.string() });');
@@ -411,7 +417,7 @@ describe('emitForms', () => {
         },
       },
     ];
-    await emitForms(routes, outDir);
+    await emitForms(routes, outDir, undefined, zodAdapter);
     const out = await read();
     expect(out.indexOf('// a.create')).toBeLessThan(out.indexOf('// z.create'));
   });

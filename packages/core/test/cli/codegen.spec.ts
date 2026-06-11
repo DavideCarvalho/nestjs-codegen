@@ -7,6 +7,22 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Inline validation adapter for tmpdir config fixtures. `validation` is required,
+ * but importing the real `@dudousxd/nestjs-codegen-zod` package from an arbitrary
+ * tmpdir (loaded via tsx) does not resolve — and the CLI here only needs `validation`
+ * present (it passes through `resolveAdapter` verbatim). A minimal object suffices;
+ * these projects have no validatable bodies so `forms.ts` is never rendered.
+ */
+const VALIDATION = `validation: {
+    name: 'zod',
+    acceptsRawZodSource: true,
+    importStatements: () => [],
+    render: () => '',
+    renderModule: (m) => ({ schemaText: '', namedNestedSchemas: new Map(), warnings: m.warnings }),
+    inferType: (c) => c,
+  },`;
+
+/**
  * We import `run` directly from src/cli/main.ts and call it with a mocked cwd
  * (via process.chdir) so we don't need to compile the package first.
  * vitest.config uses pool: 'forks' so process.chdir is safe here.
@@ -36,7 +52,7 @@ async function setupProject(dir: string): Promise<void> {
   // Plain object export — no import needed, works from any cwd
   await writeFile(
     join(dir, 'nestjs-inertia.config.ts'),
-    `export default { pages: { glob: 'inertia/pages/**/*.tsx' } };\n`,
+    `export default { ${VALIDATION} pages: { glob: 'inertia/pages/**/*.tsx' } };\n`,
     'utf8',
   );
 }
@@ -66,6 +82,7 @@ describe('runCodegen one-shot route discovery', () => {
     await writeFile(
       join(tmpBase, 'nestjs-inertia.config.ts'),
       `export default {
+  ${VALIDATION}
   pages: { glob: 'inertia/pages/**/*.tsx' },
   contracts: { glob: 'src/**/*.controller.ts' },
 };\n`,

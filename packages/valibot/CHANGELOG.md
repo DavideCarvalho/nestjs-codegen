@@ -1,5 +1,12 @@
 # @dudousxd/nestjs-codegen-valibot
 
+## 0.3.0
+
+### Patch Changes
+
+- Updated dependencies [b0fcd58]
+  - @dudousxd/nestjs-codegen@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes

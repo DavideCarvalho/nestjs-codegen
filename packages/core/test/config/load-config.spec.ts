@@ -45,7 +45,7 @@ export default config;
     expect(config.pages.componentNameStrategy).toBe('relative-no-ext');
 
     // codegen defaults resolved as absolute paths
-    expect(config.codegen.outDir).toBe(join(tmpDir, '.nestjs-inertia'));
+    expect(config.codegen.outDir).toBe(join(tmpDir, '.nestjs-codegen'));
     expect(config.codegen.cwd).toBe(tmpDir);
   });
 
@@ -63,7 +63,7 @@ export default config;
 
     expect(config.pages.propsExport).toBe('ComponentProps');
     expect(config.pages.componentNameStrategy).toBe('relative-no-ext');
-    expect(config.codegen.outDir).toBe(join(tmpDir, '.nestjs-inertia'));
+    expect(config.codegen.outDir).toBe(join(tmpDir, '.nestjs-codegen'));
     expect(config.scopes).toEqual({});
     expect(config.app).toBeNull();
     // contracts defaults

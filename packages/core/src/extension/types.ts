@@ -57,16 +57,11 @@ export interface CodegenExtension {
   // ── single-slot hooks (at most one extension) ─────────────────────────────
 
   /**
-   * Claims **how** a single endpoint issues its request. When unset by every extension,
-   * the host falls back to the neutral fetcher transport. Example: the Inertia extension
-   * routes mutations through the Inertia router while GETs stay fetcher-typed.
-   */
-  apiTransport?: ApiTransport;
-
-  /**
-   * Claims **what** a leaf returns. When unset, a leaf is a bare callable returning a
-   * `Promise`. Example: the TanStack extension wraps each leaf into a handle exposing
-   * `{ fetch, queryKey, queryOptions | mutationOptions }`.
+   * Claims **what** a leaf returns and **how** it issues its request. At most one extension
+   * may claim it. When unset, a leaf is a bare awaitable callable backed by the neutral
+   * fetcher. Example: the TanStack extension wraps each leaf into a handle exposing
+   * `{ fetch, queryKey, queryOptions | mutationOptions }`, composing with the fetcher
+   * request the host passes in.
    */
   apiClientLayer?: ApiClientLayer;
 }
@@ -123,36 +118,27 @@ export interface RequestModel {
 }
 
 /**
- * Per-leaf model passed through the api.ts pipeline: transport → layer → member
- * contributors → render. `requestExpr` is set by the transport; `members`, when present,
- * flips the leaf from a bare callable to a handle.
+ * Per-leaf model passed through the api.ts pipeline: layer → member contributors → render.
+ * `requestExpr` is the host's neutral fetcher request; `members`, when present, flips the
+ * leaf from a bare callable to a handle.
  */
 export interface LeafModel {
   route: RouteDescriptor;
   request: RequestModel;
-  /** The expression that issues the request (set by the transport, default = fetcher). */
+  /** The expression that issues the request (the host's neutral fetcher call). */
   requestExpr: string;
   /** When present, the leaf renders as a handle exposing these members (ordered). */
   members?: Record<string, string>;
 }
 
 /**
- * Top-level `api.ts` imports + helpers a transport or layer depends on. Functions of the
- * context so they can be route-aware (e.g. only import `mutationOptions` when a mutation
- * exists). Imports are deduped by the host across all extensions.
+ * Top-level `api.ts` imports a client layer depends on. A function of the context so it can
+ * be route-aware (e.g. only import `mutationOptions` when a mutation exists). Imports are
+ * deduped by the host across all extensions.
  */
 export interface ApiModuleDeps {
   /** Raw import lines (e.g. `import { queryOptions as _q } from '@tanstack/react-query';`). */
   imports?(ctx: ExtensionContext): string[];
-  /** Module-level helper declarations the rendered expressions depend on. */
-  helpers?(ctx: ExtensionContext): string[];
-}
-
-/** Single-slot: decides how an endpoint issues its request. */
-export interface ApiTransport extends ApiModuleDeps {
-  name: string;
-  /** Render the expression that issues this endpoint's request (e.g. `fetcher.get<Res>(url, opts)`). */
-  renderRequest(leaf: LeafModel, ctx: ExtensionContext): string;
 }
 
 /** Single-slot: decides what a leaf returns (the handle members). */
@@ -164,6 +150,38 @@ export interface ApiClientLayer extends ApiModuleDeps {
    * Returning members flips the leaf from a bare callable to a handle.
    */
   buildMembers(requestExpr: string, leaf: LeafModel, ctx: ExtensionContext): Record<string, string>;
+}
+
+/**
+ * The four request-shape flags derived from a route's method + contract. Computed in ONE
+ * place ({@link requestShape}) and read by both the host emitter and client-layer
+ * extensions, so the "filter-search POST counts as a read" rule is encoded exactly once.
+ */
+export interface RequestShape {
+  /** The route is a `GET`. */
+  isGet: boolean;
+  /** True for reads: a GET, or a filter-search route (carries `filterFields`) even when POST.
+   *  Client layers use this (not `isGet`) to decide query vs mutation helpers. */
+  isQuery: boolean;
+  /** The route carries a body contract (a mutation payload). */
+  hasBody: boolean;
+  /** The route can take a query string — always for GET; a mutation may too (query + body). */
+  hasQuery: boolean;
+}
+
+/**
+ * Compute the {@link RequestShape} flags for a route from its method and contract. This is
+ * the SINGLE source of truth for these flags — `buildRequestModel`, the TanStack layer's
+ * `imports()`, and any other reader must call this rather than re-deriving. The
+ * "filter-search POST counts as a read" rule lives here and nowhere else.
+ */
+export function requestShape(route: RouteDescriptor): RequestShape {
+  const cs = route.contract?.contractSource;
+  const isGet = route.method.toUpperCase() === 'GET';
+  const isQuery = isGet || !!cs?.filterFields?.length;
+  const hasBody = !!cs?.bodyRef || (cs?.body != null && cs.body !== 'never');
+  const hasQuery = isGet || !!cs?.queryRef || (cs?.query != null && cs.query !== 'never');
+  return { isGet, isQuery, hasBody, hasQuery };
 }
 
 /** Identity helper for authoring extensions with full type inference. */

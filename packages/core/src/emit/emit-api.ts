@@ -8,9 +8,9 @@ import type {
   RouteDescriptor,
 } from '../discovery/types.js';
 import { mergeExclusive, resolveApiSlots } from '../extension/registry.js';
+import { requestShape } from '../extension/types.js';
 import type {
   ApiClientLayer,
-  ApiTransport,
   CodegenExtension,
   ExtensionContext,
   LeafModel,
@@ -22,8 +22,8 @@ import type {
  *
  * By default each leaf is a bare typed-fetch callable. Registered extensions shape the
  * output: an `apiClientLayer` (e.g. `@dudousxd/nestjs-codegen-tanstack`) turns leaves into
- * handles; an `apiTransport` changes how requests are issued; `apiMembers` add handle
- * members; `apiHeader` contributes top-level imports/statements.
+ * handles wrapping the neutral fetcher request; `apiMembers` add handle members; `apiHeader`
+ * contributes top-level imports/statements.
  */
 export interface ApiEmitOptions {
   fetcherImportPath?: string;
@@ -327,23 +327,13 @@ function emitRouterTypeBlock(
  * plugs into. Pure string-building; no I/O.
  */
 function buildRequestModel(c: LeafEntry): RequestModel {
-  const isGet = c.method.toUpperCase() === 'GET';
   const m = c.method.toLowerCase() as RequestModel['method'];
   const flat = JSON.stringify(c.name);
   const path = JSON.stringify(c.path);
   const TA = buildRouterTypeAccess(c.name);
   const withParams = hasPathParams(c.params);
-  const hasBody =
-    !!c.contractSource.bodyRef ||
-    (c.contractSource.body != null && c.contractSource.body !== 'never');
-  // A filter-search route is a read even when POST — treat it as a query too.
-  const isQuery = isGet || !!c.contractSource.filterFields?.length;
-  // A route "has a query" when it carries a query contract — GET always can take one;
-  // a mutation may too (query string alongside a body).
-  const hasQuery =
-    isGet ||
-    !!c.contractSource.queryRef ||
-    (c.contractSource.query != null && c.contractSource.query !== 'never');
+  // Request-shape flags ("filter-search POST counts as a read") computed in one place.
+  const { isGet, isQuery, hasBody, hasQuery } = requestShape(c.route);
 
   const fields: string[] = [];
   if (withParams) fields.push(`params: ${TA}['params']`);
@@ -375,10 +365,9 @@ function buildRequestModel(c: LeafEntry): RequestModel {
 }
 
 /**
- * The bundled default transport: a typed call on the injected `fetcher`. This is the
- * fallback when no extension claims `apiTransport`. Kept byte-identical to the legacy
- * `fetchExpr`. In Phase 3 the TanStack-specific layer below moves to a package; this
- * fetcher transport stays in core as the default.
+ * The neutral fetcher request: a typed call on the injected `fetcher`. Every leaf is built
+ * on this; a registered `apiClientLayer` wraps it (e.g. into a TanStack handle), otherwise
+ * the leaf is the bare awaitable callable.
  */
 function renderFetcherRequest(req: RequestModel): string {
   return `fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, ${req.optsExpr})`;
@@ -442,7 +431,6 @@ function renderLeaf(
 
 /** Resolved api.ts pipeline pieces, threaded through the recursive emit. */
 interface ApiPipeline {
-  transport?: ApiTransport;
   layer?: ApiClientLayer;
   memberExts: CodegenExtension[];
   ctx: ExtensionContext;
@@ -450,7 +438,7 @@ interface ApiPipeline {
 
 /**
  * Emit the nested `api` object body via the LeafModel pipeline:
- * build model → transport (default fetcher) → layer (when a client layer is registered)
+ * build model → neutral fetcher request → layer (when a client layer is registered)
  * → member contributors (bundled filter + extensions' apiMembers) → render. With no layer
  * a leaf is a bare typed-fetch callable; a layer flips it into a handle.
  */
@@ -470,10 +458,11 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiP
     const req = buildRequestModel(node);
     // Hand extension hooks the real, un-narrowed RouteDescriptor stored on the leaf —
     // no reconstruction or force-cast.
-    const leaf: LeafModel = { route: node.route, request: req, requestExpr: '' };
-    leaf.requestExpr = p.transport
-      ? p.transport.renderRequest(leaf, p.ctx)
-      : renderFetcherRequest(req);
+    const leaf: LeafModel = {
+      route: node.route,
+      request: req,
+      requestExpr: renderFetcherRequest(req),
+    };
 
     // Every leaf is an awaitable handle (the __req base). A client layer (TanStack) spreads
     // query/mutation helpers on top; extension apiMembers (e.g. nestjs-filter's filterQuery)
@@ -619,7 +608,7 @@ function buildApiFile(
 ): string {
   const fetcherImportPath = opts.fetcherImportPath;
   const extensions = opts.extensions ?? [];
-  const { transport, layer } = resolveApiSlots(extensions);
+  const { layer } = resolveApiSlots(extensions);
   const memberExts = extensions.filter((e) => e.apiMembers);
   const headerExts = extensions.filter((e) => e.apiHeader);
   const contracted = routes.filter((r) => r.contract);
@@ -672,9 +661,8 @@ function buildApiFile(
 
   const lines: string[] = ['// Generated by @dudousxd/nestjs-codegen. Do not edit.', ''];
 
-  // Extension-contributed module imports (transport + client layer + apiHeader), deduped
-  // and emitted in order. e.g. the TanStack layer emits its queryOptions/mutationOptions
-  // import here.
+  // Extension-contributed module imports (client layer + apiHeader), deduped and emitted
+  // in order. e.g. the TanStack layer emits its queryOptions/mutationOptions import here.
   const extImports: string[] = [];
   const seenImports = new Set<string>();
   const pushImport = (imp: string): void => {
@@ -682,7 +670,6 @@ function buildApiFile(
     seenImports.add(imp);
     extImports.push(imp);
   };
-  for (const imp of transport?.imports?.(ctx) ?? []) pushImport(imp);
   for (const imp of layer?.imports?.(ctx) ?? []) pushImport(imp);
   for (const ext of headerExts) {
     for (const imp of ext.apiHeader?.(ctx)?.imports ?? []) pushImport(imp);
@@ -781,7 +768,6 @@ function buildApiFile(
   lines.push('  return {');
   lines.push(
     ...emitApiObjectBlock(tree, 4, {
-      ...(transport ? { transport } : {}),
       ...(layer ? { layer } : {}),
       memberExts,
       ctx,

@@ -5,7 +5,7 @@ import type {
   LeafModel,
   RequestModel,
 } from '@dudousxd/nestjs-codegen/extension';
-import { defineExtension } from '@dudousxd/nestjs-codegen/extension';
+import { defineExtension, requestShape } from '@dudousxd/nestjs-codegen/extension';
 
 export interface TanstackQueryOptions {
   /**
@@ -57,12 +57,10 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
     },
 
     imports(ctx: ExtensionContext): string[] {
-      const routes = contracted(ctx);
-      const hasGet = routes.some((r) => r.method === 'GET');
-      const hasQuery = routes.some(
-        (r) => r.method === 'GET' || r.contract?.contractSource.filterFields?.length,
-      );
-      const hasMutation = routes.some((r) => r.method !== 'GET');
+      const shapes = contracted(ctx).map(requestShape);
+      const hasGet = shapes.some((s) => s.isGet);
+      const hasQuery = shapes.some((s) => s.isQuery);
+      const hasMutation = shapes.some((s) => !s.isGet);
 
       const named: string[] = [];
       if (hasQuery) named.push('queryOptions as _queryOptions');

@@ -75,7 +75,7 @@ describe('runCodegen one-shot route discovery', () => {
     const { runCodegen } = await import('../../src/cli/codegen.js');
     await runCodegen({ watch: false, cwd: tmpBase });
 
-    const routesContent = await readFile(join(tmpBase, '.nestjs-inertia', 'routes.ts'), 'utf8');
+    const routesContent = await readFile(join(tmpBase, '.nestjs-codegen', 'routes.ts'), 'utf8');
     expect(routesContent).toContain('users.list');
   });
 });
@@ -91,7 +91,7 @@ describe('run codegen', () => {
     expect(code).toBe(0);
 
     // Assert output artifact exists
-    await expect(access(join(tmpBase, '.nestjs-inertia', 'pages.d.ts'))).resolves.toBeUndefined();
+    await expect(access(join(tmpBase, '.nestjs-codegen', 'pages.d.ts'))).resolves.toBeUndefined();
   });
 
   it('exits with 1 when config is missing', async () => {

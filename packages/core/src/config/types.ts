@@ -7,7 +7,7 @@ export interface UserConfig {
    * Codegen extensions, applied in order. Each may augment the route IR
    * (`transformRoutes`), contribute extra output files (`emitFiles`), and — once a
    * client layer is active — shape `api.ts`. Registered explicitly, e.g.
-   * `extensions: [nestjsInertiaCodegen(), tanstackQuery()]`.
+   * `extensions: [clientCodegen(), tanstackQuery()]`.
    */
   extensions?: CodegenExtension[];
   /**
@@ -43,11 +43,11 @@ export interface UserConfig {
    * This lets users configure baseUrl, headers, plugins (e.g. superjson).
    *
    * @example
-   * // nestjs-inertia.config.ts
+   * // nestjs-codegen.config.ts
    * fetcher: { importPath: '~/lib/api' }
    *
-   * // inertia/lib/api.ts
-   * import { createFetcher } from '@dudousxd/nestjs-inertia-client';
+   * // src/lib/api.ts
+   * import { createFetcher } from '@dudousxd/nestjs-client';
    * export const fetcher = createFetcher({ baseUrl: '/api' });
    */
   fetcher?: {

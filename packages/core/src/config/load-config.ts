@@ -90,7 +90,7 @@ function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
 
   const outDir = userConfig.codegen?.outDir
     ? resolveAbsolute(cwd, userConfig.codegen.outDir)
-    : join(cwd, '.nestjs-inertia');
+    : join(cwd, '.nestjs-codegen');
 
   const resolvedCwd = userConfig.codegen?.cwd ? resolveAbsolute(cwd, userConfig.codegen.cwd) : cwd;
 

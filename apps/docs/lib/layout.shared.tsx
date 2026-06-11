@@ -1,4 +1,5 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
+import { librarySwitcher } from './libraries';
 
 const GITHUB_URL = 'https://github.com/DavideCarvalho/nestjs-codegen';
 
@@ -18,7 +19,10 @@ function NavTitle() {
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: { title: <NavTitle /> },
-    links: [{ text: 'Documentation', url: '/docs', active: 'nested-url' }],
+    links: [
+      { text: 'Documentation', url: '/docs', active: 'nested-url' },
+      librarySwitcher('nestjs-codegen'),
+    ],
     githubUrl: GITHUB_URL,
   };
 }

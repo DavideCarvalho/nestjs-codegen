@@ -1,9 +1,9 @@
 ---
-"@dudousxd/nestjs-codegen": major
+"@dudousxd/nestjs-codegen": minor
 ---
 
-BREAKING: `validation` is now a required config field, and the zod adapter is no
-longer bundled in core.
+BREAKING (0.x minor bump): `validation` is now a required config field, and the zod
+adapter is no longer bundled in core.
 
 - `zodAdapter` is no longer exported from `@dudousxd/nestjs-codegen`. Import it from
   `@dudousxd/nestjs-codegen-zod` instead.

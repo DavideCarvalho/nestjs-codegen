@@ -7,7 +7,9 @@
  * Gracefully returns null when the share function cannot be analyzed
  * (complex logic, service calls, external references, etc.).
  */
-import { Node, type Project, type SourceFile, SyntaxKind } from 'ts-morph';
+import { join } from 'node:path';
+import { Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
+import type { ResolvedConfig } from '../config/types.js';
 
 export interface SharedPropsResult {
   /** The TS type string — either `Awaited<ReturnType<typeof import('...').fn>>` or an inline object type */
@@ -48,6 +50,42 @@ export function discoverSharedProps(
     return extractShareType(initializer, sourceFile, project);
   } catch {
     // Graceful fallback — any unexpected error means we skip shared props typing
+    return null;
+  }
+}
+
+/**
+ * Resolve shared props from a fully-resolved config: builds the ts-morph Project,
+ * resolves the tsconfig path, and analyzes the module entry's `forRoot({ share })`.
+ *
+ * Returns null (swallowing any error) when `app.moduleEntry` isn't configured or
+ * anything goes wrong while constructing the project / discovering props — preserving
+ * the previous graceful-fallback behavior of the generate orchestrator.
+ */
+export function discoverSharedPropsFromConfig(config: ResolvedConfig): SharedPropsResult | null {
+  if (!config.app?.moduleEntry) return null;
+
+  try {
+    const tsconfigPath = config.app.tsconfig ?? join(config.codegen.cwd, 'tsconfig.json');
+    let project: Project;
+    try {
+      project = new Project({
+        tsConfigFilePath: tsconfigPath,
+        skipAddingFilesFromTsConfig: true,
+        skipLoadingLibFiles: true,
+        skipFileDependencyResolution: true,
+      });
+    } catch {
+      project = new Project({
+        skipAddingFilesFromTsConfig: true,
+        skipLoadingLibFiles: true,
+        skipFileDependencyResolution: true,
+        compilerOptions: { allowJs: true, strict: false },
+      });
+    }
+    return discoverSharedProps(project, config.app.moduleEntry);
+  } catch {
+    // Graceful fallback — skip shared props if anything goes wrong
     return null;
   }
 }

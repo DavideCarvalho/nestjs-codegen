@@ -19,8 +19,9 @@ import type { TypeRef } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Discovery context — scoped per `discoverContractsFast` invocation.
-// Saved/restored around each call to prevent cross-call corruption when
-// concurrent invocations occur (e.g. in tests or overlapping watcher triggers).
+// Keyed off the per-invocation ts-morph `Project` (every resolution entry point
+// already threads it), so concurrent invocations each get an isolated context
+// with no shared mutable global to corrupt.
 // ---------------------------------------------------------------------------
 
 export interface DiscoveryContext {
@@ -28,26 +29,18 @@ export interface DiscoveryContext {
   tsconfigPaths: Record<string, string[]> | null;
 }
 
-let _ctx: DiscoveryContext = { projectRoot: '', tsconfigPaths: null };
+const _EMPTY_CTX: DiscoveryContext = { projectRoot: '', tsconfigPaths: null };
 
-/** Set the active discovery context, returning the previous one for restoration. */
-export function setDiscoveryContext(ctx: DiscoveryContext): DiscoveryContext {
-  const prev = _ctx;
-  _ctx = ctx;
-  return prev;
+/** Per-`Project` discovery context. WeakMap so contexts die with their project. */
+const _ctxByProject = new WeakMap<Project, DiscoveryContext>();
+
+/** Associate a discovery context with a `Project` for the duration of a run. */
+export function setDiscoveryContext(project: Project, ctx: DiscoveryContext): void {
+  _ctxByProject.set(project, ctx);
 }
 
-/** Restore a previously-saved discovery context. */
-export function restoreDiscoveryContext(ctx: DiscoveryContext): void {
-  _ctx = ctx;
-}
-
-// Backwards-compatible accessors for internal functions
-function _projectRoot(): string {
-  return _ctx.projectRoot;
-}
-function _tsconfigPaths(): Record<string, string[]> | null {
-  return _ctx.tsconfigPaths;
+function _ctxFor(project: Project): DiscoveryContext {
+  return _ctxByProject.get(project) ?? _EMPTY_CTX;
 }
 
 const _debug = process.env.NESTJS_INERTIA_DEBUG === '1';
@@ -122,7 +115,7 @@ export function findTypeInFile(name: string, file: SourceFile): TypeDeclResult |
 export function resolveModuleSpecifier(
   moduleSpecifier: string,
   sourceFile: SourceFile,
-  _project: Project,
+  project: Project,
 ): string[] {
   if (moduleSpecifier.startsWith('.')) {
     const dir = dirname(sourceFile.getFilePath());
@@ -137,8 +130,9 @@ export function resolveModuleSpecifier(
   }
 
   // Try to resolve path aliases via tsconfig paths (read directly from JSON)
-  const baseUrl = _projectRoot();
-  const tsconfigPaths = _tsconfigPaths();
+  const ctx = _ctxFor(project);
+  const baseUrl = ctx.projectRoot;
+  const tsconfigPaths = ctx.tsconfigPaths;
 
   dbg(
     'resolveModuleSpecifier',
@@ -406,7 +400,7 @@ export function resolveTypeRef(
       !moduleSpecifier.startsWith('/')
     ) {
       // Only honour it if not a tsconfig path alias (those resolve to files).
-      const tsconfigPaths = _tsconfigPaths();
+      const tsconfigPaths = _ctxFor(project).tsconfigPaths;
       const isAlias =
         tsconfigPaths != null &&
         Object.keys(tsconfigPaths).some((p) => {

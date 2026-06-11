@@ -14,7 +14,6 @@ function req(over: Partial<RequestModel> = {}): RequestModel {
     urlExpr: "route('users.show', input?.params) || '/api/users/:id'",
     optsExpr: '{ query: input?.query as Record<string, unknown> | undefined }',
     responseType: "ApiRouter['users']['show']['response']",
-    bodyType: "ApiRouter['users']['show']['body']",
     queryKeyExpr: '["users.show", input] as const',
     ...over,
   };

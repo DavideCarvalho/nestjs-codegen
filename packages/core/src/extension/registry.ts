@@ -56,6 +56,37 @@ export function resolveApiSlots(extensions: readonly CodegenExtension[]): {
 const CORE_FILES = new Set(['routes.ts', 'api.ts', 'forms.ts', 'index.d.ts', 'pages.d.ts']);
 
 /**
+ * Merge `incoming` entries into `target`, enforcing a single exclusive-ownership policy:
+ * a key already present in `target` is a collision and throws, naming the prior owner and
+ * the offending extension. One collision format for every "two extensions both produced X"
+ * case (api members, emitted files, …).
+ *
+ * @param target  the accumulating map (key → value); also records ownership.
+ * @param incoming entries the current extension contributes.
+ * @param owner    the extension currently contributing (named in the error).
+ * @param describe builds the error message given the colliding key, prior owner and owner.
+ */
+export function mergeExclusive<V>(
+  target: Map<string, { value: V; owner: string }>,
+  incoming: Iterable<readonly [string, V]>,
+  {
+    owner,
+    describe,
+  }: {
+    owner: string;
+    describe: (key: string, prevOwner: string, owner: string) => string;
+  },
+): void {
+  for (const [key, value] of incoming) {
+    const prev = target.get(key);
+    if (prev !== undefined) {
+      throw new CodegenError(describe(key, prev.owner, owner));
+    }
+    target.set(key, { value, owner });
+  }
+}
+
+/**
  * Build the shared {@link ExtensionContext}. `routes` is exposed as a live getter so an
  * extension reading `ctx.routes` during `emitFiles` sees the post-`transformRoutes` IR.
  * The ts-morph `Project` is created lazily on first `project()` call (extensions that do
@@ -116,7 +147,7 @@ export async function collectEmittedFiles(
   ctx: ExtensionContext,
 ): Promise<EmittedFile[]> {
   const files: EmittedFile[] = [];
-  const owners = new Map<string, string>();
+  const owners = new Map<string, { value: EmittedFile; owner: string }>();
 
   for (const ext of extensions) {
     if (!ext.emitFiles) continue;
@@ -128,13 +159,11 @@ export async function collectEmittedFiles(
           `Extension "${ext.name}" tried to emit the core-owned file "${file.path}". Core files (${[...CORE_FILES].join(', ')}) cannot be produced by extensions.`,
         );
       }
-      const prev = owners.get(key);
-      if (prev !== undefined) {
-        throw new CodegenError(
-          `Output file "${file.path}" is emitted by both "${prev}" and "${ext.name}". Two extensions cannot write the same file.`,
-        );
-      }
-      owners.set(key, ext.name);
+      mergeExclusive(owners, [[key, file] as const], {
+        owner: ext.name,
+        describe: (_key, prevOwner, owner) =>
+          `Output file "${file.path}" is emitted by both "${prevOwner}" and "${owner}". Two extensions cannot write the same file.`,
+      });
       files.push(file);
     }
   }

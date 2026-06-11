@@ -7,7 +7,7 @@ import type {
   FilterFieldType,
   RouteDescriptor,
 } from '../discovery/types.js';
-import { resolveApiSlots } from '../extension/registry.js';
+import { mergeExclusive, resolveApiSlots } from '../extension/registry.js';
 import type {
   ApiClientLayer,
   ApiTransport,
@@ -107,6 +107,9 @@ type LeafEntry = {
   // `ContractSource` (`contractSource: r.contract.contractSource`), so the extra
   // form/zod fields it carries are simply unused here.
   contractSource: ContractSource;
+  // The real, un-narrowed `RouteDescriptor` this leaf was built from. Stored so
+  // extension hooks receive the canonical route with no reconstruction/force-cast.
+  route: RouteDescriptor;
 };
 
 type BranchEntry = {
@@ -367,7 +370,6 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     urlExpr,
     optsExpr,
     responseType: `${TA}['response']`,
-    bodyType: `${TA}['body']`,
     queryKeyExpr: `[${flat}, input] as const`,
   };
 }
@@ -466,38 +468,36 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiP
     }
 
     const req = buildRequestModel(node);
-    // Reconstruct a RouteDescriptor view for extension hooks. The tree only retains the
-    // LeafEntry (params typed as `source: string`), so cast back to the canonical shape.
-    const route = {
-      method: node.method,
-      path: node.path,
-      name: node.name,
-      params: node.params,
-      contract: { contractSource: node.contractSource },
-      ...(node.controllerRef ? { controllerRef: node.controllerRef } : {}),
-    } as unknown as RouteDescriptor;
-    const leaf: LeafModel = { route, request: req, requestExpr: '' };
+    // Hand extension hooks the real, un-narrowed RouteDescriptor stored on the leaf —
+    // no reconstruction or force-cast.
+    const leaf: LeafModel = { route: node.route, request: req, requestExpr: '' };
     leaf.requestExpr = p.transport
       ? p.transport.renderRequest(leaf, p.ctx)
       : renderFetcherRequest(req);
 
     // Every leaf is an awaitable handle (the __req base). A client layer (TanStack) spreads
     // query/mutation helpers on top; extension apiMembers (e.g. nestjs-filter's filterQuery)
-    // add further members. Member-name collisions across extensions are an error.
-    const members: Record<string, string> = {};
-    if (p.layer) Object.assign(members, p.layer.buildMembers(leaf.requestExpr, leaf, p.ctx));
+    // add further members. Member-name collisions across extensions are an error — enforced
+    // by the same exclusive-ownership policy as file collisions.
+    const owned = new Map<string, { value: string; owner: string }>();
+    if (p.layer) {
+      mergeExclusive(owned, Object.entries(p.layer.buildMembers(leaf.requestExpr, leaf, p.ctx)), {
+        owner: p.layer.name,
+        describe: (name, prevOwner, owner) =>
+          `api member "${name}" on route "${req.routeName}" is contributed by more than one extension (conflict between "${prevOwner}" and "${owner}").`,
+      });
+    }
     for (const ext of p.memberExts) {
       const extra = ext.apiMembers?.(leaf, p.ctx);
       if (!extra) continue;
-      for (const [name, value] of Object.entries(extra)) {
-        if (name in members) {
-          throw new Error(
-            `api member "${name}" on route "${req.routeName}" is contributed by more than one extension (conflict at "${ext.name}").`,
-          );
-        }
-        members[name] = value;
-      }
+      mergeExclusive(owned, Object.entries(extra), {
+        owner: ext.name,
+        describe: (name, prevOwner, owner) =>
+          `api member "${name}" on route "${req.routeName}" is contributed by more than one extension (conflict between "${prevOwner}" and "${owner}").`,
+      });
     }
+    const members: Record<string, string> = {};
+    for (const [name, { value }] of owned) members[name] = value;
 
     lines.push(...renderLeaf(pad, objKey, req, leaf.requestExpr, members));
   }
@@ -513,6 +513,100 @@ function buildRouterTypeAccess(name: string): string {
   const segments = splitName(name);
   return `ApiRouter${segments.map((s) => `[${JSON.stringify(s)}]`).join('')}`;
 }
+
+// ---------------------------------------------------------------------------
+// Static api.ts text blocks
+// ---------------------------------------------------------------------------
+//
+// These are pure constants — the same bytes in every emitted api.ts — so they
+// live here as module-level templates rather than being assembled line-by-line
+// inside `buildApiFile`. `RESOLVER_HELPERS` + `ROUTE_NAMESPACE` + `PATH_NAMESPACE`
+// are the populated form (resolver-backed). `EMPTY_*` are the no-routes form,
+// where there is nothing to resolve so the namespaces collapse to `never` stubs
+// and the resolver helpers are omitted entirely. The two forms are intentionally
+// distinct text (the empty `Request` is a one-liner, the populated one is not),
+// so they are separate constants rather than one parameterised template.
+
+/** Recursive resolver helpers (`_RouterAt`/`ResolveByName`/`_LeafValues`/`ResolveByPath`). */
+const RESOLVER_HELPERS: readonly string[] = [
+  // --- Recursive helper type _RouterAt: walks nested ApiRouter by dot-path ---
+  'type _RouterAt<R, P extends string> = P extends `${infer Head}.${infer Tail}`',
+  '  ? Head extends keyof R ? _RouterAt<R[Head], Tail> : never',
+  '  : P extends keyof R ? R[P] : never;',
+  '',
+  // --- ResolveByName: resolve a field from a dot-path name ---
+  'type ResolveByName<K extends string, Field extends string> = _RouterAt<ApiRouter, K> extends infer R ? Field extends keyof R ? R[Field] : never : never;',
+  '',
+  // --- ResolveByPath: scan all leaves for matching method + url ---
+  // Flattens ApiRouter recursively and finds the entry whose method === M and url === U.
+  'type _LeafValues<T> = T extends { method: string; url: string }',
+  '  ? T',
+  '  : T extends object ? _LeafValues<T[keyof T]> : never;',
+  '',
+  'type ResolveByPath<M extends string, U extends string, Field extends string> = _LeafValues<ApiRouter> extends infer L',
+  '  ? L extends { method: M; url: U }',
+  '    ? Field extends keyof L ? L[Field] : never',
+  '    : never',
+  '  : never;',
+  '',
+];
+
+/** Populated `Route` namespace — resolves fields by dot-path name. */
+const ROUTE_NAMESPACE: readonly string[] = [
+  'export namespace Route {',
+  '  export type Response<K extends string> = ResolveByName<K, "response">;',
+  '  export type Body<K extends string> = ResolveByName<K, "body">;',
+  '  export type Query<K extends string> = ResolveByName<K, "query">;',
+  '  export type Params<K extends string> = ResolveByName<K, "params">;',
+  '  export type Error<K extends string> = ResolveByName<K, "error">;',
+  '  export type FilterFields<K extends string> = ResolveByName<K, "filterFields">;',
+  '  export type Request<K extends string> = {',
+  '    body: Body<K>;',
+  '    query: Query<K>;',
+  '    params: Params<K>;',
+  '  };',
+  '}',
+  '',
+];
+
+/** Populated `Path` namespace — resolves fields by method + url. */
+const PATH_NAMESPACE: readonly string[] = [
+  'export namespace Path {',
+  '  export type Response<M extends string, U extends string> = ResolveByPath<M, U, "response">;',
+  '  export type Body<M extends string, U extends string> = ResolveByPath<M, U, "body">;',
+  '  export type Query<M extends string, U extends string> = ResolveByPath<M, U, "query">;',
+  '  export type Params<M extends string, U extends string> = ResolveByPath<M, U, "params">;',
+  '  export type Error<M extends string, U extends string> = ResolveByPath<M, U, "error">;',
+  '  export type FilterFields<M extends string, U extends string> = ResolveByPath<M, U, "filterFields">;',
+  '}',
+  '',
+];
+
+/** Empty-routes form: nothing to resolve, so every namespace member is `never`. */
+const EMPTY_ROUTE_NAMESPACE: readonly string[] = [
+  'export namespace Route {',
+  '  export type Response<K extends string> = never;',
+  '  export type Body<K extends string> = never;',
+  '  export type Query<K extends string> = never;',
+  '  export type Params<K extends string> = never;',
+  '  export type Error<K extends string> = never;',
+  '  export type FilterFields<K extends string> = never;',
+  '  export type Request<K extends string> = { body: never; query: never; params: never };',
+  '}',
+  '',
+];
+
+const EMPTY_PATH_NAMESPACE: readonly string[] = [
+  'export namespace Path {',
+  '  export type Response<M extends string, U extends string> = never;',
+  '  export type Body<M extends string, U extends string> = never;',
+  '  export type Query<M extends string, U extends string> = never;',
+  '  export type Params<M extends string, U extends string> = never;',
+  '  export type Error<M extends string, U extends string> = never;',
+  '  export type FilterFields<M extends string, U extends string> = never;',
+  '}',
+  '',
+];
 
 // ---------------------------------------------------------------------------
 // Main builder
@@ -644,27 +738,8 @@ function buildApiFile(
     lines.push('}');
     lines.push('export type Api = ReturnType<typeof createApi>;');
     lines.push('');
-    lines.push('export namespace Route {');
-    lines.push('  export type Response<K extends string> = never;');
-    lines.push('  export type Body<K extends string> = never;');
-    lines.push('  export type Query<K extends string> = never;');
-    lines.push('  export type Params<K extends string> = never;');
-    lines.push('  export type Error<K extends string> = never;');
-    lines.push('  export type FilterFields<K extends string> = never;');
-    lines.push(
-      '  export type Request<K extends string> = { body: never; query: never; params: never };',
-    );
-    lines.push('}');
-    lines.push('');
-    lines.push('export namespace Path {');
-    lines.push('  export type Response<M extends string, U extends string> = never;');
-    lines.push('  export type Body<M extends string, U extends string> = never;');
-    lines.push('  export type Query<M extends string, U extends string> = never;');
-    lines.push('  export type Params<M extends string, U extends string> = never;');
-    lines.push('  export type Error<M extends string, U extends string> = never;');
-    lines.push('  export type FilterFields<M extends string, U extends string> = never;');
-    lines.push('}');
-    lines.push('');
+    lines.push(...EMPTY_ROUTE_NAMESPACE);
+    lines.push(...EMPTY_PATH_NAMESPACE);
     return lines.join('\n');
   }
 
@@ -687,6 +762,7 @@ function buildApiFile(
       params: r.params,
       controllerRef: r.controllerRef,
       contractSource: c.contractSource,
+      route: r,
     };
     insertIntoTree(tree, segments, leaf, name);
   }
@@ -717,71 +793,9 @@ function buildApiFile(
   lines.push('export type Api = ReturnType<typeof createApi>;');
   lines.push('');
 
-  // --- Recursive helper type _RouterAt: walks nested ApiRouter by dot-path ---
-  lines.push('type _RouterAt<R, P extends string> = P extends `${infer Head}.${infer Tail}`');
-  lines.push('  ? Head extends keyof R ? _RouterAt<R[Head], Tail> : never');
-  lines.push('  : P extends keyof R ? R[P] : never;');
-  lines.push('');
-
-  // --- ResolveByName: resolve a field from a dot-path name ---
-  lines.push(
-    'type ResolveByName<K extends string, Field extends string> = _RouterAt<ApiRouter, K> extends infer R ? Field extends keyof R ? R[Field] : never : never;',
-  );
-  lines.push('');
-
-  // --- ResolveByPath: scan all leaves for matching method + url ---
-  // Flattens ApiRouter recursively and finds the entry whose method === M and url === U.
-  lines.push('type _LeafValues<T> = T extends { method: string; url: string }');
-  lines.push('  ? T');
-  lines.push('  : T extends object ? _LeafValues<T[keyof T]> : never;');
-  lines.push('');
-  lines.push(
-    'type ResolveByPath<M extends string, U extends string, Field extends string> = _LeafValues<ApiRouter> extends infer L',
-  );
-  lines.push('  ? L extends { method: M; url: U }');
-  lines.push('    ? Field extends keyof L ? L[Field] : never');
-  lines.push('    : never');
-  lines.push('  : never;');
-  lines.push('');
-
-  // --- Route namespace ---
-  lines.push('export namespace Route {');
-  lines.push('  export type Response<K extends string> = ResolveByName<K, "response">;');
-  lines.push('  export type Body<K extends string> = ResolveByName<K, "body">;');
-  lines.push('  export type Query<K extends string> = ResolveByName<K, "query">;');
-  lines.push('  export type Params<K extends string> = ResolveByName<K, "params">;');
-  lines.push('  export type Error<K extends string> = ResolveByName<K, "error">;');
-  lines.push('  export type FilterFields<K extends string> = ResolveByName<K, "filterFields">;');
-  lines.push('  export type Request<K extends string> = {');
-  lines.push('    body: Body<K>;');
-  lines.push('    query: Query<K>;');
-  lines.push('    params: Params<K>;');
-  lines.push('  };');
-  lines.push('}');
-  lines.push('');
-
-  // --- Path namespace ---
-  lines.push('export namespace Path {');
-  lines.push(
-    '  export type Response<M extends string, U extends string> = ResolveByPath<M, U, "response">;',
-  );
-  lines.push(
-    '  export type Body<M extends string, U extends string> = ResolveByPath<M, U, "body">;',
-  );
-  lines.push(
-    '  export type Query<M extends string, U extends string> = ResolveByPath<M, U, "query">;',
-  );
-  lines.push(
-    '  export type Params<M extends string, U extends string> = ResolveByPath<M, U, "params">;',
-  );
-  lines.push(
-    '  export type Error<M extends string, U extends string> = ResolveByPath<M, U, "error">;',
-  );
-  lines.push(
-    '  export type FilterFields<M extends string, U extends string> = ResolveByPath<M, U, "filterFields">;',
-  );
-  lines.push('}');
-  lines.push('');
+  lines.push(...RESOLVER_HELPERS);
+  lines.push(...ROUTE_NAMESPACE);
+  lines.push(...PATH_NAMESPACE);
 
   // Extension-contributed top-level statements (e.g. the Inertia extension's navigate()).
   for (const ext of headerExts) {

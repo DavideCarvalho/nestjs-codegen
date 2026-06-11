@@ -71,7 +71,23 @@ export function resolveConfig(userConfig: UserConfig, cwd?: string): ResolvedCon
   return applyDefaults(userConfig, cwd ?? process.cwd());
 }
 
+/**
+ * Input validation shared by both config entry points ({@link loadConfig} and
+ * {@link resolveConfig}). Guards user-provided fields before defaults are applied so
+ * the file path and the programmatic `forRoot()` path reject the same bad input.
+ */
+function validateUserConfig(userConfig: UserConfig): void {
+  // `pages` is Inertia-only and optional — but if present, `glob` must be a string.
+  if (userConfig.pages && typeof userConfig.pages.glob !== 'string') {
+    throw new ConfigError(
+      'Config validation failed: `pages.glob` must be a string when `pages` is set',
+    );
+  }
+}
+
 function applyDefaults(userConfig: UserConfig, cwd: string): ResolvedConfig {
+  validateUserConfig(userConfig);
+
   const outDir = userConfig.codegen?.outDir
     ? resolveAbsolute(cwd, userConfig.codegen.outDir)
     : join(cwd, '.nestjs-inertia');
@@ -161,13 +177,6 @@ export async function loadConfig(cwd?: string): Promise<ResolvedConfig> {
   if (!userConfig || typeof userConfig !== 'object') {
     throw new ConfigError(
       `Config file must have a default export. Did you forget \`export default defineConfig({...})\`? (${configPath})`,
-    );
-  }
-
-  // `pages` is Inertia-only and optional — but if present, `glob` must be a string.
-  if (userConfig.pages && typeof userConfig.pages.glob !== 'string') {
-    throw new ConfigError(
-      `Config validation failed: \`pages.glob\` must be a string when \`pages\` is set (${configPath})`,
     );
   }
 

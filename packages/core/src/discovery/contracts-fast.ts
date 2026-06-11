@@ -23,7 +23,6 @@ import {
   loadTsconfigPaths,
   resolveImportedType,
   resolveTypeRef,
-  restoreDiscoveryContext,
   setDiscoveryContext,
 } from './type-ref-resolution.js';
 import type { FilterFieldType, RouteDescriptor, TypeRef } from './types.js';
@@ -80,19 +79,15 @@ export async function discoverContractsFast(
 
   const routes: RouteDescriptor[] = [];
 
-  // Save previous context and set current (prevents cross-call corruption)
-  const prevCtx = setDiscoveryContext({
+  // Bind the discovery context to this invocation's Project. Each call owns its
+  // own Project, so concurrent callers never share or corrupt context.
+  setDiscoveryContext(project, {
     projectRoot: cwd,
     tsconfigPaths: loadTsconfigPaths(tsconfigPath),
   });
 
-  try {
-    for (const sourceFile of project.getSourceFiles()) {
-      routes.push(...extractFromSourceFile(sourceFile, project));
-    }
-  } finally {
-    // Restore previous context so concurrent callers are not affected
-    restoreDiscoveryContext(prevCtx);
+  for (const sourceFile of project.getSourceFiles()) {
+    routes.push(...extractFromSourceFile(sourceFile, project));
   }
 
   return routes;

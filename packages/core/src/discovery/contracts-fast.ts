@@ -15,7 +15,6 @@ import {
   type TypeNode,
 } from 'ts-morph';
 import { extractSchemaFromDto } from './dto-to-ir.js';
-import { extractZodFromDto } from './dto-to-zod.js';
 import { extractApplyFilterInfo } from './filter-for.js';
 import {
   type TypeDeclResult,
@@ -727,9 +726,6 @@ export function extractDtoContract(
   filterFields?: string[] | null;
   filterFieldTypes?: FilterFieldType[] | null;
   filterSource?: 'body' | 'query' | null;
-  bodyZodText?: string | null;
-  queryZodText?: string | null;
-  formNestedSchemas?: Record<string, string> | null;
   formWarnings?: string[];
   bodySchema?: import('../ir/schema-node.js').SchemaModule | null;
   querySchema?: import('../ir/schema-node.js').SchemaModule | null;
@@ -818,33 +814,24 @@ export function extractDtoContract(
     }
   }
 
-  // ── Synthesize form zod schemas from class-validator DTOs (Path B) ────────
+  // ── Synthesize the neutral validation IR from class-validator DTOs (Path B) ─
   // Resolve the @Body()/@Query() param to a class declaration and translate its
-  // decorators. A defineContract schema always wins, so this only runs on the
-  // plain-verb path where no contract schema is present.
-  let bodyZodText: string | null = null;
-  let queryZodText: string | null = null;
-  // Neutral IR for class-validator DTOs, so emit-forms can render via any adapter.
+  // decorators into the neutral IR, which emit-forms renders via any adapter
+  // (zod included). A defineContract schema always wins, so this only runs on
+  // the plain-verb path where no contract schema is present.
   let bodySchema: import('../ir/schema-node.js').SchemaModule | null = null;
   let querySchema: import('../ir/schema-node.js').SchemaModule | null = null;
-  const formNested: Record<string, string> = {};
   const formWarnings: string[] = [];
 
   const bodyClass = resolveParamClass(method, 'Body', sourceFile, project);
   if (bodyClass) {
-    const result = extractZodFromDto(bodyClass.decl, bodyClass.file, project);
-    bodyZodText = result.schemaText;
-    for (const [k, v] of result.namedNestedSchemas) formNested[k] = v;
-    formWarnings.push(...result.warnings);
     bodySchema = extractSchemaFromDto(bodyClass.decl, bodyClass.file, project);
+    formWarnings.push(...bodySchema.warnings);
   }
   const queryClass = resolveParamClass(method, 'Query', sourceFile, project);
   if (queryClass) {
-    const result = extractZodFromDto(queryClass.decl, queryClass.file, project);
-    queryZodText = result.schemaText;
-    for (const [k, v] of result.namedNestedSchemas) formNested[k] = v;
-    formWarnings.push(...result.warnings);
     querySchema = extractSchemaFromDto(queryClass.decl, queryClass.file, project);
+    formWarnings.push(...querySchema.warnings);
   }
 
   return {
@@ -858,9 +845,6 @@ export function extractDtoContract(
     filterFields: filterInfo?.fieldNames ?? null,
     filterFieldTypes: filterInfo?.fieldTypes ?? null,
     filterSource: filterInfo?.source ?? null,
-    bodyZodText,
-    queryZodText,
-    formNestedSchemas: Object.keys(formNested).length > 0 ? formNested : null,
     formWarnings,
     bodySchema,
     querySchema,
@@ -1119,9 +1103,6 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
               filterFields: dtoContract?.filterFields ?? null,
               filterFieldTypes: dtoContract?.filterFieldTypes ?? null,
               filterSource: dtoContract?.filterSource ?? null,
-              bodyZodText: dtoContract?.bodyZodText ?? null,
-              queryZodText: dtoContract?.queryZodText ?? null,
-              formNestedSchemas: dtoContract?.formNestedSchemas ?? null,
               formWarnings: dtoContract?.formWarnings ?? [],
               bodySchema: dtoContract?.bodySchema ?? null,
               querySchema: dtoContract?.querySchema ?? null,

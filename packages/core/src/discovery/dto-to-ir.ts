@@ -3,9 +3,9 @@
  * {@link SchemaModule} IR. Reads decorator names + literal args via ts-morph — it
  * never imports class-validator at runtime. A `ValidationAdapter` renders the IR.
  *
- * This is the structural successor of `dto-to-zod.ts`: same control flow,
- * recursion guard, and warnings, but it emits `SchemaNode` values instead of zod
- * text. The zod adapter reproduces the previous output byte-for-byte.
+ * This is the sole DTO translator: it emits neutral `SchemaNode` IR (replacing
+ * the former `dto-to-zod.ts` text path). A `ValidationAdapter` renders the IR;
+ * the bundled zod adapter reproduces the original zod-text output byte-for-byte.
  */
 import {
   type ClassDeclaration,

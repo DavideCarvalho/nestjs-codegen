@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Project } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
+import { zodAdapter } from '../../src/adapters/zod.js';
 import {
   deriveClassSegment,
   deriveRouteName,
@@ -175,7 +176,7 @@ describe('discoverContractsFast — form zod capture (Path A)', () => {
 });
 
 describe('discoverContractsFast — class-validator DTO synthesis (Path B)', () => {
-  it('synthesizes bodyZodText + nested schemas from a decorated DTO class', async () => {
+  it('synthesizes the neutral IR from a decorated DTO class (rendered byte-for-byte by zod)', async () => {
     const routes = await discoverContractsFast({
       cwd: fixturesDir,
       glob: 'forms-dto.controller.ts',
@@ -184,10 +185,18 @@ describe('discoverContractsFast — class-validator DTO synthesis (Path B)', () 
     const register = routes.find((r) => r.name === 'accountForms.register');
     expect(register).toBeDefined();
     const cs = register!.contract!.contractSource;
-    expect(cs.bodyZodText).toContain('email: z.string().email()');
-    expect(cs.bodyZodText).toContain('password: z.string().min(8)');
-    expect(cs.bodyZodText).toContain('address: AddressDtoSchema');
-    expect(cs.formNestedSchemas?.AddressDtoSchema).toBe('z.object({ city: z.string() })');
+    // Path B now produces the neutral IR only; no zod text on the contract source.
+    expect(cs.bodyZodText ?? null).toBeNull();
+    expect(cs.bodySchema).toBeTruthy();
+
+    // The zod adapter reproduces the previous synthesized text byte-for-byte.
+    const rendered = zodAdapter.renderModule(cs.bodySchema!);
+    expect(rendered.schemaText).toContain('email: z.string().email()');
+    expect(rendered.schemaText).toContain('password: z.string().min(8)');
+    expect(rendered.schemaText).toContain('address: AddressDtoSchema');
+    expect(rendered.namedNestedSchemas.get('AddressDtoSchema')).toBe(
+      'z.object({ city: z.string() })',
+    );
   });
 });
 

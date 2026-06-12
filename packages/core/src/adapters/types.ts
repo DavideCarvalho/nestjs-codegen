@@ -9,6 +9,12 @@ export interface AdapterUsage {
 export interface RenderContext {
   /** Hoisted named schemas being emitted alongside the root. */
   named: Map<string, SchemaNode>;
+  /**
+   * Name of the hoisted schema currently being rendered, when rendering a named
+   * schema's own body. Lets an adapter express a self-reference specially (e.g.
+   * arktype's `this` keyword). Absent when rendering the root.
+   */
+  selfName?: string;
 }
 
 export interface RenderedModule {
@@ -16,6 +22,20 @@ export interface RenderedModule {
   schemaText: string;
   /** name → schema source text, hoisted above the parent. */
   namedNestedSchemas: Map<string, string>;
+  /**
+   * name → hoisted TS `type` alias *body* for a recursive schema (e.g.
+   * `"{ field?: string; and?: Array<ColumnFilter> }"`), emitted as
+   * `type <TypeName> = <body>;` above the const. The alias name is derived from
+   * the schema name. Absent for adapters/schemas that don't need it (arktype,
+   * non-recursive schemas).
+   */
+  namedTypeAliases?: Map<string, string>;
+  /**
+   * name → const type annotation for a recursive schema (e.g.
+   * `"z.ZodType<ColumnFilter>"`), emitted as `const <name>: <annotation> = ...`
+   * to break the implicit-any self-reference cycle.
+   */
+  namedAnnotations?: Map<string, string>;
   warnings: string[];
 }
 

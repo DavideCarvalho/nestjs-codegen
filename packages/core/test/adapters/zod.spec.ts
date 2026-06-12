@@ -88,4 +88,48 @@ describe('zodAdapter', () => {
     expect(zodAdapter.importStatements({ used: true })).toEqual(["import { z } from 'zod';"]);
     expect(zodAdapter.importStatements({ used: false })).toEqual([]);
   });
+
+  it('recursive named schema → z.lazy + hoisted type alias + ZodType annotation', () => {
+    const named = new Map<string, SchemaNode>([
+      [
+        'ColumnFilterSchema',
+        obj([
+          { key: 'field', value: { kind: 'optional', inner: { kind: 'string', checks: [] } } },
+          {
+            key: 'and',
+            value: {
+              kind: 'optional',
+              inner: { kind: 'array', element: { kind: 'lazyRef', name: 'ColumnFilterSchema' } },
+            },
+          },
+        ]),
+      ],
+    ]);
+    const mod: SchemaModule = {
+      root: obj([{ key: 'filter', value: { kind: 'ref', name: 'ColumnFilterSchema' } }]),
+      named,
+      warnings: [],
+      recursive: new Set(['ColumnFilterSchema']),
+    };
+    const out = zodAdapter.renderModule(mod);
+    expect(out.namedNestedSchemas.get('ColumnFilterSchema')).toBe(
+      'z.object({ field: z.string().optional(), and: z.array(z.lazy(() => ColumnFilterSchema)).optional() })',
+    );
+    expect(out.namedTypeAliases?.get('ColumnFilterSchema')).toBe(
+      'type ColumnFilter = { field?: string; and?: Array<ColumnFilter> }',
+    );
+    expect(out.namedAnnotations?.get('ColumnFilterSchema')).toBe('z.ZodType<ColumnFilter>');
+  });
+
+  it('non-recursive named schema carries no alias/annotation', () => {
+    const named = new Map<string, SchemaNode>([
+      ['AddressSchema', obj([{ key: 'city', value: { kind: 'string', checks: [] } }])],
+    ]);
+    const out = render(
+      obj([{ key: 'address', value: { kind: 'ref', name: 'AddressSchema' } }]),
+      named,
+    );
+    expect(out.namedTypeAliases?.size ?? 0).toBe(0);
+    expect(out.namedAnnotations?.size ?? 0).toBe(0);
+  });
 });

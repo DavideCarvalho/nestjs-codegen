@@ -57,4 +57,12 @@ export interface SchemaModule {
   root: SchemaNode;
   named: Map<string, SchemaNode>;
   warnings: string[];
+  /**
+   * Names (keys of {@link named}) that are genuinely self/mutually recursive,
+   * i.e. reachable from themselves through a `lazyRef` back-edge. Adapters use
+   * this to break the TypeScript inference cycle (annotated const + hoisted
+   * structural type for zod/valibot; `this`/degrade for arktype). Absent or
+   * empty means no recursion.
+   */
+  recursive?: Set<string>;
 }

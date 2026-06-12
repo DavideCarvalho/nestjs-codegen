@@ -116,4 +116,21 @@ describe('valibotAdapter — end-to-end from class-validator DTO', () => {
     expect(out.schemaText).toBe('v.object({ address: AddressSchema })');
     expect(out.namedNestedSchemas.get('AddressSchema')).toBe('v.object({ city: v.string() })');
   });
+
+  it('recursive DTO → v.lazy + hoisted type alias + GenericSchema annotation', () => {
+    const out = dtoToValibot(
+      `class ColumnFilter {
+         @IsString() @IsOptional() field?: string;
+         @ValidateNested({ each: true }) @Type(() => ColumnFilter) @IsOptional() and?: ColumnFilter[];
+       }
+       class Dto { @ValidateNested() @Type(() => ColumnFilter) filter!: ColumnFilter; }`,
+    );
+    expect(out.namedNestedSchemas.get('ColumnFilterSchema')).toBe(
+      'v.object({ field: v.optional(v.string()), and: v.optional(v.array(v.lazy(() => ColumnFilterSchema))) })',
+    );
+    expect(out.namedTypeAliases?.get('ColumnFilterSchema')).toBe(
+      'type ColumnFilter = { field?: string; and?: Array<ColumnFilter> }',
+    );
+    expect(out.namedAnnotations?.get('ColumnFilterSchema')).toBe('v.GenericSchema<ColumnFilter>');
+  });
 });

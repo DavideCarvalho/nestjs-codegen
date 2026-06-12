@@ -76,13 +76,12 @@ export function extractSchemaFromDto(
     depth: 0,
   };
   const root = buildObject(classDecl, sourceFile, ctx);
-  // Recursive schemas cannot be hoisted as a plain `const X = (... X ...)` without
-  // a type annotation. Degrade any self-referential nested schema to a neutral
-  // `unknown` placeholder; each adapter renders its own lib's `unknown` + comment.
-  for (const schemaName of ctx.recursiveSchemas) {
-    ctx.named.set(schemaName, { kind: 'unknown', note: 'recursive type — not expanded' });
-  }
-  return { root, named: ctx.named, warnings: ctx.warnings };
+  // Recursive named schemas keep their real (self-referential) shape; the
+  // recursion site carries a `lazyRef` back-edge. Each adapter breaks the
+  // TypeScript inference cycle in its own way (annotated const + hoisted
+  // structural type for zod/valibot, `this` for arktype). The set of genuinely
+  // recursive names is surfaced so adapters know which consts need that.
+  return { root, named: ctx.named, warnings: ctx.warnings, recursive: ctx.recursiveSchemas };
 }
 
 // ---------------------------------------------------------------------------
@@ -292,18 +291,33 @@ function buildNestedReference(
   fromFile: SourceFile,
   ctx: BuildContext,
 ): SchemaNode {
-  // Recursion guard FIRST.
-  if (ctx.visiting.has(className) || ctx.depth >= 8) {
+  // Genuine recursion guard FIRST: the class is already on the build stack, so
+  // this is a self/mutual reference. Emit a `lazyRef` back-edge to the named
+  // schema reserved by the outer frame and mark it recursive — adapters keep the
+  // real shape and break the inference cycle themselves.
+  if (ctx.visiting.has(className)) {
     const reserved = ctx.emittedClasses.get(className) ?? aliasFor(className, ctx);
     ctx.emittedClasses.set(className, reserved);
     ctx.recursiveSchemas.add(reserved);
     if (!ctx.warnedDecorators.has(`recursive:${reserved}`)) {
       ctx.warnedDecorators.add(`recursive:${reserved}`);
-      const msg = `${className} is a recursive type and was not expanded; the generated schema uses unknown for it.`;
+      const msg = `${className} is a recursive type; the generated schema validates it via a lazy self-reference.`;
       ctx.warnings.push(msg);
       console.warn(`[nestjs-codegen] ${msg}`);
     }
     return { kind: 'lazyRef', name: reserved };
+  }
+
+  // Depth cap: not recursive, just nested deeper than we expand. Degrade this
+  // branch to `unknown` inline (no named schema, not flagged as recursive).
+  if (ctx.depth >= 8) {
+    if (!ctx.warnedDecorators.has(`deep:${className}`)) {
+      ctx.warnedDecorators.add(`deep:${className}`);
+      const msg = `${className} nesting is too deep to expand; the generated schema uses unknown for it.`;
+      ctx.warnings.push(msg);
+      console.warn(`[nestjs-codegen] ${msg}`);
+    }
+    return { kind: 'unknown', note: 'nesting too deep — not expanded' };
   }
 
   const existing = ctx.emittedClasses.get(className);

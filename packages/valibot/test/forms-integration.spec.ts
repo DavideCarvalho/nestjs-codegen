@@ -56,6 +56,37 @@ describe('emit-forms with the valibot adapter (end-to-end)', () => {
     expect(forms).not.toContain("from 'zod'");
   });
 
+  it('emits a hoisted TS type alias + GenericSchema annotation for a recursive DTO', async () => {
+    const routes: RouteDescriptor[] = [
+      {
+        method: 'POST',
+        path: '/q',
+        name: 'q.run',
+        params: [],
+        contract: {
+          contractSource: {
+            query: null,
+            body: 'Dto',
+            response: 'unknown',
+            bodySchema: ir(
+              `class ColumnFilter {
+                 @IsString() @IsOptional() field?: string;
+                 @ValidateNested({ each: true }) @Type(() => ColumnFilter) @IsOptional() and?: ColumnFilter[];
+               }
+               class Dto { @ValidateNested() @Type(() => ColumnFilter) filter!: ColumnFilter; }`,
+            ),
+          },
+        },
+      },
+    ];
+    await emitForms(routes, dir, undefined, valibotAdapter);
+    const forms = await readFile(join(dir, 'forms.ts'), 'utf8');
+    expect(forms).toContain('type ColumnFilter = { field?: string; and?: Array<ColumnFilter> };');
+    expect(forms).toMatch(/const ColumnFilterSchema: v\.GenericSchema<ColumnFilter> = v\.object\(/);
+    expect(forms).toContain('v.lazy(() => ColumnFilterSchema)');
+    expect(forms).not.toContain('v.unknown() /* recursive');
+  });
+
   it('warns + skips a defineContract (zod-only) schema under a non-zod adapter', async () => {
     const routes: RouteDescriptor[] = [
       {

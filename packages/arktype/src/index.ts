@@ -97,7 +97,36 @@ function scalarDsl(node: SchemaNode): string | null {
   }
 }
 
+/** A `lazyRef` back to the schema currently being rendered → arktype's `this`. */
+function isSelfRef(node: SchemaNode, ctx: RenderContext): boolean {
+  return node.kind === 'lazyRef' && node.name === ctx.selfName;
+}
+
+/**
+ * Whether `node` contains a `lazyRef` to any schema other than `selfName` —
+ * i.e. a mutual-recursion back-edge that arktype can't express per-name.
+ */
+function hasForeignLazyRef(node: SchemaNode, selfName: string): boolean {
+  switch (node.kind) {
+    case 'lazyRef':
+      return node.name !== selfName;
+    case 'array':
+      return hasForeignLazyRef(node.element, selfName);
+    case 'optional':
+    case 'annotated':
+      return hasForeignLazyRef(node.inner, selfName);
+    case 'union':
+      return node.options.some((o) => hasForeignLazyRef(o, selfName));
+    case 'object':
+      return node.fields.some((f) => hasForeignLazyRef(f.value, selfName));
+    default:
+      return false;
+  }
+}
+
 function render(node: SchemaNode, ctx: RenderContext): string {
+  // Self-reference (recursion site) → arktype `this` keyword (DSL string).
+  if (isSelfRef(node, ctx)) return JSON.stringify('this');
   // Scalar-like → arktype string-DSL value.
   const scalar = scalarDsl(node);
   if (scalar !== null) {
@@ -124,6 +153,7 @@ function render(node: SchemaNode, ctx: RenderContext): string {
     }
     case 'array': {
       const el = node.element;
+      if (isSelfRef(el, ctx)) return JSON.stringify('this[]');
       if (el.kind === 'ref' || el.kind === 'lazyRef') return `${el.name}.array()`;
       const elScalar = scalarDsl(el);
       if (elScalar !== null) {
@@ -156,15 +186,25 @@ export const arktypeAdapter: ValidationAdapter = {
     return `(typeof ${schemaConst}).infer`;
   },
   renderModule(mod: SchemaModule): RenderedModule {
-    const ctx: RenderContext = { named: mod.named };
     const namedNestedSchemas = new Map<string, string>();
+    const warnings = [...mod.warnings];
     for (const [name, node] of mod.named) {
-      namedNestedSchemas.set(name, `type(${render(node, ctx)})`);
+      // A lazyRef to a *different* named schema (mutual recursion) cannot be
+      // expressed per-name in arktype without a scope; degrade it to unknown.
+      if (hasForeignLazyRef(node, name)) {
+        namedNestedSchemas.set(name, "type('unknown')");
+        warnings.push(
+          `${name} is part of a mutually-recursive cycle; arktype can only express self-recursion (via \`this\`) per schema, so this one was degraded to unknown. Use the zod or valibot adapter for full validation.`,
+        );
+        continue;
+      }
+      // Self-recursion renders via `this`; pass the schema's own name as selfName.
+      namedNestedSchemas.set(name, `type(${render(node, { named: mod.named, selfName: name })})`);
     }
     return {
-      schemaText: `type(${render(mod.root, ctx)})`,
+      schemaText: `type(${render(mod.root, { named: mod.named })})`,
       namedNestedSchemas,
-      warnings: mod.warnings,
+      warnings,
     };
   },
 };

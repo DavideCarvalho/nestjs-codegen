@@ -286,6 +286,9 @@ function buildFormsFileWithAdapter(
 
   // Hoisted IR nested schemas (rendered via adapter, deduped by name).
   const irNamed = new Map<string, string>();
+  // Recursive-schema extras (zod/valibot): hoisted TS type alias + const annotation.
+  const irTypeAliases = new Map<string, string>();
+  const irAnnotations = new Map<string, string>();
   const decls: string[] = [];
   const mapEntries: string[] = [];
   let used = false;
@@ -298,6 +301,8 @@ function buildFormsFileWithAdapter(
     if (src.schema) {
       const r = adapter.renderModule(src.schema);
       for (const [n, t] of r.namedNestedSchemas) irNamed.set(n, t);
+      if (r.namedTypeAliases) for (const [n, t] of r.namedTypeAliases) irTypeAliases.set(n, t);
+      if (r.namedAnnotations) for (const [n, a] of r.namedAnnotations) irAnnotations.set(n, a);
       return { text: r.schemaText };
     }
     // zod-only defineContract fallbacks: text or re-export ref.
@@ -381,7 +386,16 @@ function buildFormsFileWithAdapter(
 
   if (allNested.size > 0) {
     lines.push('// Hoisted nested schemas (shared across endpoints).');
-    for (const [n, t] of allNested) lines.push(`const ${n} = ${t};`);
+    // Recursive schemas (zod/valibot) need their structural TS type hoisted so
+    // the const can be annotated — this breaks the implicit-any self-reference
+    // cycle that a bare `const X = ...lazy(() => X)...` would trigger.
+    for (const [n, alias] of irTypeAliases) {
+      if (allNested.has(n)) lines.push(`${alias};`);
+    }
+    for (const [n, t] of allNested) {
+      const annotation = irAnnotations.get(n);
+      lines.push(`const ${n}${annotation ? `: ${annotation}` : ''} = ${t};`);
+    }
     lines.push('');
   }
 

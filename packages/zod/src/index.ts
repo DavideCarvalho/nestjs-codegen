@@ -1,12 +1,18 @@
-import type {
-  AdapterUsage,
-  RenderContext,
-  RenderedModule,
-  SchemaModule,
-  SchemaNode,
-  StringCheck,
-  ValidationAdapter,
+import {
+  type AdapterUsage,
+  type RenderContext,
+  type RenderedModule,
+  type SchemaModule,
+  type SchemaNode,
+  type StringCheck,
+  type ValidationAdapter,
+  renderTsType,
 } from '@dudousxd/nestjs-codegen';
+
+/** Schema const name → hoisted TS type-alias name (`ColumnFilterSchema` → `ColumnFilter`). */
+function typeNameFor(schemaName: string): string {
+  return schemaName.replace(/Schema(_\d+)?$/, '$1');
+}
 
 /** Valid JS identifier → bare key, else quoted. */
 function toObjectKey(name: string): string {
@@ -111,10 +117,25 @@ export const zodAdapter: ValidationAdapter = {
   },
   renderModule(mod: SchemaModule): RenderedModule {
     const ctx: RenderContext = { named: mod.named };
+    const recursive = mod.recursive ?? new Set<string>();
+    const tctx = { named: mod.named, recursive, typeNameFor };
     const namedNestedSchemas = new Map<string, string>();
+    const namedTypeAliases = new Map<string, string>();
+    const namedAnnotations = new Map<string, string>();
     for (const [name, node] of mod.named) {
       namedNestedSchemas.set(name, render(node, ctx));
+      if (recursive.has(name)) {
+        const typeName = typeNameFor(name);
+        namedTypeAliases.set(name, `type ${typeName} = ${renderTsType(node, tctx)}`);
+        namedAnnotations.set(name, `z.ZodType<${typeName}>`);
+      }
     }
-    return { schemaText: render(mod.root, ctx), namedNestedSchemas, warnings: mod.warnings };
+    return {
+      schemaText: render(mod.root, ctx),
+      namedNestedSchemas,
+      namedTypeAliases,
+      namedAnnotations,
+      warnings: mod.warnings,
+    };
   },
 };

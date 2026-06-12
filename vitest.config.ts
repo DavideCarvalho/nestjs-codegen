@@ -3,8 +3,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
-    // Order matters: the more specific subpath alias must come before the bare package
-    // (Vite does prefix replacement, so the bare alias would otherwise swallow subpaths).
+    // Order matters: the more specific subpath/sibling aliases must come before the
+    // bare package (Vite does prefix replacement, so the bare alias would otherwise
+    // swallow `@dudousxd/nestjs-codegen-zod` and friends).
     alias: [
       {
         find: '@dudousxd/nestjs-codegen/extension',
@@ -15,6 +16,18 @@ export default defineConfig({
       {
         find: '@dudousxd/nestjs-codegen-tanstack',
         replacement: fileURLToPath(new URL('./packages/tanstack/src/index.ts', import.meta.url)),
+      },
+      {
+        find: '@dudousxd/nestjs-codegen-zod',
+        replacement: fileURLToPath(new URL('./packages/zod/src/index.ts', import.meta.url)),
+      },
+      {
+        find: '@dudousxd/nestjs-codegen-valibot',
+        replacement: fileURLToPath(new URL('./packages/valibot/src/index.ts', import.meta.url)),
+      },
+      {
+        find: '@dudousxd/nestjs-codegen-arktype',
+        replacement: fileURLToPath(new URL('./packages/arktype/src/index.ts', import.meta.url)),
       },
       {
         // Resolve the workspace core to its source so tests run without a build step.

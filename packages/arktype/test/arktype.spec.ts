@@ -106,4 +106,37 @@ describe('arktypeAdapter — end-to-end from class-validator DTO', () => {
       dtoToArktype('class Dto { @IsString() @IsOptional() nickname?: string; }').schemaText,
     ).toBe('type({ "nickname?": "string" })');
   });
+
+  it('self-recursive DTO → arktype `this` keyword (no type alias / no annotation)', () => {
+    const out = dtoToArktype(
+      `class ColumnFilter {
+         @IsString() @IsOptional() field?: string;
+         @ValidateNested({ each: true }) @Type(() => ColumnFilter) @IsOptional() and?: ColumnFilter[];
+       }
+       class Dto { @ValidateNested() @Type(() => ColumnFilter) filter!: ColumnFilter; }`,
+    );
+    expect(out.namedNestedSchemas.get('ColumnFilterSchema')).toBe(
+      'type({ "field?": "string", "and?": "this[]" })',
+    );
+    // arktype infers cyclic types natively — no hoisted TS alias/annotation needed.
+    expect(out.namedTypeAliases?.size ?? 0).toBe(0);
+    expect(out.namedAnnotations?.size ?? 0).toBe(0);
+  });
+
+  it('mutually-recursive DTOs → degrade the back-edge schema to unknown + warn', () => {
+    const out = dtoToArktype(
+      `class A {
+         @ValidateNested() @Type(() => B) b!: B;
+       }
+       class B {
+         @ValidateNested() @Type(() => A) @IsOptional() a?: A;
+       }
+       class Dto { @ValidateNested() @Type(() => A) root!: A; }`,
+    );
+    // The schema carrying the lazy back-edge cannot be expressed per-name in
+    // arktype without a scope, so it degrades to unknown.
+    const degraded = [...out.namedNestedSchemas.values()].some((t) => t.includes('unknown'));
+    expect(degraded).toBe(true);
+    expect(out.warnings.some((w) => w.toLowerCase().includes('arktype'))).toBe(true);
+  });
 });

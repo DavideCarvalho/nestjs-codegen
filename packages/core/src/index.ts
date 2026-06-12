@@ -18,6 +18,8 @@ export type {
   StringCheck,
   NumberCheck,
 } from './ir/schema-node.js';
+export { renderTsType } from './ir/render-ts-type.js';
+export type { TsTypeContext } from './ir/render-ts-type.js';
 export type {
   ValidationAdapter,
   AdapterUsage,

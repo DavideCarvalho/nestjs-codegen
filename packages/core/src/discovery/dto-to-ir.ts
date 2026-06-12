@@ -120,7 +120,9 @@ function buildProperty(
 
   const typeNode = prop.getTypeNode();
   const typeText = typeNode?.getText() ?? 'unknown';
-  const isArrayType = !!typeNode && typeNode.getText().endsWith('[]');
+  // Detect arrays from the AST, not the text: a union like `unknown | unknown[]`
+  // ends in "[]" but is NOT an array type.
+  const isArrayType = !!typeNode && Node.isArrayTypeNode(typeNode);
 
   // ── Nested / array-of-nested via @ValidateNested + @Type ────────────────
   const typeRefName = resolveTypeFactoryName(dec('Type'));

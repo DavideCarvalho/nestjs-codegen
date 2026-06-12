@@ -60,6 +60,20 @@ describe('extractSchemaFromDto', () => {
     expect(mod.warnings.some((w) => w.includes('IsStrongPassword'))).toBe(true);
   });
 
+  it('plain T[] is detected as an array', () => {
+    expect(field(ir('class Dto { @IsString() tags!: string[]; }').root, 'tags')).toEqual({
+      kind: 'array',
+      element: { kind: 'string', checks: [] },
+    });
+  });
+
+  it('a union whose text ends in [] is NOT mistaken for an array', () => {
+    // `unknown | unknown[]` ends with "[]" but is a union, not an array type.
+    expect(
+      field(ir('class Dto { @IsOptional() value!: unknown | unknown[]; }').root, 'value'),
+    ).toEqual({ kind: 'optional', inner: { kind: 'unknown' } });
+  });
+
   describe('recursive types', () => {
     const RECURSIVE = `
       class ColumnFilter {

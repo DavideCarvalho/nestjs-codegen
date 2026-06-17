@@ -276,6 +276,20 @@ function followModuleForType(
 }
 
 /**
+ * Per-`Project` memoization of {@link findType}. Within one discovery run the
+ * `Project` is effectively immutable (`addSourceFileAtPath` is idempotent and
+ * `getSourceFile` returns the existing instance), so the same `(file, name)`
+ * pair always resolves to the same declaration. The same type/enum would
+ * otherwise be fully re-resolved on every reference — O(routes × DTOs × imports).
+ *
+ * Keyed by `Project` via a WeakMap so the cache dies with its project and there
+ * is no cross-run staleness: every `discoverContractsFast` call (and every watch
+ * change) builds a fresh `Project`, hence a fresh cache. Null results are cached
+ * too (use `.has` to distinguish "cached null" from "not yet computed").
+ */
+const _findTypeCache = new WeakMap<Project, Map<string, TypeDeclResult | null>>();
+
+/**
  * Find a type declaration by name: first in the current file, then by following imports.
  */
 export function findType(
@@ -283,9 +297,17 @@ export function findType(
   sourceFile: SourceFile,
   project: Project,
 ): TypeDeclResult | null {
+  let byKey = _findTypeCache.get(project);
+  if (byKey === undefined) {
+    byKey = new Map();
+    _findTypeCache.set(project, byKey);
+  }
+  const key = `${sourceFile.getFilePath()} ${name}`;
+  if (byKey.has(key)) return byKey.get(key) ?? null;
   const local = findTypeInFile(name, sourceFile);
-  if (local) return local;
-  return resolveImportedType(name, sourceFile, project);
+  const result = local ?? resolveImportedType(name, sourceFile, project);
+  byKey.set(key, result);
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -382,6 +404,53 @@ export function resolveTypeRef(
     name = refName;
   }
 
+  // The bare-symbol resolution below is deterministic in (file, name, kinds,
+  // allowBareSpecifier) within a run, so it is memoized per-Project.
+  return _resolveNamedRef(name, sourceFile, project, opts);
+}
+
+/**
+ * Per-`Project` memoization of the bare-symbol resolution arm of
+ * {@link resolveTypeRef} (steps 1 & 2). Keyed by `(file, name, kinds,
+ * allowBareSpecifier)` — the only inputs the import-following walk depends on.
+ * `unwrapContainers` is excluded because container peeling happens in the caller
+ * before this point. Same WeakMap-by-Project safety as {@link findType}: fresh
+ * Project per run ⇒ fresh cache, no cross-run staleness. Null results cached too.
+ *
+ * Returns a fresh object copy on a cache hit so callers (which may spread
+ * `{ ...ref, isArray: true }` or otherwise treat the ref as owned) never share a
+ * mutable cached instance.
+ */
+const _resolveNamedRefCache = new WeakMap<Project, Map<string, TypeRef | null>>();
+
+function _resolveNamedRef(
+  name: string,
+  sourceFile: SourceFile,
+  project: Project,
+  opts: ResolveTypeRefOptions,
+): TypeRef | null {
+  let byKey = _resolveNamedRefCache.get(project);
+  if (byKey === undefined) {
+    byKey = new Map();
+    _resolveNamedRefCache.set(project, byKey);
+  }
+  const kindsKey = [...opts.kinds].sort().join(',');
+  const key = `${sourceFile.getFilePath()}\0${name}\0${kindsKey}\0${opts.allowBareSpecifier ? 1 : 0}`;
+  if (byKey.has(key)) {
+    const cached = byKey.get(key) ?? null;
+    return cached ? { ...cached } : null;
+  }
+  const computed = _computeNamedRef(name, sourceFile, project, opts);
+  byKey.set(key, computed);
+  return computed ? { ...computed } : null;
+}
+
+function _computeNamedRef(
+  name: string,
+  sourceFile: SourceFile,
+  project: Project,
+  opts: ResolveTypeRefOptions,
+): TypeRef | null {
   // 1. Declared (and exported) in the current file → relative import to it.
   if (_localDeclForKinds(name, sourceFile, opts.kinds)) {
     return { name, filePath: sourceFile.getFilePath() };

@@ -16,20 +16,45 @@ import { findType } from './type-ref-resolution.js';
  * inferring it from the stringified members. Pure numeric and pure string enums
  * (the overwhelmingly common cases) are unaffected.
  */
+type EnumResult = { values: string[]; numeric: boolean };
+
+/**
+ * Per-`Project` memoization of {@link resolveEnumValues}. Same WeakMap-by-Project
+ * safety as `findType`: each discovery run (and each watch change) builds a fresh
+ * `Project`, so the cache dies with it and never goes stale. Null results are
+ * cached too (via `.has`). Returns a copy on a cache hit so callers never share a
+ * mutable `values` array.
+ */
+const _enumCache = new WeakMap<Project, Map<string, EnumResult | null>>();
+
 export function resolveEnumValues(
   name: string,
   sourceFile: SourceFile,
   project: Project,
-): { values: string[]; numeric: boolean } | null {
+): EnumResult | null {
+  let byKey = _enumCache.get(project);
+  if (byKey === undefined) {
+    byKey = new Map();
+    _enumCache.set(project, byKey);
+  }
+  const key = `${sourceFile.getFilePath()}\0${name}`;
+  if (byKey.has(key)) {
+    const cached = byKey.get(key) ?? null;
+    return cached ? { values: [...cached.values], numeric: cached.numeric } : null;
+  }
+
   const resolved = findType(name, sourceFile, project);
-  if (!resolved || resolved.kind !== 'enum') return null;
-  // members are JSON.stringify'd ("A" / "0"); strip quotes to raw values.
-  let numeric = true;
-  const values = resolved.members.map((m) => {
-    const parsed = JSON.parse(m) as string | number;
-    if (typeof parsed === 'string') numeric = false;
-    return String(parsed);
-  });
-  if (values.length === 0) return null;
-  return { values, numeric };
+  let result: EnumResult | null = null;
+  if (resolved && resolved.kind === 'enum') {
+    // members are JSON.stringify'd ("A" / "0"); strip quotes to raw values.
+    let numeric = true;
+    const values = resolved.members.map((m) => {
+      const parsed = JSON.parse(m) as string | number;
+      if (typeof parsed === 'string') numeric = false;
+      return String(parsed);
+    });
+    if (values.length > 0) result = { values, numeric };
+  }
+  byKey.set(key, result);
+  return result ? { values: [...result.values], numeric: result.numeric } : null;
 }

@@ -1,43 +1,24 @@
 ---
 title: Introduction
-description: A typed-client codegen for NestJS — routes, API client, and validation schemas.
+description: A typed-client codegen for NestJS — routes, API client, and validation schemas, generated from your controllers.
 ---
 
-`nestjs-codegen` reads your NestJS controllers, contracts, and DTOs and generates a
-**fully-typed client**: a route map, a typed API client, and client-side validation
-schemas. It works **with or without Inertia.js**, and every moving part is pluggable —
-the validation library, the HTTP client, the serializer, and the query layer.
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
 
-```ts title="src/app.module.ts"
-import { Module } from '@nestjs/common';
-import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+**`@dudousxd/nestjs-codegen`** reads your NestJS controllers, contracts, and DTOs and generates a **fully-typed client** for them: a route map, a typed API client, and client-side validation schemas. Your backend stays the single source of truth — change a controller and the client follows. It works **with or without Inertia.js**, and every moving part is pluggable: the validation library, the HTTP client, the serializer, and the query layer.
 
-@Module({
-  imports: [
-    NestjsCodegenModule.forRoot({
-      contracts: { glob: 'src/**/*.controller.ts' },
-      codegen: { outDir: 'src/generated' },
-    }),
-  ],
-})
-export class AppModule {}
-```
+<Callout title="Coming from nestjs-inertia?">
+  This is the same codegen, extracted into its own repo. The config file
+  `nestjs-codegen.config.ts` is the successor of `nestjs-inertia.config.ts` (the old
+  name is still accepted). See [Getting Started](/docs/getting-started).
+</Callout>
 
-Import the module and the client regenerates with your dev server. For CI, the same
-generator ships as a CLI — `npx nestjs-codegen codegen` — to fail the build before
-deploy if the committed client drifts. See [Getting started](/docs/getting-started).
+## The problem it solves
 
-## The packages
+A NestJS controller already knows everything a client needs: the path, the HTTP method, the request body shape, and the response type. Yet most frontends re-state all of it by hand — hand-written `fetch` wrappers, duplicated route strings, a second copy of every validation rule. That copy drifts the moment a controller changes, and nothing tells you until something breaks at runtime.
 
-<Cards>
-  <Card title="@dudousxd/nestjs-codegen" description="The codegen: discovery (controllers, defineContract, DTOs, pages, shared props, filters), emitters, config loader, watch mode, and the codegen/init/doctor CLI. Bundles the schema IR + zod adapter." />
-  <Card title="@dudousxd/nestjs-codegen-valibot" description="Valibot validation adapter." href="/docs/validation" />
-  <Card title="@dudousxd/nestjs-codegen-arktype" description="ArkType validation adapter." href="/docs/validation" />
-  <Card title="@dudousxd/nestjs-client" description="Framework-neutral runtime: a typed fetcher with a pluggable transport (axios, …) and a superjson transformer hook." href="/docs/fetcher" />
-  <Card title="@dudousxd/nestjs-codegen-tanstack" description="Extension: TanStack Query queryOptions/mutationOptions handles in api.ts." href="/docs/tanstack-query" />
-  <Card title="@dudousxd/nestjs-filter-codegen" description="Extension: typed filterQuery() helpers from @FilterFor / @ApplyFilter." href="/docs/filters" />
-  <Card title="@dudousxd/nestjs-inertia-codegen-extension" description="Extension: Inertia router import + a typed navigate() helper in api.ts." href="/docs/inertia" />
-</Cards>
+`nestjs-codegen` closes that gap by **deriving the client from the server**. It discovers your routes and types once, emits typed artifacts, and keeps them in sync — in dev as you edit, and in CI as a gate that fails the build when the committed client drifts.
 
 ## What you get
 
@@ -48,24 +29,100 @@ The codegen writes these files into your output directory:
 - **`forms.ts`** — a validation schema per validated endpoint, in your chosen lib.
 - **`pages.d.ts` / `components.json`** — when the Inertia integration is enabled.
 
+## Quickstart
+
+The whole loop — install, register the module, use the client — in three steps. For the full walkthrough, including the CI flow, see [Getting Started](/docs/getting-started).
+
+<Steps>
+<Step>
+
+Install the codegen and the runtime the generated client imports its `Fetcher` type from:
+
+```bash
+pnpm add -D @dudousxd/nestjs-codegen
+pnpm add @dudousxd/nestjs-client
+```
+
+</Step>
+<Step>
+
+Register `NestjsCodegenModule` in your root module. It starts with your dev server and regenerates the client as you edit your controllers — no config file, no extra process to run:
+
+```ts title="src/app.module.ts"
+import { Module } from '@nestjs/common';
+import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+
+@Module({
+  imports: [
+    NestjsCodegenModule.forRoot({
+      contracts: { glob: 'src/**/*.controller.ts' }, // controllers to scan
+      codegen: { outDir: 'src/generated' },          // where to write the client
+      validation: 'zod',                             // 'zod' | valibotAdapter | arktypeAdapter
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+Run your app as usual (`nest start --watch`) and the generated files appear in `src/generated`, kept in sync while the server runs.
+
+</Step>
+<Step>
+
+Create the client once, injecting your fetcher, then call your endpoints with full type safety:
+
+```ts title="src/lib/api.ts"
+import { createApi } from '../generated/api';
+import { createFetcher } from '@dudousxd/nestjs-client';
+
+export const api = createApi(createFetcher({ baseUrl: '/api' }));
+```
+
+```ts title="users-page.tsx"
+import { api } from './lib/api';
+
+const users = await api.users.list();              // typed User[]
+const created = await api.users.create({ body });  // typed body + response
+```
+
+</Step>
+</Steps>
+
+<Callout type="info">
+  The watcher is a **dev/CI concern**, so the module skips it automatically when
+  `NODE_ENV === 'production'`. For CI, the same generator ships as a CLI —
+  `npx nestjs-codegen codegen` — to fail the build before deploy if the committed
+  client has drifted. See [CLI](/docs/cli).
+</Callout>
+
 ## Key features
 
 - **Pluggable validation** — one neutral `SchemaNode` IR, rendered by [zod](https://zod.dev)
   (bundled), [valibot](https://valibot.dev), or [arktype](https://arktype.io) adapters.
-- **Typed API client** — `createApi(fetcher)`: inject your own client at runtime.
+  See [Validation](/docs/validation).
+- **Typed API client** — `createApi(fetcher)`: inject your own client at runtime. See
+  [API client](/docs/api-client).
+- **Bring your own fetcher** — native `fetch` by default, or an axios instance; superjson
+  and transformer pipelines supported. See [Fetcher](/docs/fetcher).
 - **Extension-based integrations** — register integrations in `extensions: [...]`; each
   shapes the generated `api.ts`. See [Extensions](/docs/extensions).
   - **TanStack Query** (`tanstackQuery()`) — emits `queryOptions`/`mutationOptions` from
-    *your* adapter package (react/vue/svelte/solid); never forces `@tanstack/query-core`.
+    *your* adapter package (react/vue/svelte/solid). See [TanStack Query](/docs/tanstack-query).
   - **nestjs-filter** (`nestjsFilterCodegen()`) — `@FilterFor`/`@ApplyFilter` → typed
-    `filterQuery()` helpers.
+    `filterQuery()` helpers. See [Filters](/docs/filters).
   - **nestjs-inertia** (`nestjsInertiaCodegen()`) — pages, shared props, and the Inertia
-    `router` + `navigate()` helper.
-- **Bring your own fetcher** — native `fetch` by default, or an axios instance via
-  `axiosTransport()`. superjson and transformer pipelines supported.
+    `router` + `navigate()` helper. See [Inertia](/docs/inertia).
 
-<Callout title="Coming from nestjs-inertia?">
-  This is the same codegen, extracted into its own repo. The config file
-  `nestjs-codegen.config.ts` is the successor of `nestjs-inertia.config.ts` (the old
-  name is still accepted). See [Getting started](/docs/getting-started).
-</Callout>
+## Where to go next
+
+<Cards>
+  <Card title="Getting Started" href="/docs/getting-started" description="Install, wire the module, generate in CI, and use the typed client." />
+  <Card title="Configuration" href="/docs/configuration" description="Every forRoot / defineConfig option, in one place." />
+  <Card title="CLI" href="/docs/cli" description="The codegen / init / doctor commands and the CI drift check." />
+  <Card title="Validation" href="/docs/validation" description="The SchemaNode IR and the zod, valibot, and arktype adapters." />
+  <Card title="API client" href="/docs/api-client" description="The createApi(fetcher) factory and the typed call surface." />
+  <Card title="Fetcher" href="/docs/fetcher" description="Bring your own transport — native fetch, axios, and superjson." />
+  <Card title="TanStack Query" href="/docs/tanstack-query" description="Opt-in queryOptions / mutationOptions handles in api.ts." />
+  <Card title="Extensions" href="/docs/extensions" description="How integrations register and shape the generated client." />
+  <Card title="Programmatic" href="/docs/programmatic" description="loadConfig, generate, and watch — the codegen as a library." />
+</Cards>

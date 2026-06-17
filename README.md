@@ -1,3 +1,16 @@
+<p align="center">
+  <a href="https://davidecarvalho.github.io/aviary/docs/codegen">
+    <img src="./.github/banner.svg" alt="@dudousxd/nestjs-codegen — an Aviary library. Call sign: Weaver.">
+  </a>
+</p>
+
+<p align="center">
+  <b><a href="https://davidecarvalho.github.io/aviary/docs/codegen">📖 Read the documentation</a></b>
+  &nbsp;·&nbsp; part of the <a href="https://davidecarvalho.github.io/aviary/"><b>Aviary</b></a> ecosystem for NestJS
+</p>
+
+---
+
 # nestjs-codegen
 
 Codegen for **NestJS** — generates typed client artifacts (routes, typed API

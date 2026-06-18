@@ -1,4 +1,4 @@
-export const VERSION = '0.2.1';
+export const VERSION = '0.3.0';
 
 export { createFetcher, composeTransformers, consumeSse } from './fetcher/fetcher.js';
 export type {

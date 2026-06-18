@@ -1,9 +1,16 @@
+/**
+ * An HTTP error raised by the fetcher. `TBody` is the typed error response body:
+ * the generated `api.ts` carries a per-route `error` type (`Route.Error<K>`), so
+ * callers can narrow `err.body` to the route's declared error shape, e.g.
+ * `new ApiHttpError<Route.Error<'users.create'>>(...)` or by asserting the caught
+ * error. Defaults to `unknown` when the route declares no error type.
+ */
 /* v8 ignore next -- class declaration is not a branch */
-export class ApiHttpError extends Error {
+export class ApiHttpError<TBody = unknown> extends Error {
   constructor(
     public readonly status: number,
     public readonly statusText: string,
-    public readonly body: unknown,
+    public readonly body: TBody,
   ) {
     super(`HTTP ${status} ${statusText}`);
     this.name = 'ApiHttpError';

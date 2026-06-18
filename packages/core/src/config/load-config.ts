@@ -154,6 +154,19 @@ function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig
       watch: userConfig.forms?.watch ?? 'src/**/*.dto.ts',
       zodImport: userConfig.forms?.zodImport ?? 'zod',
     },
+    openapi: {
+      enabled: userConfig.openapi?.enabled ?? false,
+      fileName: userConfig.openapi?.fileName ?? 'openapi.json',
+      title: userConfig.openapi?.title ?? 'NestJS API',
+      version: userConfig.openapi?.version ?? '1.0.0',
+      description: userConfig.openapi?.description ?? null,
+    },
+    mocks: {
+      enabled: userConfig.mocks?.enabled ?? false,
+      fileName: userConfig.mocks?.fileName ?? 'mocks.ts',
+      seed: userConfig.mocks?.seed ?? 1,
+      baseUrl: userConfig.mocks?.baseUrl ?? '',
+    },
   };
 }
 

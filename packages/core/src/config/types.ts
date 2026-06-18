@@ -66,6 +66,38 @@ export interface UserConfig {
     /** Module specifier for the `z` import. Default: `'zod'`. */
     zodImport?: string;
   };
+  /**
+   * OpenAPI 3.1 spec export (`openapi.json`). Opt-in: omit (or `enabled: false`)
+   * to skip. Lowers the discovered routes + validation IR into a valid OpenAPI
+   * 3.1 document for ecosystem interop (consume/publish a spec).
+   */
+  openapi?: {
+    /** Emit `openapi.json`. Default: `false`. */
+    enabled?: boolean;
+    /** Output file name within `outDir`. Default: `'openapi.json'`. */
+    fileName?: string;
+    /** `info.title`. Default: `'NestJS API'`. */
+    title?: string;
+    /** `info.version`. Default: `'1.0.0'`. */
+    version?: string;
+    /** `info.description`. */
+    description?: string;
+  };
+  /**
+   * MSW + faker mock handler generation (`mocks.ts`). Opt-in: omit (or
+   * `enabled: false`) to skip. Generates Mock Service Worker handlers that return
+   * faker-style data matching each route's response schema.
+   */
+  mocks?: {
+    /** Emit `mocks.ts`. Default: `false`. */
+    enabled?: boolean;
+    /** Output file name within `outDir`. Default: `'mocks.ts'`. */
+    fileName?: string;
+    /** Deterministic seed for generated mock data. Default: `1`. */
+    seed?: number;
+    /** Base URL prepended to handler paths. Default: `''` (relative paths). */
+    baseUrl?: string;
+  };
 }
 
 export interface ScopeConfig {
@@ -102,6 +134,21 @@ export interface ResolvedFormsConfig {
   zodImport: string;
 }
 
+export interface ResolvedOpenApiConfig {
+  enabled: boolean;
+  fileName: string;
+  title: string;
+  version: string;
+  description: string | null;
+}
+
+export interface ResolvedMocksConfig {
+  enabled: boolean;
+  fileName: string;
+  seed: number;
+  baseUrl: string;
+}
+
 export interface ResolvedConfig {
   extensions: CodegenExtension[];
   validation: ValidationAdapter;
@@ -112,4 +159,6 @@ export interface ResolvedConfig {
   app: ResolvedAppConfig | null;
   fetcher: { importPath: string } | null;
   forms: ResolvedFormsConfig;
+  openapi: ResolvedOpenApiConfig;
+  mocks: ResolvedMocksConfig;
 }

@@ -77,8 +77,12 @@ function render(node: SchemaNode, ctx: RenderContext): string {
       return `z.enum([${node.literals.join(', ')}])`;
     case 'literal':
       return `z.literal(${node.raw})`;
-    case 'union':
-      return `z.union([${node.options.map((o) => render(o, ctx)).join(', ')}])`;
+    case 'union': {
+      const opts = node.options.map((o) => render(o, ctx)).join(', ');
+      return node.discriminator
+        ? `z.discriminatedUnion(${JSON.stringify(node.discriminator)}, [${opts}])`
+        : `z.union([${opts}])`;
+    }
     case 'object': {
       if (node.fields.length === 0) {
         return node.passthrough ? 'z.object({}).passthrough()' : 'z.object({})';

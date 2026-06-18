@@ -112,7 +112,7 @@ describe('emitApi', () => {
       expect(c).toContain('...__req<'); // still awaitable
       expect(c).toContain('queryKey: () => ["users.list", input] as const');
       expect(c).toContain('queryOptions: () => _queryOptions(');
-      expect(c).toContain('infiniteQueryOptions: () => _infiniteQueryOptions(');
+      expect(c).toContain('infiniteQueryOptions: (overrides?:');
     });
 
     it('mutation handle exposes mutationOptions', async () => {
@@ -135,5 +135,138 @@ describe('emitApi', () => {
     await emitApi([], outDir, {});
     const c = await readFile(join(outDir, 'api.ts'), 'utf8');
     expect(c).toContain('export function createApi');
+  });
+
+  describe('typed errors per route (error field)', () => {
+    it('emits error: unknown by default for routes without a declared error type', async () => {
+      const c = await gen();
+      // Every leaf type block carries an `error` field — `unknown` when undeclared.
+      expect(c).toContain('error: unknown;');
+    });
+
+    it('emits a declared error type into the leaf and Route.Error resolves it', async () => {
+      const errRoutes: RouteDescriptor[] = [
+        {
+          method: 'POST',
+          path: '/api/widgets',
+          name: 'widgets.create',
+          params: [],
+          contract: {
+            contractSource: {
+              query: null,
+              body: '{ name: string }',
+              response: 'Widget',
+              error: '{ code: string; message: string }',
+            },
+          },
+        },
+      ];
+      await emitApi(errRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('error: { code: string; message: string };');
+      // Route.Error<K> resolver is wired to the "error" field.
+      expect(c).toContain('export type Error<K extends string> = ResolveByName<K, "error">;');
+    });
+
+    it('emits a named errorRef and imports it', async () => {
+      const errRoutes: RouteDescriptor[] = [
+        {
+          method: 'POST',
+          path: '/api/widgets',
+          name: 'widgets.create',
+          params: [],
+          contract: {
+            contractSource: {
+              query: null,
+              body: null,
+              response: 'Widget',
+              error: 'ApiError',
+              errorRef: { name: 'ApiError', filePath: '/abs/errors.ts' },
+            },
+          },
+        },
+      ];
+      await emitApi(errRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('error: ApiError;');
+      expect(c).toContain('ApiError');
+    });
+  });
+
+  describe('SSE / streaming routes', () => {
+    const streamRoutes: RouteDescriptor[] = [
+      {
+        method: 'GET',
+        path: '/api/events/ticks',
+        name: 'events.ticks',
+        params: [],
+        contract: {
+          contractSource: {
+            query: null,
+            body: null,
+            response: '{ count: number }',
+            stream: true,
+          },
+        },
+      },
+    ];
+
+    it('marks the route stream type in ApiRouter', async () => {
+      await emitApi(streamRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('stream: true');
+      expect(c).toContain('response: { count: number }');
+    });
+
+    it('exposes an AsyncIterable stream surface on the leaf', async () => {
+      await emitApi(streamRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      // The leaf gains a `stream()` member backed by the fetcher's typed SSE consumer.
+      expect(c).toContain('stream: () =>');
+      expect(c).toContain('fetcher.sse<');
+    });
+
+    it('uses the streamed element type (not the Observable container) for a controllerRef stream route', async () => {
+      const cref: RouteDescriptor[] = [
+        {
+          method: 'GET',
+          path: '/api/events/ticks',
+          name: 'events.ticks',
+          params: [],
+          controllerRef: {
+            className: 'SseController',
+            methodName: 'ticks',
+            filePath: '/abs/sse.controller.ts',
+          },
+          contract: {
+            contractSource: {
+              query: null,
+              body: null,
+              // discovery already reduced Observable<MessageEvent<Tick>> → element
+              response: '{ count: number }',
+              stream: true,
+            },
+          },
+        },
+      ];
+      await emitApi(cref, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      // The element type is used directly — NOT Awaited<ReturnType<...>> (which would be the Observable).
+      expect(c).toContain('response: { count: number }');
+      expect(c).not.toContain('Awaited<ReturnType<');
+    });
+
+    it('emits a Route.Stream<K> type helper', async () => {
+      await emitApi(streamRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('Stream<K extends string>');
+    });
+
+    it('does not add a stream surface to normal routes', async () => {
+      await emitApi(routes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).not.toContain('fetcher.sse<');
+      expect(c).not.toContain('stream: () =>');
+    });
   });
 });

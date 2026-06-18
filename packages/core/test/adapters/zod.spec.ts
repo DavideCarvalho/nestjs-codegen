@@ -132,4 +132,27 @@ describe('zodAdapter', () => {
     expect(out.namedTypeAliases?.size ?? 0).toBe(0);
     expect(out.namedAnnotations?.size ?? 0).toBe(0);
   });
+
+  it('plain union → z.union', () => {
+    const node: SchemaNode = {
+      kind: 'union',
+      options: [
+        { kind: 'literal', raw: "'a'" },
+        { kind: 'literal', raw: "'b'" },
+      ],
+    };
+    expect(render(node).schemaText).toBe("z.union([z.literal('a'), z.literal('b')])");
+  });
+
+  it('discriminated union → z.discriminatedUnion with the tag and subtype refs', () => {
+    const node: SchemaNode = {
+      kind: 'union',
+      discriminator: 'kind',
+      options: [
+        { kind: 'ref', name: 'DogSchema' },
+        { kind: 'ref', name: 'CatSchema' },
+      ],
+    };
+    expect(render(node).schemaText).toBe('z.discriminatedUnion("kind", [DogSchema, CatSchema])');
+  });
 });

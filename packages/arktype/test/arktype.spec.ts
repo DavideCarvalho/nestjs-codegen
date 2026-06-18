@@ -140,3 +140,31 @@ describe('arktypeAdapter — end-to-end from class-validator DTO', () => {
     expect(out.warnings.some((w) => w.toLowerCase().includes('arktype'))).toBe(true);
   });
 });
+
+describe('arktypeAdapter — unions', () => {
+  it('discriminated union of refs → tuple alternation [a, "|", b]', () => {
+    const node: SchemaNode = {
+      kind: 'union',
+      discriminator: 'kind',
+      options: [
+        { kind: 'ref', name: 'DogSchema' },
+        { kind: 'ref', name: 'CatSchema' },
+      ],
+    };
+    expect(render(node)).toBe('type([DogSchema, "|", CatSchema])');
+  });
+
+  it('end-to-end: class-transformer discriminator DTO → tuple union + hoisted subtypes', () => {
+    const out = dtoToArktype(`
+      class Dog { @IsString() kind!: 'dog'; @IsString() bark!: string; }
+      class Cat { @IsString() kind!: 'cat'; @IsString() meow!: string; }
+      class Dto {
+        @ValidateNested()
+        @Type(() => Object, { discriminator: { property: 'kind', subTypes: [{ value: 'dog', name: Dog }, { value: 'cat', name: Cat }] } })
+        animal!: Dog | Cat;
+      }`);
+    expect(out.schemaText).toContain('[DogSchema, "|", CatSchema]');
+    expect(out.namedNestedSchemas.has('DogSchema')).toBe(true);
+    expect(out.namedNestedSchemas.has('CatSchema')).toBe(true);
+  });
+});

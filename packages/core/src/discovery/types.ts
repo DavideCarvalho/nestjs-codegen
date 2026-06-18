@@ -45,9 +45,19 @@ export interface ContractSource {
   query: string | null;
   body: string | null;
   response: string;
+  /**
+   * The route's error response body type, as a TS type-source string. Discovered
+   * from a `defineContract({ error })` zod schema, or an `@ApiResponse({ status,
+   * type })` decorator whose `status` is a 4xx/5xx code. Absent/null means the
+   * error body is untyped and resolves to `unknown` in `Route.Error<K>` (never
+   * `never` — an HTTP error always carries some body).
+   */
+  error?: string | null;
   queryRef?: TypeRef | null;
   bodyRef?: TypeRef | null;
   responseRef?: TypeRef | null;
+  /** Importable named ref for the error type (parallel to {@link responseRef}). */
+  errorRef?: TypeRef | null;
   filterFields?: string[] | null;
   filterFieldTypes?: FilterFieldType[] | null;
   filterSource?: 'body' | 'query' | null;
@@ -71,6 +81,23 @@ export interface ContractSource {
   bodySchema?: import('../ir/schema-node.js').SchemaModule | null;
   /** Neutral validation IR for the query (class-validator DTO only). */
   querySchema?: import('../ir/schema-node.js').SchemaModule | null;
+  /**
+   * Neutral validation IR for the success RESPONSE body, when it can be derived
+   * from a class-validator-decorated response DTO. Consumed by the OpenAPI export
+   * (richer `responses` schemas) and the MSW+faker mock generator (schema-shaped
+   * mock data). Optional/additive: when absent the response degrades to the TS
+   * type string (`response`) and mocks fall back to a permissive shape.
+   */
+  responseSchema?: import('../ir/schema-node.js').SchemaModule | null;
+  /**
+   * True when the route is a server-sent-events / streaming endpoint: it carries
+   * a `@Sse()` decorator, or its handler returns `Observable<T>` /
+   * `AsyncIterable<T>` / `AsyncGenerator<T>`. When set, `response` (and
+   * `responseRef`) describe the streamed ELEMENT type `T` (NestJS `MessageEvent<T>`
+   * wrappers are unwrapped to `T`), and the client surfaces the route as an
+   * `AsyncIterable<T>` stream rather than a single awaited value.
+   */
+  stream?: boolean;
 }
 
 export interface ContractDescriptor {

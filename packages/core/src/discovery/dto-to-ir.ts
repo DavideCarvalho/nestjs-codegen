@@ -28,6 +28,13 @@ interface BuildContext {
   visiting: Set<string>;
   recursiveSchemas: Set<string>;
   depth: number;
+  /**
+   * Active generic type-parameter bindings for the class currently being
+   * expanded, e.g. `{ T: 'Item' }` while expanding `PaginatedDto<Item>`. A
+   * property typed `T` / `T[]` resolves through this map to the concrete class,
+   * giving wrapper DTOs a faithful schema instead of degrading to `unknown`.
+   */
+  typeBindings: Map<string, string>;
 }
 
 const KNOWN_DECORATORS = new Set([
@@ -74,6 +81,7 @@ export function extractSchemaFromDto(
     visiting: new Set(),
     recursiveSchemas: new Set(),
     depth: 0,
+    typeBindings: new Map(),
   };
   const root = buildObject(classDecl, sourceFile, ctx);
   // Recursive named schemas keep their real (self-referential) shape; the
@@ -124,12 +132,50 @@ function buildProperty(
   // ends in "[]" but is NOT an array type.
   const isArrayType = !!typeNode && Node.isArrayTypeNode(typeNode);
 
+  // ── Discriminated union via @Type(() => Base, { discriminator: {...} }) ──
+  // class-transformer's documented polymorphism convention. The `subTypes`
+  // entries map a discriminator literal to a concrete class; we emit a union of
+  // refs to those classes carrying the discriminator property name, which each
+  // adapter renders as a tagged union (zod discriminatedUnion / valibot variant).
+  const discriminator = resolveDiscriminator(dec('Type'));
+  if (discriminator) {
+    const options: SchemaNode[] = discriminator.subTypes.map((name) =>
+      buildNestedReference(name, classFile, ctx),
+    );
+    const unionNode: SchemaNode = {
+      kind: 'union',
+      options,
+      discriminator: discriminator.property,
+    };
+    const wrapArray = has('IsArray') || isArrayType;
+    const node: SchemaNode = wrapArray ? { kind: 'array', element: unionNode } : unionNode;
+    return applyPresence(node, decorators);
+  }
+
+  // ── Generic type-parameter property (T / T[]) resolved via active bindings ─
+  // When expanding `Wrapper<Arg>`, a field typed `T`/`T[]` (where T is the
+  // wrapper's type parameter) resolves to the concrete `Arg` class — giving the
+  // wrapper a faithful schema instead of degrading to `unknown`. Takes priority
+  // over `@Type` (whose factory can't name the still-generic `T`).
+  const propTypeParam = singularClassName(typeText);
+  if (propTypeParam && ctx.typeBindings.has(propTypeParam)) {
+    const bound = ctx.typeBindings.get(propTypeParam) as string;
+    const childNode = buildNestedReference(bound, classFile, ctx);
+    const wrapArray = has('IsArray') || isArrayType;
+    const node: SchemaNode = wrapArray ? { kind: 'array', element: childNode } : childNode;
+    return applyPresence(node, decorators);
+  }
+
   // ── Nested / array-of-nested via @ValidateNested + @Type ────────────────
   const typeRefName = resolveTypeFactoryName(dec('Type'));
   if (has('ValidateNested') || typeRefName) {
+    // A generic wrapper reference (`PaginatedDto<Item>`) carries its type args on
+    // the property typeNode, not in `@Type`. Capture them so the wrapper's body
+    // is expanded with `T → Item` bindings.
+    const typeArgs = genericTypeArgNames(typeNode);
     const childName = typeRefName ?? singularClassName(typeText);
     if (childName) {
-      const childNode = buildNestedReference(childName, classFile, ctx);
+      const childNode = buildNestedReference(childName, classFile, ctx, typeArgs);
       const wrapArray = has('IsArray') || isArrayType;
       const node: SchemaNode = wrapArray ? { kind: 'array', element: childNode } : childNode;
       return applyPresence(node, decorators);
@@ -292,14 +338,21 @@ function buildNestedReference(
   className: string,
   fromFile: SourceFile,
   ctx: BuildContext,
+  typeArgs: string[] = [],
 ): SchemaNode {
+  // A generic instantiation (`PaginatedDto<Item>`) is keyed by class + args so
+  // distinct instantiations don't collide in the emitted-class cache. A bare
+  // (non-generic) reference keys by class name as before — byte-identical output.
+  const cacheKey = typeArgs.length > 0 ? `${className}<${typeArgs.join(',')}>` : className;
+  const schemaBase = typeArgs.length > 0 ? `${className}Of${typeArgs.join('')}` : className;
+
   // Genuine recursion guard FIRST: the class is already on the build stack, so
   // this is a self/mutual reference. Emit a `lazyRef` back-edge to the named
   // schema reserved by the outer frame and mark it recursive — adapters keep the
   // real shape and break the inference cycle themselves.
-  if (ctx.visiting.has(className)) {
-    const reserved = ctx.emittedClasses.get(className) ?? aliasFor(className, ctx);
-    ctx.emittedClasses.set(className, reserved);
+  if (ctx.visiting.has(cacheKey)) {
+    const reserved = ctx.emittedClasses.get(cacheKey) ?? aliasFor(schemaBase, ctx);
+    ctx.emittedClasses.set(cacheKey, reserved);
     ctx.recursiveSchemas.add(reserved);
     if (!ctx.warnedDecorators.has(`recursive:${reserved}`)) {
       ctx.warnedDecorators.add(`recursive:${reserved}`);
@@ -322,21 +375,32 @@ function buildNestedReference(
     return { kind: 'unknown', note: 'nesting too deep — not expanded' };
   }
 
-  const existing = ctx.emittedClasses.get(className);
+  const existing = ctx.emittedClasses.get(cacheKey);
   if (existing) return { kind: 'ref', name: existing };
 
-  const schemaName = aliasFor(className, ctx);
+  const schemaName = aliasFor(schemaBase, ctx);
   const resolved = findType(className, fromFile, ctx.project);
   if (!resolved || resolved.kind !== 'class') {
     return { kind: 'object', fields: [], passthrough: true };
   }
 
-  ctx.emittedClasses.set(className, schemaName);
-  ctx.visiting.add(className);
+  // Bind the class's type parameters to the supplied args for the duration of
+  // this expansion (`class PaginatedDto<T>` + args [Item] → { T: 'Item' }).
+  const params = resolved.decl.getTypeParameters().map((p) => p.getName());
+  const newBindings: Array<[string, string]> = [];
+  params.forEach((param, i) => {
+    const arg = typeArgs[i];
+    if (arg) newBindings.push([param, arg]);
+  });
+  for (const [k, v] of newBindings) ctx.typeBindings.set(k, v);
+
+  ctx.emittedClasses.set(cacheKey, schemaName);
+  ctx.visiting.add(cacheKey);
   ctx.depth += 1;
   const childNode = buildObject(resolved.decl, resolved.file, ctx);
   ctx.depth -= 1;
-  ctx.visiting.delete(className);
+  ctx.visiting.delete(cacheKey);
+  for (const [k] of newBindings) ctx.typeBindings.delete(k);
 
   ctx.named.set(schemaName, childNode);
   return { kind: 'ref', name: schemaName };
@@ -397,6 +461,50 @@ function messageRaw(decorator: Decorator | undefined): string | undefined {
   return undefined;
 }
 
+/**
+ * Resolve a class-transformer discriminator from the SECOND argument of
+ * `@Type(() => Base, { discriminator: { property, subTypes } })`. Returns the
+ * discriminator property name plus the ordered list of subtype class names, or
+ * null when the decorator has no (valid) discriminator option.
+ */
+function resolveDiscriminator(
+  decorator: Decorator | undefined,
+): { property: string; subTypes: string[] } | null {
+  const optsArg = decorator?.getArguments()[1];
+  if (!optsArg || !Node.isObjectLiteralExpression(optsArg)) return null;
+
+  let discProp: Node | undefined;
+  for (const prop of optsArg.getProperties()) {
+    if (Node.isPropertyAssignment(prop) && prop.getName() === 'discriminator') {
+      discProp = prop.getInitializer();
+    }
+  }
+  if (!discProp || !Node.isObjectLiteralExpression(discProp)) return null;
+
+  let property: string | null = null;
+  const subTypes: string[] = [];
+  for (const prop of discProp.getProperties()) {
+    if (!Node.isPropertyAssignment(prop)) continue;
+    const name = prop.getName();
+    const init = prop.getInitializer();
+    if (!init) continue;
+    if (name === 'property' && Node.isStringLiteral(init)) {
+      property = init.getLiteralValue();
+    } else if (name === 'subTypes' && Node.isArrayLiteralExpression(init)) {
+      for (const el of init.getElements()) {
+        if (!Node.isObjectLiteralExpression(el)) continue;
+        for (const p of el.getProperties()) {
+          if (!Node.isPropertyAssignment(p) || p.getName() !== 'name') continue;
+          const nameInit = p.getInitializer();
+          if (nameInit && Node.isIdentifier(nameInit)) subTypes.push(nameInit.getText());
+        }
+      }
+    }
+  }
+  if (!property || subTypes.length === 0) return null;
+  return { property, subTypes };
+}
+
 /** Resolve `@Type(() => Child)` → `'Child'`. */
 function resolveTypeFactoryName(decorator: Decorator | undefined): string | null {
   const arg = firstArg(decorator);
@@ -412,6 +520,24 @@ function resolveTypeFactoryName(decorator: Decorator | undefined): string | null
 function singularClassName(typeText: string): string | null {
   const inner = typeText.endsWith('[]') ? typeText.slice(0, -2).trim() : typeText;
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(inner) ? inner : null;
+}
+
+/**
+ * Read the simple identifier names of a type reference's type arguments, e.g.
+ * `PaginatedDto<Item>` → `['Item']`. Returns `[]` when the node is not a generic
+ * type reference or any argument is not a bare identifier (we only substitute
+ * named class args; complex args are left to degrade as before).
+ */
+function genericTypeArgNames(typeNode: import('ts-morph').TypeNode | undefined): string[] {
+  if (!typeNode || !Node.isTypeReference(typeNode)) return [];
+  const names: string[] = [];
+  for (const arg of typeNode.getTypeArguments()) {
+    if (!Node.isTypeReference(arg)) return [];
+    const tn = arg.getTypeName();
+    if (!Node.isIdentifier(tn)) return [];
+    names.push(tn.getText());
+  }
+  return names;
 }
 
 /** `@IsEnum(E)` → enum node (or verbatim fallback when unresolvable). */

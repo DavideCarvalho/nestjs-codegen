@@ -12,7 +12,13 @@ import {
   type SourceFile,
 } from 'ts-morph';
 import { extractDtoContract } from './dto-type-resolver.js';
-import { loadTsconfigPaths, setDiscoveryContext } from './type-ref-resolution.js';
+import { clearEnumCache } from './enum-resolution.js';
+import {
+  clearTypeResolutionCaches,
+  loadTsconfigPaths,
+  resolveImportedVariable,
+  setDiscoveryContext,
+} from './type-ref-resolution.js';
 import type { ContractSource, RouteDescriptor, TypeRef } from './types.js';
 import { type ParsedContractDef, parseDefineContractCall } from './zod-ast-to-ts.js';
 
@@ -39,12 +45,38 @@ export async function discoverContractsFast(
 ): Promise<RouteDescriptor[]> {
   const { cwd, glob, tsconfig } = opts;
 
-  const tsconfigPath = tsconfig ? resolve(tsconfig) : join(cwd, 'tsconfig.json');
+  const tsconfigPath = resolveTsconfigPath(cwd, tsconfig);
+  const project = createDiscoveryProject(tsconfigPath);
 
-  // Try to use tsconfig if it exists; fall back to bare compiler options
-  let project: Project;
+  // Resolve controller file paths and add them to the project.
+  const files = await fg(glob, { cwd, absolute: true, onlyFiles: true });
+  for (const f of files) {
+    project.addSourceFileAtPath(f);
+  }
+
+  bindDiscoveryContext(project, cwd, tsconfigPath);
+  return extractAllRoutes(project);
+}
+
+// ---------------------------------------------------------------------------
+// Persistent-Project building blocks (used by the watcher to reuse ONE Project
+// across file changes — see watch/watcher.ts). The cold one-shot path above
+// keeps building a fresh Project per call, so its per-Project resolution caches
+// auto-invalidate; the watcher must evict them explicitly on each change.
+// ---------------------------------------------------------------------------
+
+/** Resolve the tsconfig path the same way the cold path does. */
+export function resolveTsconfigPath(cwd: string, tsconfig?: string): string {
+  return tsconfig ? resolve(tsconfig) : join(cwd, 'tsconfig.json');
+}
+
+/**
+ * Construct a ts-morph `Project` configured exactly as the cold discovery path:
+ * use the tsconfig when present, else fall back to bare compiler options.
+ */
+export function createDiscoveryProject(tsconfigPath: string): Project {
   try {
-    project = new Project({
+    return new Project({
       tsConfigFilePath: tsconfigPath,
       skipAddingFilesFromTsConfig: true,
       skipLoadingLibFiles: true,
@@ -52,7 +84,7 @@ export async function discoverContractsFast(
     });
   } catch {
     // tsconfig not found — create a minimal project without it
-    project = new Project({
+    return new Project({
       skipAddingFilesFromTsConfig: true,
       skipLoadingLibFiles: true,
       skipFileDependencyResolution: true,
@@ -63,28 +95,153 @@ export async function discoverContractsFast(
       },
     });
   }
+}
 
-  // Resolve controller file paths
-  const files = await fg(glob, { cwd, absolute: true, onlyFiles: true });
-
-  for (const f of files) {
-    project.addSourceFileAtPath(f);
-  }
-
-  const routes: RouteDescriptor[] = [];
-
-  // Bind the discovery context to this invocation's Project. Each call owns its
-  // own Project, so concurrent callers never share or corrupt context.
+/** Bind the per-Project discovery context (project root + tsconfig path aliases). */
+export function bindDiscoveryContext(project: Project, cwd: string, tsconfigPath: string): void {
   setDiscoveryContext(project, {
     projectRoot: cwd,
     tsconfigPaths: loadTsconfigPaths(tsconfigPath),
   });
+}
 
+/**
+ * Run route extraction over every CONTROLLER source file currently in the
+ * project. Only files matching the controller glob are extraction roots; DTO and
+ * other imported files are pulled into the Project lazily during resolution but
+ * are not themselves extraction roots. The cold path's loop visits all source
+ * files, but at that point the Project contains ONLY the globbed controllers
+ * (DTOs are added mid-extraction), so iterating `controllerPaths` is equivalent
+ * — and necessary for the persistent Project, whose `getSourceFiles()` also
+ * holds accumulated DTOs that must not be treated as controllers.
+ */
+export function extractRoutesFrom(
+  project: Project,
+  controllerPaths: Iterable<string>,
+): RouteDescriptor[] {
+  const routes: RouteDescriptor[] = [];
+  for (const path of controllerPaths) {
+    const sourceFile = project.getSourceFile(path);
+    if (sourceFile) routes.push(...extractFromSourceFile(sourceFile, project));
+  }
+  return routes;
+}
+
+/**
+ * Run route extraction over every source file currently in the project.
+ * Byte-identical to the cold path's extraction loop — used by both.
+ */
+export function extractAllRoutes(project: Project): RouteDescriptor[] {
+  const routes: RouteDescriptor[] = [];
   for (const sourceFile of project.getSourceFiles()) {
     routes.push(...extractFromSourceFile(sourceFile, project));
   }
-
   return routes;
+}
+
+/**
+ * A persistent-Project discovery session for watch mode. Holds ONE ts-morph
+ * `Project` for the watcher's lifetime, re-globbing the controller set and
+ * re-parsing only the file(s) that changed on each rediscovery — avoiding the
+ * dominant cost of rebuilding the Project and re-parsing every controller + DTO
+ * from scratch on every debounced change.
+ *
+ * Correctness: the per-Project resolution memoization (`_findTypeCache`,
+ * `_resolveNamedRefCache`, `_enumCache`) no longer auto-invalidates because the
+ * Project is reused, so {@link rediscover} clears those caches on every pass.
+ * Output is byte-identical to {@link discoverContractsFast}: same Project config,
+ * same context binding, same extraction over the globbed controller set.
+ */
+export class PersistentDiscovery {
+  private readonly project: Project;
+  private readonly cwd: string;
+  private readonly glob: string;
+  /** Absolute paths of the controllers currently loaded as extraction roots. */
+  private controllerPaths = new Set<string>();
+
+  private constructor(project: Project, cwd: string, glob: string) {
+    this.project = project;
+    this.cwd = cwd;
+    this.glob = glob;
+  }
+
+  /**
+   * Build the initial persistent Project: create it, glob + add all controllers,
+   * bind the discovery context. Mirrors {@link discoverContractsFast}'s setup.
+   */
+  static async create(opts: FastDiscoveryOptions): Promise<PersistentDiscovery> {
+    const { cwd, glob, tsconfig } = opts;
+    const tsconfigPath = resolveTsconfigPath(cwd, tsconfig);
+    const project = createDiscoveryProject(tsconfigPath);
+    bindDiscoveryContext(project, cwd, tsconfigPath);
+
+    const instance = new PersistentDiscovery(project, cwd, glob);
+    const files = await fg(glob, { cwd, absolute: true, onlyFiles: true });
+    for (const f of files) {
+      project.addSourceFileAtPath(f);
+      instance.controllerPaths.add(f);
+    }
+    return instance;
+  }
+
+  /** Run the initial extraction (equivalent to a first `discoverContractsFast`). */
+  discover(): RouteDescriptor[] {
+    return this.runExtraction();
+  }
+
+  /**
+   * Re-discover after one or more files changed. Refreshes the changed file(s)
+   * from disk (controllers AND any lazily-loaded DTO/imported files), re-globs
+   * to pick up added/removed controllers, clears the per-Project caches, then
+   * re-extracts. `changedPaths` is a hint; correctness does not depend on it
+   * being exhaustive because re-globbing + refresh-on-presence covers the set.
+   */
+  async rediscover(changedPaths?: Iterable<string>): Promise<RouteDescriptor[]> {
+    // 1. Refresh explicitly-changed files that are already in the Project. This
+    //    re-parses ONLY those files (the expensive ts-morph parse) — DTOs that
+    //    didn't change keep their already-parsed AST.
+    if (changedPaths) {
+      for (const p of changedPaths) {
+        const abs = resolve(p);
+        const sf = this.project.getSourceFile(abs);
+        if (sf) {
+          await sf.refreshFromFileSystem();
+        }
+      }
+    }
+
+    // 2. Re-glob to reconcile the controller set: add new controllers, drop
+    //    removed ones. Re-glob is cheap relative to parsing.
+    const globbed = new Set(
+      await fg(this.glob, { cwd: this.cwd, absolute: true, onlyFiles: true }),
+    );
+    for (const f of globbed) {
+      if (!this.controllerPaths.has(f)) {
+        try {
+          this.project.addSourceFileAtPath(f);
+          this.controllerPaths.add(f);
+        } catch {
+          /* file vanished between glob and add — ignore */
+        }
+      }
+    }
+    for (const f of this.controllerPaths) {
+      if (!globbed.has(f)) {
+        const sf = this.project.getSourceFile(f);
+        if (sf) this.project.removeSourceFile(sf);
+        this.controllerPaths.delete(f);
+      }
+    }
+
+    return this.runExtraction();
+  }
+
+  /** Clear stale per-Project caches, then extract over the controller set. */
+  private runExtraction(): RouteDescriptor[] {
+    clearTypeResolutionCaches(this.project);
+    clearEnumCache(this.project);
+    return extractRoutesFrom(this.project, this.controllerPaths);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +365,12 @@ function resolveVerb(method: MethodDeclaration): ResolvedVerb | null {
       return { httpMethod: verb, handlerPath: decoratorStringArg(pathArg) ?? '' };
     }
   }
+  // `@Sse('path')` is a server-sent-events endpoint — a GET on the wire.
+  const sseDecorator = method.getDecorator('Sse');
+  if (sseDecorator) {
+    const pathArg = sseDecorator.getArguments()[0];
+    return { httpMethod: 'GET', handlerPath: decoratorStringArg(pathArg) ?? '' };
+  }
   return null;
 }
 
@@ -291,10 +454,20 @@ function extractContractRoute(args: {
   prefix: string;
   className: string;
   sourceFile: SourceFile;
+  project: Project;
   seenNames: Map<string, string>;
 }): RouteDescriptor | null {
-  const { cls, method, applyContractDecorator, verb, prefix, className, sourceFile, seenNames } =
-    args;
+  const {
+    cls,
+    method,
+    applyContractDecorator,
+    verb,
+    prefix,
+    className,
+    sourceFile,
+    project,
+    seenNames,
+  } = args;
 
   const firstDecoratorArg = applyContractDecorator.getArguments()[0];
   if (!firstDecoratorArg) return null;
@@ -310,22 +483,27 @@ function extractContractRoute(args: {
     contractDef = parseDefineContractCall(firstDecoratorArg);
   } else if (Node.isIdentifier(firstDecoratorArg)) {
     const identName = firstDecoratorArg.getText();
-    const varDecl = sourceFile.getVariableDeclaration(identName);
-    if (!varDecl) {
+    // Resolve the const — locally OR by following imports / barrel re-exports to
+    // its declaring file (ts-morph walks the import to the declaration).
+    const resolvedVar = resolveImportedVariable(identName, sourceFile, project);
+    if (!resolvedVar) {
       console.warn(
-        `[nestjs-codegen/fast] Cannot resolve '${identName}' in ${sourceFile.getFilePath()} (cross-file imports are out-of-scope for v1) — skipping`,
+        `[nestjs-codegen/fast] Cannot resolve contract identifier '${identName}' applied in ${sourceFile.getFilePath()} — the import could not be followed to a declaration; skipping`,
       );
       return null;
     }
 
+    const { decl: varDecl, file: declFile } = resolvedVar;
     const initializer = varDecl.getInitializer();
     if (!initializer) return null;
 
     contractDef = parseDefineContractCall(initializer);
     // Re-export the named contract's schema members (Path A). Only when the
-    // const is exported so forms.ts can import it.
+    // const is exported so forms.ts can import it. The ref points at the const's
+    // DECLARING file (which may differ from the controller for a cross-file ref),
+    // and uses the LOCAL alias the controller imported it under for re-export.
     if (contractDef && varDecl.isExported()) {
-      const filePath = sourceFile.getFilePath();
+      const filePath = declFile.getFilePath();
       if (contractDef.body !== null) {
         bodyZodRef = { name: `${identName}.body`, filePath };
       }
@@ -363,6 +541,7 @@ function extractContractRoute(args: {
       query: contractDef.query,
       body: contractDef.body,
       response: contractDef.response,
+      error: contractDef.error,
       // Path A: capture both the importable ref and the raw text. The emitter
       // prefers inlining the text (client-safe — re-exporting from a controller
       // would drag server-only deps into the client bundle).
@@ -413,15 +592,18 @@ function extractDtoRoute(args: {
       query: dtoContract?.query ?? null,
       body: dtoContract?.body ?? null,
       response: dtoContract?.response ?? 'unknown',
+      error: dtoContract?.error ?? null,
       queryRef: dtoContract?.queryRef ?? null,
       bodyRef: dtoContract?.bodyRef ?? null,
       responseRef: dtoContract?.responseRef ?? null,
+      errorRef: dtoContract?.errorRef ?? null,
       filterFields: dtoContract?.filterFields ?? null,
       filterFieldTypes: dtoContract?.filterFieldTypes ?? null,
       filterSource: dtoContract?.filterSource ?? null,
       formWarnings: dtoContract?.formWarnings ?? [],
       bodySchema: dtoContract?.bodySchema ?? null,
       querySchema: dtoContract?.querySchema ?? null,
+      stream: dtoContract?.stream ?? false,
     },
   });
 }
@@ -455,6 +637,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
             prefix,
             className,
             sourceFile,
+            project,
             seenNames,
           })
         : extractDtoRoute({

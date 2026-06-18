@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import chokidar from 'chokidar';
 import type { ResolvedConfig } from '../config/types.js';
-import { discoverContractsFast } from '../discovery/contracts-fast.js';
+import { PersistentDiscovery } from '../discovery/contracts-fast.js';
 import type { RouteDescriptor } from '../discovery/types.js';
 import { generate } from '../generate.js';
 import { acquireLock } from './lock-file.js';
@@ -48,13 +48,26 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
     return NO_OP_WATCHER;
   }
 
+  // Persistent ts-morph Project reused across every contract/DTO change. Built
+  // once here; each change refreshes only the changed file(s) instead of
+  // reconstructing the Project and re-parsing all controllers + DTOs. Lazily
+  // (re)initialised so an initial-pass failure doesn't permanently disable it.
+  let discovery: PersistentDiscovery | null = null;
+  async function getDiscovery(): Promise<PersistentDiscovery> {
+    if (discovery === null) {
+      discovery = await PersistentDiscovery.create({
+        cwd: config.codegen.cwd,
+        glob: config.contracts.glob,
+        ...(config.app?.tsconfig ? { tsconfig: config.app.tsconfig } : {}),
+      });
+      return discovery;
+    }
+    return discovery;
+  }
+
   // Run an initial full pass: pages + routes + contracts (same as a one-shot `codegen` run)
   try {
-    const initialRoutes = await discoverContractsFast({
-      cwd: config.codegen.cwd,
-      glob: config.contracts.glob,
-      ...(config.app?.tsconfig ? { tsconfig: config.app.tsconfig } : {}),
-    });
+    const initialRoutes = (await getDiscovery()).discover();
     await generate(config, initialRoutes);
   } catch (err) {
     // Best-effort; don't crash the watcher on initial generation failure
@@ -103,6 +116,9 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
 
   // ── Contracts watcher (static AST discovery via ts-morph) ────────────────────
   let contractsDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  // Absolute paths changed since the last rediscovery, accumulated across the
+  // debounce window so a burst of edits refreshes every touched file exactly once.
+  const pendingChangedPaths = new Set<string>();
 
   const contractsWatcher = chokidar.watch(join(config.codegen.cwd, config.contracts.glob), {
     ignoreInitial: true,
@@ -110,18 +126,20 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
     awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
   });
 
-  function scheduleContractsRegenerate(): void {
+  function scheduleContractsRegenerate(changedPath?: string): void {
+    if (typeof changedPath === 'string') pendingChangedPaths.add(changedPath);
     if (contractsDebounceTimer !== undefined) {
       clearTimeout(contractsDebounceTimer);
     }
     contractsDebounceTimer = setTimeout(async () => {
       contractsDebounceTimer = undefined;
+      const changed = [...pendingChangedPaths];
+      pendingChangedPaths.clear();
       try {
-        const routes: RouteDescriptor[] = await discoverContractsFast({
-          cwd: config.codegen.cwd,
-          glob: config.contracts.glob,
-          ...(config.app?.tsconfig ? { tsconfig: config.app.tsconfig } : {}),
-        });
+        // Reuse the persistent Project: refresh only the changed file(s), re-glob
+        // for added/removed controllers, then re-extract. Avoids reconstructing
+        // the Project and re-parsing every controller + DTO on each change.
+        const routes: RouteDescriptor[] = await (await getDiscovery()).rediscover(changed);
 
         // Route through generate() so the incremental pass honors the SAME emit
         // options as the initial pass (query / mutationClient / queryImport / fetcher
@@ -138,9 +156,9 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
     }, config.contracts.debounceMs);
   }
 
-  contractsWatcher.on('add', scheduleContractsRegenerate);
-  contractsWatcher.on('change', scheduleContractsRegenerate);
-  contractsWatcher.on('unlink', scheduleContractsRegenerate);
+  contractsWatcher.on('add', (p) => scheduleContractsRegenerate(p));
+  contractsWatcher.on('change', (p) => scheduleContractsRegenerate(p));
+  contractsWatcher.on('unlink', (p) => scheduleContractsRegenerate(p));
 
   // ── DTO watcher (forms.ts synthesis from class-validator DTOs) ───────────────
   // DTO classes live in *.dto.ts files (not matched by the controller glob), but
@@ -152,9 +170,9 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
     awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
   });
 
-  formsWatcher.on('add', scheduleContractsRegenerate);
-  formsWatcher.on('change', scheduleContractsRegenerate);
-  formsWatcher.on('unlink', scheduleContractsRegenerate);
+  formsWatcher.on('add', (p) => scheduleContractsRegenerate(p));
+  formsWatcher.on('change', (p) => scheduleContractsRegenerate(p));
+  formsWatcher.on('unlink', (p) => scheduleContractsRegenerate(p));
 
   return {
     close: async () => {

@@ -1,4 +1,5 @@
 import type { ExtensionContext, LeafModel, RequestModel } from '@dudousxd/nestjs-codegen/extension';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { tanstackQuery } from '../src/index.js';
 
@@ -65,7 +66,9 @@ describe('tanstackQuery', () => {
       '_queryOptions({ queryKey: ["users.show", input] as const',
     );
     expect(members.infiniteQueryOptions).toContain('_infiniteQueryOptions(');
-    expect(members.infiniteQueryOptions).toContain('initialPageParam: 1');
+    expect(members.infiniteQueryOptions).toContain(
+      'initialPageParam: overrides?.initialPageParam ?? 1',
+    );
   });
 
   it('plain mutation (POST, no filter) gets queryKey/mutationOptions only', () => {
@@ -106,5 +109,113 @@ describe('tanstackQuery', () => {
     expect(layer.imports?.(ctxWith([{ method: 'POST', filterFields: ['status'] }]))).toEqual([
       "import { queryOptions as _queryOptions, mutationOptions as _mutationOptions } from '@tanstack/react-query';",
     ]);
+  });
+
+  describe('infiniteQueryOptions cursor/pagination selector', () => {
+    it('defaults: page param "page", initialPageParam 1, and meta.page/lastPage selector', () => {
+      const members = tanstackQuery().apiClientLayer!.buildMembers(
+        'fetcher.get<R>(u, o)',
+        leaf(req()),
+        {} as never,
+      );
+      const io = members.infiniteQueryOptions;
+      // Backward-compatible: still a zero-arg-callable handle member, defaults baked in.
+      expect(io).toContain('initialPageParam: overrides?.initialPageParam ?? 1');
+      expect(io).toContain('page: pageParam');
+      // Default selector reads meta.page / meta.lastPage.
+      expect(io).toContain('meta?.page != null && meta?.lastPage != null');
+      expect(io).toContain('meta.page < meta.lastPage ? meta.page + 1 : undefined');
+    });
+
+    it('accepts a runtime overrides arg (getNextPageParam / getPreviousPageParam / initialPageParam)', () => {
+      const members = tanstackQuery().apiClientLayer!.buildMembers(
+        'fetcher.get<R>(u, o)',
+        leaf(req()),
+        {} as never,
+      );
+      const io = members.infiniteQueryOptions;
+      // The emitted member is now a function that takes an optional overrides object.
+      expect(io).toMatch(/^\(overrides\?:/);
+      // Caller-provided selectors win over the defaults.
+      expect(io).toContain('getNextPageParam: overrides?.getNextPageParam ??');
+      expect(io).toContain('getPreviousPageParam: overrides?.getPreviousPageParam');
+      expect(io).toContain('...overrides');
+    });
+
+    // Behavioral checks: transpile the emitted TS expression to JS with the real TypeScript
+    // compiler, then evaluate it with a stub `_infiniteQueryOptions` (identity over its
+    // config) plus stub `input`/`fetcher`. This exercises the actual emitted pagination
+    // logic — and also proves the emitted member is valid, compilable TypeScript.
+    function evalInfinite(memberExpr: string) {
+      const js = ts.transpileModule(`const __member = ${memberExpr};`, {
+        compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext },
+      }).outputText;
+      const _infiniteQueryOptions = (cfg: Record<string, unknown>) => cfg;
+      const fetcher = { get: () => Promise.resolve({}) };
+      const input = { query: {} };
+      const make = new Function(
+        '_infiniteQueryOptions',
+        'fetcher',
+        'input',
+        `${js}; return __member;`,
+      )(_infiniteQueryOptions, fetcher, input) as (overrides?: Record<string, unknown>) => {
+        getNextPageParam: (p: unknown) => unknown;
+        initialPageParam: number;
+      };
+      return make;
+    }
+
+    it('default selector: meta.page < meta.lastPage advances; otherwise stops', () => {
+      const member = tanstackQuery().apiClientLayer!.buildMembers(
+        'fetcher.get<R>(u, o)',
+        leaf(req()),
+        {} as never,
+      ).infiniteQueryOptions;
+      const cfg = evalInfinite(member)();
+      expect(cfg.initialPageParam).toBe(1);
+      expect(cfg.getNextPageParam({ meta: { page: 1, lastPage: 3 } })).toBe(2);
+      expect(cfg.getNextPageParam({ meta: { page: 3, lastPage: 3 } })).toBeUndefined();
+    });
+
+    it('custom getNextPageParam overrides the default', () => {
+      const member = tanstackQuery().apiClientLayer!.buildMembers(
+        'fetcher.get<R>(u, o)',
+        leaf(req()),
+        {} as never,
+      ).infiniteQueryOptions;
+      const cfg = evalInfinite(member)({
+        getNextPageParam: (last: { nextCursor?: number }) => last.nextCursor,
+        initialPageParam: 0,
+      });
+      expect(cfg.initialPageParam).toBe(0);
+      expect(cfg.getNextPageParam({ nextCursor: 42 })).toBe(42);
+    });
+
+    it('non-standard shape no longer silently breaks when a selector is given', () => {
+      const member = tanstackQuery().apiClientLayer!.buildMembers(
+        'fetcher.get<R>(u, o)',
+        leaf(req()),
+        {} as never,
+      ).infiniteQueryOptions;
+      // No `meta` field at all — default would return undefined (the footgun). A custom
+      // selector lets the caller drive pagination from the real shape.
+      const def = evalInfinite(member)();
+      expect(def.getNextPageParam({ pagination: { next: 'abc' } })).toBeUndefined();
+      const cfg = evalInfinite(member)({
+        getNextPageParam: (last: { pagination?: { next?: string } }) => last.pagination?.next,
+      });
+      expect(cfg.getNextPageParam({ pagination: { next: 'abc' } })).toBe('abc');
+    });
+
+    it('generation-time pageParamName customizes the query-string key', () => {
+      const members = tanstackQuery({ pageParamName: 'cursor' }).apiClientLayer!.buildMembers(
+        'fetcher.get<R>(u, o)',
+        leaf(req()),
+        {} as never,
+      );
+      const io = members.infiniteQueryOptions;
+      expect(io).toContain('cursor: pageParam');
+      expect(io).not.toContain('page: pageParam');
+    });
   });
 });

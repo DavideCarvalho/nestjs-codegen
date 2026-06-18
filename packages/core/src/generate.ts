@@ -8,6 +8,8 @@ import { emitApi } from './emit/emit-api.js';
 import { emitCache } from './emit/emit-cache.js';
 import { emitForms } from './emit/emit-forms.js';
 import { emitIndex } from './emit/emit-index.js';
+import { emitMocks } from './emit/emit-mocks.js';
+import { emitOpenApi } from './emit/emit-openapi.js';
 import { emitPages } from './emit/emit-pages.js';
 import { emitRoutes } from './emit/emit-routes.js';
 import {
@@ -73,6 +75,27 @@ export async function generate(
   }
 
   const hasForms = await emitForms(routes, config.codegen.outDir, config.forms, config.validation);
+
+  // OpenAPI 3.1 spec export (opt-in). Lowers routes + validation IR into a spec.
+  if (hasContracts && config.openapi.enabled) {
+    await emitOpenApi(routes, config.codegen.outDir, {
+      fileName: config.openapi.fileName,
+      info: {
+        title: config.openapi.title,
+        version: config.openapi.version,
+        ...(config.openapi.description ? { description: config.openapi.description } : {}),
+      },
+    });
+  }
+
+  // MSW + faker mock handlers (opt-in).
+  if (hasContracts && config.mocks.enabled) {
+    await emitMocks(routes, config.codegen.outDir, {
+      fileName: config.mocks.fileName,
+      seed: config.mocks.seed,
+      baseUrl: config.mocks.baseUrl,
+    });
+  }
 
   await emitIndex(config.codegen.outDir, hasContracts, hasForms);
 

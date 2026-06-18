@@ -27,6 +27,15 @@ type EnumResult = { values: string[]; numeric: boolean };
  */
 const _enumCache = new WeakMap<Project, Map<string, EnumResult | null>>();
 
+/**
+ * Evict the per-`Project` enum cache. Companion to
+ * `clearTypeResolutionCaches` — the persistent watch-mode Project must drop this
+ * on every change or a changed enum would resolve to stale members.
+ */
+export function clearEnumCache(project: Project): void {
+  _enumCache.delete(project);
+}
+
 export function resolveEnumValues(
   name: string,
   sourceFile: SourceFile,

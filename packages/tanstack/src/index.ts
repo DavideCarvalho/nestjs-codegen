@@ -15,6 +15,16 @@ export interface TanstackQueryOptions {
    * @default '@tanstack/react-query'
    */
   import?: string;
+  /**
+   * Query-string key appended to each page request in `infiniteQueryOptions()`. This is a
+   * generation-time setting because the param name is structural to the API surface (it is
+   * baked into the emitted `queryFn` for every GET route) and cannot meaningfully vary
+   * per-call. For cursor-style APIs that key the cursor differently, set this (e.g.
+   * `'cursor'`). The runtime selector (see {@link InfiniteQueryOverrides}) decides the
+   * *value* of the next page param; this names the field it is sent under.
+   * @default 'page'
+   */
+  pageParamName?: string;
 }
 
 /** A contracted route counts for import decisions. */
@@ -29,6 +39,7 @@ function contracted(ctx: ExtensionContext) {
  */
 export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtension {
   const queryModule = options.import ?? '@tanstack/react-query';
+  const pageParamName = options.pageParamName ?? 'page';
 
   const layer: ApiClientLayer = {
     name: 'tanstack-query',
@@ -43,9 +54,19 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       if (req.isQuery) {
         members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
       }
-      // ...page pagination is GET-only (it appends `page` to the query string).
+      // ...page/cursor pagination is GET-only (it appends the page param to the query
+      // string). The emitted member takes an optional `overrides` arg so a consumer can plug
+      // their own cursor selector — mirroring how Orval/tRPC expose `getNextPageParam` as a
+      // call-site option. Defaults (page param value, initialPageParam, and the
+      // `meta.{page,lastPage}` selector) are kept so existing output keeps working unchanged.
       if (req.isGet) {
-        members.infiniteQueryOptions = `() => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ${req.responseType}) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } })`;
+        const resp = req.responseType;
+        // Runtime overrides: any TanStack infinite-query option, spread last so it wins; the
+        // three pagination-shaping fields are read explicitly so callers can override just
+        // the selector while keeping every other default.
+        const overridesType = `{ getNextPageParam?: (lastPage: ${resp}, allPages: ${resp}[], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ${resp}, allPages: ${resp}[], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }`;
+        const defaultNext = `(lastPage: ${resp}) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }`;
+        members.infiniteQueryOptions = `(overrides?: ${overridesType}) => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${resp}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), ${pageParamName}: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? (${defaultNext}), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides })`;
       }
       // ...and any non-GET (incl. filter-search POSTs) also gets a mutation entry. The
       // mutationFn takes the full leaf input ({ params?, query?, body? }) so path params

@@ -125,6 +125,8 @@ export interface ParsedContractDef {
   query: string | null;
   body: string | null;
   response: string;
+  /** Error response body type, from a `defineContract({ error })` zod schema. Null when absent. */
+  error: string | null;
   /** Raw zod source text of the body initializer (for inline forms emit). */
   bodyZodText: string | null;
   /** Raw zod source text of the query initializer (for inline forms emit). */
@@ -151,6 +153,7 @@ export function parseDefineContractCall(callExpr: Node): ParsedContractDef | nul
   let query: string | null = null;
   let body: string | null = null;
   let response = 'unknown';
+  let error: string | null = null;
   let bodyZodText: string | null = null;
   let queryZodText: string | null = null;
 
@@ -168,8 +171,10 @@ export function parseDefineContractCall(callExpr: Node): ParsedContractDef | nul
       bodyZodText = val.getText();
     } else if (propName === 'response') {
       response = zodAstToTs(val);
+    } else if (propName === 'error') {
+      error = zodAstToTs(val);
     }
   }
 
-  return { query, body, response, bodyZodText, queryZodText };
+  return { query, body, response, error, bodyZodText, queryZodText };
 }

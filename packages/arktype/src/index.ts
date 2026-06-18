@@ -139,6 +139,17 @@ function render(node: SchemaNode, ctx: RenderContext): string {
     case 'ref':
     case 'lazyRef':
       return node.name;
+    case 'union': {
+      // Non-scalar union (refs/objects, e.g. a discriminated union). arktype has
+      // no dedicated discriminated-union form — it optimizes plain unions of
+      // objects automatically — so emit the tuple alternation `[a, "|", b, ...]`.
+      const parts: string[] = [];
+      node.options.forEach((o, i) => {
+        if (i > 0) parts.push(JSON.stringify('|'));
+        parts.push(render(o, ctx));
+      });
+      return `[${parts.join(', ')}]`;
+    }
     case 'object': {
       if (node.fields.length === 0) return '{}';
       const inner = node.fields

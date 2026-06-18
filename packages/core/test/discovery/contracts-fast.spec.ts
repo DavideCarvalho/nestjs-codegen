@@ -968,3 +968,121 @@ describe('discoverContractsFast — responseRef isArray flag', () => {
     expect(ref?.isArray).not.toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cross-file @ApplyContract identifier refs
+// ---------------------------------------------------------------------------
+
+describe('discoverContractsFast — cross-file @ApplyContract', () => {
+  it('resolves a contract imported directly from another file', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'cross-file-contract.controller.ts',
+    });
+
+    const create = routes.find((r) => r.name === 'crossFileContract.create');
+    expect(create, 'crossFileContract.create not found').toBeDefined();
+    const cs = create?.contract?.contractSource;
+    expect(cs?.body).toContain('name');
+    expect(cs?.response).toContain('id');
+  });
+
+  it('resolves a contract imported through a barrel re-export', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'cross-file-contract.controller.ts',
+    });
+
+    const list = routes.find((r) => r.name === 'crossFileContract.list');
+    expect(list, 'crossFileContract.list not found').toBeDefined();
+    const cs = list?.contract?.contractSource;
+    // response is z.array(...) → an array type
+    expect(cs?.response).toMatch(/Array<|\[\]/);
+    expect(cs?.response).toContain('id');
+  });
+
+  it('re-exports the imported contract schema members for forms (Path A)', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'cross-file-contract.controller.ts',
+    });
+    const create = routes.find((r) => r.name === 'crossFileContract.create');
+    const cs = create?.contract?.contractSource;
+    expect(cs?.bodyZodRef?.name).toBe('CreateWidget.body');
+    // The ref must point at the *declaring* file, not the controller.
+    expect(cs?.bodyZodRef?.filePath).toMatch(/shared\.contract\.ts$/);
+  });
+
+  it('warns and skips when the contract identifier cannot be resolved', async () => {
+    const warnings: string[] = [];
+    const orig = console.warn;
+    console.warn = (msg?: unknown) => {
+      warnings.push(String(msg));
+    };
+    try {
+      const routes = await discoverContractsFast({
+        cwd: fixturesDir,
+        glob: 'cross-file-contract-unresolvable.controller.ts',
+      });
+      const route = routes.find((r) => r.name === 'crossFileContractUnresolvable.list');
+      // The contract could not be resolved → no route (skipped).
+      expect(route).toBeUndefined();
+    } finally {
+      console.warn = orig;
+    }
+    expect(warnings.some((w) => w.includes('NonExistentContract'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SSE / streaming response typing
+// ---------------------------------------------------------------------------
+
+describe('discoverContractsFast — SSE / streaming', () => {
+  it('discovers @Sse() routes and carries the streamed element type', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'sse.controller.ts',
+    });
+
+    const raw = routes.find((r) => r.name === 'sse.raw');
+    expect(raw, 'sse.raw route not found').toBeDefined();
+    const cs = raw?.contract?.contractSource;
+    expect(cs?.stream).toBe(true);
+    // Observable<Tick> → element Tick (expanded inline)
+    expect(cs?.response).toContain('count');
+  });
+
+  it('unwraps MessageEvent<T> to the inner streamed element type', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'sse.controller.ts',
+    });
+    const ticks = routes.find((r) => r.name === 'sse.ticks');
+    const cs = ticks?.contract?.contractSource;
+    expect(cs?.stream).toBe(true);
+    // Observable<MessageEvent<Tick>> → element Tick (data unwrapped)
+    expect(cs?.response).toContain('count');
+    expect(cs?.response).not.toContain('MessageEvent');
+  });
+
+  it('discovers AsyncIterable streaming handlers', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'sse.controller.ts',
+    });
+    const asyncRoute = routes.find((r) => r.name === 'sse.asyncTicks');
+    const cs = asyncRoute?.contract?.contractSource;
+    expect(cs?.stream).toBe(true);
+    expect(cs?.response).toContain('count');
+  });
+
+  it('keeps non-streaming routes free of the stream flag', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'contract-users.controller.ts',
+    });
+    const route = routes.find((r) => r.name === 'contractUsers.list');
+    expect(route?.contract?.contractSource.stream).toBeFalsy();
+  });
+});

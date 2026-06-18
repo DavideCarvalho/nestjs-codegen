@@ -25,6 +25,13 @@ interface BuildContext {
   warnings: string[];
   warnedDecorators: Set<string>;
   emittedClasses: Map<string, string>;
+  /**
+   * Maintained union of every schema name currently in use — the keys of
+   * `named` plus the values of `emittedClasses`. Kept in sync at each insertion
+   * site so {@link aliasFor} can probe membership in O(1) instead of rebuilding
+   * the set on every call (former O(n²) over all nested references).
+   */
+  usedSchemaNames: Set<string>;
   visiting: Set<string>;
   recursiveSchemas: Set<string>;
   depth: number;
@@ -78,6 +85,7 @@ export function extractSchemaFromDto(
     warnings: [],
     warnedDecorators: new Set(),
     emittedClasses: new Map(),
+    usedSchemaNames: new Set(),
     visiting: new Set(),
     recursiveSchemas: new Set(),
     depth: 0,
@@ -353,6 +361,7 @@ function buildNestedReference(
   if (ctx.visiting.has(cacheKey)) {
     const reserved = ctx.emittedClasses.get(cacheKey) ?? aliasFor(schemaBase, ctx);
     ctx.emittedClasses.set(cacheKey, reserved);
+    ctx.usedSchemaNames.add(reserved);
     ctx.recursiveSchemas.add(reserved);
     if (!ctx.warnedDecorators.has(`recursive:${reserved}`)) {
       ctx.warnedDecorators.add(`recursive:${reserved}`);
@@ -395,6 +404,7 @@ function buildNestedReference(
   for (const [k, v] of newBindings) ctx.typeBindings.set(k, v);
 
   ctx.emittedClasses.set(cacheKey, schemaName);
+  ctx.usedSchemaNames.add(schemaName);
   ctx.visiting.add(cacheKey);
   ctx.depth += 1;
   const childNode = buildObject(resolved.decl, resolved.file, ctx);
@@ -403,6 +413,7 @@ function buildNestedReference(
   for (const [k] of newBindings) ctx.typeBindings.delete(k);
 
   ctx.named.set(schemaName, childNode);
+  ctx.usedSchemaNames.add(schemaName);
   return { kind: 'ref', name: schemaName };
 }
 
@@ -410,9 +421,10 @@ function aliasFor(className: string, ctx: BuildContext): string {
   const baseName = `${className}Schema`;
   let candidate = baseName;
   let i = 1;
-  const used = new Set(ctx.named.keys());
-  for (const v of ctx.emittedClasses.values()) used.add(v);
-  while (used.has(candidate)) {
+  // `usedSchemaNames` is the maintained union of `named` keys + `emittedClasses`
+  // values, kept in sync at every insertion site — so this is an O(1) probe per
+  // step instead of rebuilding the set on each call.
+  while (ctx.usedSchemaNames.has(candidate)) {
     candidate = `${baseName}_${i}`;
     i += 1;
   }

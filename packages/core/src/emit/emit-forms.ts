@@ -108,21 +108,43 @@ interface NestedSchemaPlan {
   renamesByEntry: Map<FormEntry, Map<string, string>>;
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Cache of word-boundary regexes keyed by token. Building `new RegExp` per
+ * rename per call was O(renames) recompiles inside the fixed-point loop; tokens
+ * recur heavily across entries, so a shared cache amortizes it. A `/g` regex is
+ * safe to reuse with `String.prototype.replace` (replace does not read/advance
+ * `lastIndex`), so one cached instance covers both `applyRenames` (global) and
+ * `isSelfReferential` (test). For `.test()` we use a fresh non-global form to
+ * avoid `lastIndex` statefulness.
+ */
+const wordBoundaryRegexCache = new Map<string, RegExp>();
+
+function wordBoundaryRegex(token: string): RegExp {
+  let re = wordBoundaryRegexCache.get(token);
+  if (re === undefined) {
+    re = new RegExp(`\\b${escapeRegExp(token)}\\b`, 'g');
+    wordBoundaryRegexCache.set(token, re);
+  }
+  return re;
+}
+
 function applyRenames(text: string, renames: Map<string, string> | null): string {
   if (!renames || renames.size === 0) return text;
   let out = text;
   for (const [from, to] of renames) {
     if (from === to) continue;
-    out = out.replace(new RegExp(`\\b${escapeRegExp(from)}\\b`, 'g'), to);
+    out = out.replace(wordBoundaryRegex(from), to);
   }
   return out;
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function isSelfReferential(name: string, text: string): boolean {
+  // Use a non-global probe: `RegExp.prototype.test` on a `/g` regex advances
+  // `lastIndex`, which would make repeated calls for the same token stateful.
   return new RegExp(`\\b${escapeRegExp(name)}\\b`).test(text);
 }
 
@@ -141,7 +163,26 @@ function planNestedSchemas(entries: FormEntry[]): NestedSchemaPlan {
     if (local.length === 0) continue;
 
     const rename = new Map<string, string>();
-    for (const [name] of local) rename.set(name, name);
+    // Maintained mirror of `rename.values()` so the disambiguation loop can test
+    // candidate membership in O(1) instead of rebuilding an array each probe.
+    const renameValues = new Set<string>();
+    const setRename = (key: string, value: string): void => {
+      const prev = rename.get(key);
+      rename.set(key, value);
+      if (prev !== undefined && prev !== value) {
+        // Drop the old value only if no other key still maps to it.
+        let stillUsed = false;
+        for (const v of rename.values()) {
+          if (v === prev) {
+            stillUsed = true;
+            break;
+          }
+        }
+        if (!stillUsed) renameValues.delete(prev);
+      }
+      renameValues.add(value);
+    };
+    for (const [name] of local) setRename(name, name);
 
     const textFor = (name: string): string => {
       const raw = entry.nestedSchemas?.[name] ?? '';
@@ -163,12 +204,12 @@ function planNestedSchemas(entries: FormEntry[]): NestedSchemaPlan {
         let candidate = `${name}_${i}`;
         while (
           (globalSchemas.has(candidate) && globalSchemas.get(candidate) !== textFor(name)) ||
-          [...rename.values()].includes(candidate)
+          renameValues.has(candidate)
         ) {
           i += 1;
           candidate = `${name}_${i}`;
         }
-        rename.set(name, candidate);
+        setRename(name, candidate);
         changed = true;
       }
     }

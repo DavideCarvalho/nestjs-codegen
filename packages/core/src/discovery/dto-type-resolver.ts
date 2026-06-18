@@ -63,26 +63,30 @@ const PASSTHROUGH_UTILITY = new Set([
  * Resolve a TypeNode to a TypeScript type-source string.
  * Follows imports across files via the ts-morph Project.
  * `depth` limits recursive expansion (guards against circular references).
+ * `subst` maps generic type-parameter names to already-resolved type strings
+ * (e.g. `{ T: '{ id: string }' }` while expanding `PaginatedDto<Item>`), so a
+ * field typed `T`/`T[]` faithfully resolves instead of degrading to `unknown`.
  */
 function resolveTypeNodeToString(
   typeNode: TypeNode,
   sourceFile: SourceFile,
   project: Project,
   depth: number,
+  subst: Map<string, string> = new Map(),
 ): string {
   if (depth <= 0) return 'unknown';
 
   // Array<T> or T[] — unwrap and wrap
   if (Node.isArrayTypeNode(typeNode)) {
     const elementType = typeNode.getElementTypeNode();
-    return `Array<${resolveTypeNodeToString(elementType, sourceFile, project, depth)}>`;
+    return `Array<${resolveTypeNodeToString(elementType, sourceFile, project, depth, subst)}>`;
   }
 
   // Union: A | B | C — resolve each member so named refs get inlined
   if (Node.isUnionTypeNode(typeNode)) {
     return typeNode
       .getTypeNodes()
-      .map((t) => resolveTypeNodeToString(t, sourceFile, project, depth))
+      .map((t) => resolveTypeNodeToString(t, sourceFile, project, depth, subst))
       .join(' | ');
   }
 
@@ -90,19 +94,24 @@ function resolveTypeNodeToString(
   if (Node.isIntersectionTypeNode(typeNode)) {
     return typeNode
       .getTypeNodes()
-      .map((t) => resolveTypeNodeToString(t, sourceFile, project, depth))
+      .map((t) => resolveTypeNodeToString(t, sourceFile, project, depth, subst))
       .join(' & ');
   }
 
   // Parenthesized: ( ... ) — unwrap
   if (Node.isParenthesizedTypeNode(typeNode)) {
-    return `(${resolveTypeNodeToString(typeNode.getTypeNode(), sourceFile, project, depth)})`;
+    return `(${resolveTypeNodeToString(typeNode.getTypeNode(), sourceFile, project, depth, subst)})`;
   }
 
   // TypeReference: Foo, Foo[], Array<Foo>, Promise<Foo>, etc.
   if (Node.isTypeReference(typeNode)) {
     const typeName = typeNode.getTypeName();
     const name = Node.isIdentifier(typeName) ? typeName.getText() : typeNode.getText();
+
+    // A generic type-parameter binding in scope (e.g. `T` while expanding
+    // `PaginatedDto<Item>`) → its concrete resolved type string.
+    const bound = subst.get(name);
+    if (bound !== undefined) return bound;
 
     // Well-known pass-through primitives and types
     if (name === 'string' || name === 'number' || name === 'boolean') return name;
@@ -115,7 +124,7 @@ function resolveTypeNodeToString(
     // Known wrapper types — unwrap (or array-wrap) their first type argument.
     const wrapperMode = WRAPPER_TYPES[name];
     if (wrapperMode) {
-      return unwrapFirstTypeArg(typeNode, sourceFile, project, depth, wrapperMode);
+      return unwrapFirstTypeArg(typeNode, sourceFile, project, depth, wrapperMode, subst);
     }
 
     // Well-known utility types — preserve full text with type args
@@ -126,7 +135,10 @@ function resolveTypeNodeToString(
     // Try same file first, then follow imports (class, interface, type alias, enum)
     const resolved = findType(name, sourceFile, project);
     if (resolved) {
-      return expandTypeDecl(resolved, project, depth - 1);
+      // Generic class/interface instantiation: bind its type parameters to the
+      // supplied args (resolved in the CURRENT scope/subst) before expanding.
+      const childSubst = buildSubst(resolved, typeNode, sourceFile, project, depth, subst);
+      return expandTypeDecl(resolved, project, depth - 1, childSubst);
     }
 
     // Unresolvable type — use unknown instead of bare name to avoid TS errors in generated code
@@ -157,32 +169,65 @@ function unwrapFirstTypeArg(
   project: Project,
   depth: number,
   mode: 'unwrap' | 'arrayOf',
+  subst: Map<string, string> = new Map(),
 ): string {
   const typeArgs = typeNode.getTypeArguments();
   const firstTypeArg = typeArgs[0];
   if (typeArgs.length > 0 && firstTypeArg !== undefined) {
-    const inner = resolveTypeNodeToString(firstTypeArg, sourceFile, project, depth);
+    const inner = resolveTypeNodeToString(firstTypeArg, sourceFile, project, depth, subst);
     return mode === 'arrayOf' ? `Array<${inner}>` : inner;
   }
   return mode === 'arrayOf' ? 'Array<unknown>' : 'unknown';
 }
 
 /**
+ * Build the type-parameter substitution map for a generic class/interface
+ * instantiation: zip the declaration's type parameters (`<T, U>`) with the
+ * reference's type arguments (`<Item, number>`), each resolved to a concrete
+ * type string in the CURRENT scope. Returns an empty map for non-generic decls.
+ */
+function buildSubst(
+  result: TypeDeclResult,
+  typeNode: import('ts-morph').TypeReferenceNode,
+  sourceFile: SourceFile,
+  project: Project,
+  depth: number,
+  parentSubst: Map<string, string>,
+): Map<string, string> {
+  if (result.kind !== 'class' && result.kind !== 'interface') return new Map();
+  const params = result.decl.getTypeParameters().map((p) => p.getName());
+  if (params.length === 0) return new Map();
+  const args = typeNode.getTypeArguments();
+  const subst = new Map<string, string>();
+  params.forEach((param, i) => {
+    const arg = args[i];
+    if (arg)
+      subst.set(param, resolveTypeNodeToString(arg, sourceFile, project, depth, parentSubst));
+  });
+  return subst;
+}
+
+/**
  * Expand a TypeDeclResult into an inline TS type string.
  */
-function expandTypeDecl(result: TypeDeclResult, project: Project, depth: number): string {
+function expandTypeDecl(
+  result: TypeDeclResult,
+  project: Project,
+  depth: number,
+  subst: Map<string, string> = new Map(),
+): string {
   if (depth < 0) return 'unknown';
   switch (result.kind) {
     case 'class':
-      return resolvePropertied(result.decl, result.file, project, depth);
+      return resolvePropertied(result.decl, result.file, project, depth, subst);
     case 'interface':
-      return resolvePropertied(result.decl, result.file, project, depth);
+      return resolvePropertied(result.decl, result.file, project, depth, subst);
     case 'typeAlias':
       // Recursively resolve the alias body so that any named types it
       // references (e.g. `A | B | C`) are expanded inline rather than left
       // as bare identifiers, which would be undefined in the emitted code.
       if (result.typeNode) {
-        return resolveTypeNodeToString(result.typeNode, result.file, project, depth);
+        return resolveTypeNodeToString(result.typeNode, result.file, project, depth, subst);
       }
       return result.text;
     case 'enum':
@@ -199,6 +244,7 @@ function resolvePropertied(
   sourceFile: SourceFile,
   project: Project,
   depth: number,
+  subst: Map<string, string> = new Map(),
 ): string {
   if (depth < 0) return 'unknown';
 
@@ -209,7 +255,7 @@ function resolvePropertied(
     const propTypeNode = prop.getTypeNode();
     let propType = 'unknown';
     if (propTypeNode) {
-      propType = resolveTypeNodeToString(propTypeNode, sourceFile, project, depth);
+      propType = resolveTypeNodeToString(propTypeNode, sourceFile, project, depth, subst);
     }
     lines.push(`${propName}${isOptional ? '?' : ''}: ${propType}`);
   }
@@ -297,8 +343,11 @@ function extractResponseType(
   sourceFile: SourceFile,
   project: Project,
 ): string {
-  // 1. Try @ApiResponse
-  const apiResponseDecorator = method.getDecorator('ApiResponse');
+  // 1. Try @ApiResponse — but skip error-status (4xx/5xx) ones; those describe
+  //    the error body, not the success response.
+  const apiResponseDecorator = method
+    .getDecorators()
+    .find((d) => d.getName() === 'ApiResponse' && (apiResponseStatus(d) ?? 0) < 400);
   if (apiResponseDecorator) {
     const args = apiResponseDecorator.getArguments();
     const optsArg = args[0];
@@ -336,6 +385,90 @@ function extractResponseType(
 }
 
 /**
+ * The numeric `status` of an `@ApiResponse({ status, type })` decorator, or null
+ * when absent / non-numeric.
+ */
+function apiResponseStatus(decorator: import('ts-morph').Decorator): number | null {
+  const optsArg = decorator.getArguments()[0];
+  if (!optsArg || !Node.isObjectLiteralExpression(optsArg)) return null;
+  for (const prop of optsArg.getProperties()) {
+    if (!Node.isPropertyAssignment(prop)) continue;
+    if (prop.getName() !== 'status') continue;
+    const val = prop.getInitializer();
+    if (val && Node.isNumericLiteral(val)) return Number(val.getLiteralValue());
+  }
+  return null;
+}
+
+/**
+ * Read the `type:` initializer of an `@ApiResponse({ type })` decorator as an
+ * expression node, or null. Handles both `type: X` and `type: [X]`.
+ */
+function apiResponseTypeNode(
+  decorator: import('ts-morph').Decorator,
+): { node: Node; isArray: boolean } | null {
+  const optsArg = decorator.getArguments()[0];
+  if (!optsArg || !Node.isObjectLiteralExpression(optsArg)) return null;
+  for (const prop of optsArg.getProperties()) {
+    if (!Node.isPropertyAssignment(prop)) continue;
+    if (prop.getName() !== 'type') continue;
+    const val = prop.getInitializer();
+    if (!val) return null;
+    if (Node.isArrayLiteralExpression(val)) {
+      const first = val.getElements()[0];
+      return first ? { node: first, isArray: true } : null;
+    }
+    return { node: val, isArray: false };
+  }
+  return null;
+}
+
+/**
+ * Discover the route's error response body type from an `@ApiResponse({ status,
+ * type })` decorator whose `status` is a 4xx/5xx code. This is the least-magic
+ * signal available statically: it reuses the Swagger decorator NestJS apps
+ * already write to document error responses. Returns the expanded TS type string
+ * (and an importable ref when the type is an exported named class/interface), or
+ * null when no error-status @ApiResponse is present.
+ */
+function extractErrorType(
+  method: MethodDeclaration,
+  sourceFile: SourceFile,
+  project: Project,
+): { type: string; ref: TypeRef | null } | null {
+  for (const decorator of method.getDecorators()) {
+    if (decorator.getName() !== 'ApiResponse') continue;
+    const status = apiResponseStatus(decorator);
+    if (status === null || status < 400) continue;
+    const typeInfo = apiResponseTypeNode(decorator);
+    if (!typeInfo) continue;
+    const inner = resolveIdentifierToClassType(typeInfo.node, sourceFile, project, 3);
+    const type = typeInfo.isArray ? `Array<${inner}>` : inner;
+
+    let ref: TypeRef | null = null;
+    if (Node.isIdentifier(typeInfo.node)) {
+      const name = typeInfo.node.getText();
+      const localDecl =
+        sourceFile.getInterface(name) || sourceFile.getClass(name) || sourceFile.getTypeAlias(name);
+      if (localDecl?.isExported()) {
+        ref = { name, filePath: sourceFile.getFilePath(), isArray: typeInfo.isArray };
+      } else {
+        const resolved = resolveImportedType(name, sourceFile, project);
+        if (
+          resolved &&
+          (resolved.kind === 'class' || resolved.kind === 'interface') &&
+          resolved.decl.isExported()
+        ) {
+          ref = { name, filePath: resolved.file.getFilePath(), isArray: typeInfo.isArray };
+        }
+      }
+    }
+    return { type, ref };
+  }
+  return null;
+}
+
+/**
  * Resolve an expression (expected to be a class identifier) to its expanded type string.
  * E.g. the `PostDto` identifier in `@ApiResponse({ type: PostDto })`.
  */
@@ -370,6 +503,72 @@ function resolveBodyQueryResponseRef(
   });
 }
 
+// ---------------------------------------------------------------------------
+// SSE / streaming detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Container types whose first type argument is the streamed ELEMENT. NestJS SSE
+ * handlers return `Observable<T>` (often `Observable<MessageEvent<T>>`); a plain
+ * async-generator handler returns `AsyncIterable<T>` / `AsyncGenerator<T>`.
+ */
+const STREAM_CONTAINERS = new Set(['Observable', 'AsyncIterable', 'AsyncIterableIterator']);
+// AsyncGenerator<T, ...> — T is the FIRST arg (yield type), same position.
+const STREAM_CONTAINERS_GENERATOR = new Set(['AsyncGenerator']);
+
+/** NestJS SSE event-envelope whose `.data` (first type arg) is the real payload. */
+const STREAM_ENVELOPES = new Set(['MessageEvent', 'MessageEventLike']);
+
+/**
+ * The streamed element type-node of an SSE/streaming handler, or null when the
+ * route is not a stream. The signal (least-magic, fully static): a `@Sse()`
+ * decorator, OR a return type that is `Observable<T>` / `AsyncIterable<T>` /
+ * `AsyncGenerator<T>`. The element is unwrapped through any `Promise<>` and any
+ * NestJS `MessageEvent<>` envelope so the carried type is the real payload `T`.
+ */
+function detectStreamElement(method: MethodDeclaration): TypeNode | null {
+  const hasSse = method.getDecorators().some((d) => d.getName() === 'Sse');
+  let node = method.getReturnTypeNode();
+
+  // Peel a leading Promise<> (e.g. an async generator method annotated as such).
+  node = unwrapNamedContainer(node, new Set(['Promise']));
+
+  const containerEl = streamContainerElement(node);
+  if (containerEl) {
+    return unwrapNamedContainer(containerEl, STREAM_ENVELOPES) ?? containerEl;
+  }
+
+  // `@Sse()` present but no recognizable container (or no return annotation):
+  // still a stream, element type unknown.
+  if (hasSse) return node ?? null;
+  return null;
+}
+
+/** If `node` is one of the stream container types, return its element type-node. */
+function streamContainerElement(node: TypeNode | undefined): TypeNode | null {
+  if (!node || !Node.isTypeReference(node)) return null;
+  const typeName = node.getTypeName();
+  const name = Node.isIdentifier(typeName) ? typeName.getText() : '';
+  if (STREAM_CONTAINERS.has(name) || STREAM_CONTAINERS_GENERATOR.has(name)) {
+    return node.getTypeArguments()[0] ?? null;
+  }
+  return null;
+}
+
+/** Unwrap `node` once if it is one of `names` (a single-arg generic), else return as-is. */
+function unwrapNamedContainer(
+  node: TypeNode | undefined,
+  names: Set<string>,
+): TypeNode | undefined {
+  if (!node || !Node.isTypeReference(node)) return node;
+  const typeName = node.getTypeName();
+  const name = Node.isIdentifier(typeName) ? typeName.getText() : '';
+  if (names.has(name)) {
+    return node.getTypeArguments()[0] ?? node;
+  }
+  return node;
+}
+
 /**
  * Determine whether a method has any DTO-based contract info worth emitting
  * (body, query, params, or non-unknown response).
@@ -383,20 +582,27 @@ export function extractDtoContract(
   query: string | null;
   body: string | null;
   response: string;
+  error?: string | null;
   params: string | null;
   queryRef?: TypeRef | null;
   bodyRef?: TypeRef | null;
   responseRef?: TypeRef | null;
+  errorRef?: TypeRef | null;
   filterFields?: string[] | null;
   filterFieldTypes?: FilterFieldType[] | null;
   filterSource?: 'body' | 'query' | null;
   formWarnings?: string[];
   bodySchema?: import('../ir/schema-node.js').SchemaModule | null;
   querySchema?: import('../ir/schema-node.js').SchemaModule | null;
+  stream?: boolean;
 } | null {
   let body = extractBodyType(method, sourceFile, project);
   const filterInfo = extractApplyFilterInfo(method, sourceFile, project);
   const query = extractQueryType(method, sourceFile, project);
+
+  // ── SSE / streaming: the streamed element type replaces `response` ──────────
+  const streamElement = detectStreamElement(method);
+  const isStream = streamElement !== null;
 
   // Place filter type on the correct field based on @ApplyFilter source. The
   // body-source case still pre-renders a fixed `FilterQueryResult` here; the
@@ -409,7 +615,12 @@ export function extractDtoContract(
   }
 
   const paramsType = extractParamsType(method, sourceFile, project);
-  const response = extractResponseType(method, sourceFile, project);
+  // For a stream, the wire shape is the ELEMENT type `T` (the client surfaces an
+  // `AsyncIterable<T>`); otherwise resolve the normal response type.
+  const response = isStream
+    ? resolveTypeNodeToString(streamElement, sourceFile, project, 3)
+    : extractResponseType(method, sourceFile, project);
+  const errorInfo = extractErrorType(method, sourceFile, project);
 
   // Only emit a contract if there is at least something useful. A query-source
   // `@ApplyFilter` route carries no pre-rendered `query` string anymore (the
@@ -420,7 +631,9 @@ export function extractDtoContract(
     query === null &&
     paramsType === null &&
     response === 'unknown' &&
-    filterInfo === null
+    errorInfo === null &&
+    filterInfo === null &&
+    !isStream
   ) {
     return null;
   }
@@ -439,13 +652,17 @@ export function extractDtoContract(
     }
   }
 
-  const returnTypeNode = method.getReturnTypeNode();
+  // For a stream the importable ref (if any) is the streamed element type — not
+  // the Observable/AsyncIterable container.
+  const returnTypeNode = isStream ? streamElement : method.getReturnTypeNode();
   if (returnTypeNode) {
     responseRef = resolveBodyQueryResponseRef(returnTypeNode, sourceFile, project);
   }
-  // Also check @ApiResponse
-  if (!responseRef) {
-    const apiResp = method.getDecorator('ApiResponse');
+  // Also check @ApiResponse (success-status only — error-status describes the error body)
+  if (!responseRef && !isStream) {
+    const apiResp = method
+      .getDecorators()
+      .find((d) => d.getName() === 'ApiResponse' && (apiResponseStatus(d) ?? 0) < 400);
     if (apiResp) {
       const args = apiResp.getArguments();
       const optsArg = args[0];
@@ -502,16 +719,19 @@ export function extractDtoContract(
     query,
     body,
     response,
+    error: errorInfo?.type ?? null,
     params: paramsType,
     queryRef,
     bodyRef,
     responseRef,
+    errorRef: errorInfo?.ref ?? null,
     filterFields: filterInfo?.fieldNames ?? null,
     filterFieldTypes: filterInfo?.fieldTypes ?? null,
     filterSource: filterInfo?.source ?? null,
     formWarnings,
     bodySchema,
     querySchema,
+    stream: isStream,
   };
 }
 

@@ -251,16 +251,38 @@ function emitFilterQueryType(c: LeafEntry): string {
  * Emit the nested ApiRouter type block.
  */
 function buildResponseType(c: LeafEntry, outDir: string): string {
+  const respRef = c.contractSource.responseRef;
+  // Streaming routes: `response` is the streamed ELEMENT type `T`. The method's
+  // ReturnType is `Observable<...>` / `AsyncIterable<...>` (the container), so the
+  // `ReturnType<...>` path would type the element as the container — use the
+  // discovered element ref / inline element string instead.
+  if (c.contractSource.stream) {
+    if (respRef) return respRef.isArray ? `Array<${respRef.name}>` : respRef.name;
+    return c.contractSource.response;
+  }
   if (c.controllerRef) {
     let relPath = relative(outDir, c.controllerRef.filePath).replace(/\.ts$/, '');
     if (!relPath.startsWith('.')) relPath = `./${relPath}`;
     return `Awaited<ReturnType<import('${relPath}').${c.controllerRef.className}['${c.controllerRef.methodName}']>>`;
   }
-  const respRef = c.contractSource.responseRef;
   if (respRef) {
     return respRef.isArray ? `Array<${respRef.name}>` : respRef.name;
   }
   return c.contractSource.response;
+}
+
+/**
+ * The route's error response body type for the leaf `error` field. Prefers a
+ * named `errorRef` (so it imports by name), then the inline `error` type string,
+ * and finally `unknown` — an HTTP error always carries some body, so an undeclared
+ * error type is `unknown` rather than `never`.
+ */
+function buildErrorType(c: LeafEntry): string {
+  const errRef = c.contractSource.errorRef;
+  if (errRef) {
+    return errRef.isArray ? `Array<${errRef.name}>` : errRef.name;
+  }
+  return c.contractSource.error ?? 'unknown';
 }
 
 function emitRouterTypeBlock(
@@ -299,6 +321,7 @@ function emitRouterTypeBlock(
               : bodyRef.name
             : (c.contractSource.body ?? 'never');
       const response = buildResponseType(c, outDir);
+      const error = buildErrorType(c);
       const params = buildParamsType(c.params);
       const safeMethod = JSON.stringify(method);
       const safeUrl = JSON.stringify(c.path);
@@ -308,8 +331,11 @@ function emitRouterTypeBlock(
       const filterFields = c.contractSource.filterFields?.length
         ? c.contractSource.filterFields.map((f) => JSON.stringify(f)).join(' | ')
         : 'never';
+      // SSE/streaming routes carry `stream: true` so `Route.Stream<K>` and the
+      // leaf's `stream()` surface can be derived purely from the ApiRouter type.
+      const stream = c.contractSource.stream ? 'true' : 'false';
       lines.push(
-        `${pad}${objKey}: { method: ${safeMethod}; url: ${safeUrl}; params: ${params}; query: ${query}; body: ${body}; response: ${response}; filterFields: ${filterFields} };`,
+        `${pad}${objKey}: { method: ${safeMethod}; url: ${safeUrl}; params: ${params}; query: ${query}; body: ${body}; response: ${response}; error: ${error}; filterFields: ${filterFields}; stream: ${stream} };`,
       );
     } else {
       lines.push(`${pad}${objKey}: {`);
@@ -419,14 +445,30 @@ function renderLeaf(
   req: RequestModel,
   requestExpr: string,
   members: Record<string, string>,
+  streamExpr: string | undefined,
 ): string[] {
   const lines = [`${pad}${objKey}: (input?: ${req.inputType}) => ({`];
   lines.push(`${pad}  ...__req<${req.responseType}>(() => ${requestExpr}),`);
+  // SSE/streaming routes expose a typed `stream()` returning an AsyncIterable of
+  // the streamed element type (alongside the awaitable base, which is rarely used
+  // for a stream but kept for shape uniformity).
+  if (streamExpr) {
+    lines.push(`${pad}  stream: () => ${streamExpr},`);
+  }
   for (const [name, value] of Object.entries(members)) {
     lines.push(`${pad}  ${name}: ${value},`);
   }
   lines.push(`${pad}}),`);
   return lines;
+}
+
+/**
+ * The streaming consumption expression for an `@Sse()`/streaming leaf:
+ * `fetcher.sse<T>(url, { query })`. The element type `T` is the route's
+ * `response` (the codegen carried the streamed element through there).
+ */
+function renderStreamExpr(req: RequestModel): string {
+  return `fetcher.sse<${req.responseType}>(${req.urlExpr}, ${req.optsExpr})`;
 }
 
 /** Resolved api.ts pipeline pieces, threaded through the recursive emit. */
@@ -488,7 +530,9 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiP
     const members: Record<string, string> = {};
     for (const [name, { value }] of owned) members[name] = value;
 
-    lines.push(...renderLeaf(pad, objKey, req, leaf.requestExpr, members));
+    const streamExpr = node.contractSource.stream ? renderStreamExpr(req) : undefined;
+
+    lines.push(...renderLeaf(pad, objKey, req, leaf.requestExpr, members, streamExpr));
   }
 
   return lines;
@@ -549,6 +593,8 @@ const ROUTE_NAMESPACE: readonly string[] = [
   '  export type Params<K extends string> = ResolveByName<K, "params">;',
   '  export type Error<K extends string> = ResolveByName<K, "error">;',
   '  export type FilterFields<K extends string> = ResolveByName<K, "filterFields">;',
+  '  /** The streamed element type of an `@Sse()`/streaming route — the type yielded by its `stream()` AsyncIterable. */',
+  '  export type Stream<K extends string> = ResolveByName<K, "response">;',
   '  export type Request<K extends string> = {',
   '    body: Body<K>;',
   '    query: Query<K>;',
@@ -567,6 +613,7 @@ const PATH_NAMESPACE: readonly string[] = [
   '  export type Params<M extends string, U extends string> = ResolveByPath<M, U, "params">;',
   '  export type Error<M extends string, U extends string> = ResolveByPath<M, U, "error">;',
   '  export type FilterFields<M extends string, U extends string> = ResolveByPath<M, U, "filterFields">;',
+  '  export type Stream<M extends string, U extends string> = ResolveByPath<M, U, "response">;',
   '}',
   '',
 ];
@@ -580,6 +627,7 @@ const EMPTY_ROUTE_NAMESPACE: readonly string[] = [
   '  export type Params<K extends string> = never;',
   '  export type Error<K extends string> = never;',
   '  export type FilterFields<K extends string> = never;',
+  '  export type Stream<K extends string> = never;',
   '  export type Request<K extends string> = { body: never; query: never; params: never };',
   '}',
   '',
@@ -593,6 +641,7 @@ const EMPTY_PATH_NAMESPACE: readonly string[] = [
   '  export type Params<M extends string, U extends string> = never;',
   '  export type Error<M extends string, U extends string> = never;',
   '  export type FilterFields<M extends string, U extends string> = never;',
+  '  export type Stream<M extends string, U extends string> = never;',
   '}',
   '',
 ];
@@ -633,10 +682,13 @@ function buildApiFile(
   for (const r of contracted) {
     const cs = r.contract?.contractSource;
     if (!cs) continue;
-    // When controllerRef exists, response uses ReturnType<import(...)> — skip response import
-    const refs = r.controllerRef
-      ? [cs.queryRef, cs.bodyRef]
-      : [cs.queryRef, cs.bodyRef, cs.responseRef];
+    // When controllerRef exists, response uses ReturnType<import(...)> — skip response import.
+    // EXCEPT for streams, whose response is the element ref (not the container ReturnType).
+    // errorRef is always imported (the error type is never sourced from ReturnType).
+    const refs =
+      r.controllerRef && !cs.stream
+        ? [cs.queryRef, cs.bodyRef, cs.errorRef]
+        : [cs.queryRef, cs.bodyRef, cs.responseRef, cs.errorRef];
     for (const ref of refs) {
       if (!ref) continue;
       let names = importsByFile.get(ref.filePath);

@@ -41,7 +41,13 @@ export type SchemaNode =
   /** Members are verbatim literal source texts (quote style preserved). */
   | { kind: 'enum'; literals: string[] }
   | { kind: 'literal'; raw: string }
-  | { kind: 'union'; options: SchemaNode[] }
+  /**
+   * A union of schemas. When `discriminator` is set (the shared literal property
+   * name, e.g. `'kind'`), this is a *discriminated* union: adapters that support
+   * it emit a fast tagged-union form (zod `discriminatedUnion`, valibot `variant`).
+   * Plain unions leave `discriminator` undefined.
+   */
+  | { kind: 'union'; options: SchemaNode[]; discriminator?: string }
   | { kind: 'object'; fields: Array<{ key: string; value: SchemaNode }>; passthrough: boolean }
   | { kind: 'array'; element: SchemaNode }
   | { kind: 'optional'; inner: SchemaNode }

@@ -265,7 +265,7 @@ describe('extractDtoContract — type resolution branches', () => {
     expect(result).toBeNull();
   });
 
-  it('resolves Observable return type to unknown (server-only)', () => {
+  it('resolves Observable<T> return type as a stream of T', () => {
     const { sf, project } = makeSourceFileFromCode(`
       class Observable<T> {}
       class TestController {
@@ -275,8 +275,10 @@ describe('extractDtoContract — type resolution branches', () => {
     const cls = sf.getClassOrThrow('TestController');
     const method = cls.getMethodOrThrow('stream');
     const result = extractDtoContract(method, sf, project);
-    // Observable resolves to 'unknown' (server-only type)
-    expect(result).toBeNull();
+    // Observable<T> is now a streaming endpoint — the streamed element is `string`.
+    expect(result).not.toBeNull();
+    expect(result?.stream).toBe(true);
+    expect(result?.response).toBe('string');
   });
 
   it('resolves ReadableStream return type to unknown (server-only)', () => {
@@ -593,6 +595,65 @@ describe('extractDtoContract — @ApiResponse edge cases', () => {
     expect(result).not.toBeNull();
     // PostDto is found locally (not exported), so response is expanded
     expect(result?.response).toBe('{ id: string; title: string }');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractDtoContract — error-status @ApiResponse → error type
+// ---------------------------------------------------------------------------
+
+describe('extractDtoContract — typed error via error-status @ApiResponse', () => {
+  it('discovers the error body from a 4xx @ApiResponse and keeps success response separate', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      export class PostDto { id: string; title: string; }
+      export class ApiError { code: string; message: string; }
+      class TestController {
+        @ApiResponse({ status: 200, type: PostDto })
+        @ApiResponse({ status: 400, type: ApiError })
+        show() {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('show');
+    const result = extractDtoContract(method, sf, project);
+    expect(result).not.toBeNull();
+    // Success response is the 200 one, NOT the error.
+    expect(result?.response).toBe('{ id: string; title: string }');
+    expect(result?.responseRef?.name).toBe('PostDto');
+    // Error body comes from the 400 @ApiResponse.
+    expect(result?.error).toBe('{ code: string; message: string }');
+    expect(result?.errorRef?.name).toBe('ApiError');
+  });
+
+  it('a 5xx @ApiResponse alone yields an error type and keeps response unknown', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      export class ServerError { trace: string; }
+      class TestController {
+        @ApiResponse({ status: 500, type: ServerError })
+        boom() {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('boom');
+    const result = extractDtoContract(method, sf, project);
+    expect(result).not.toBeNull();
+    expect(result?.error).toBe('{ trace: string }');
+    expect(result?.errorRef?.name).toBe('ServerError');
+    expect(result?.response).toBe('unknown');
+  });
+
+  it('no error-status @ApiResponse → error is null', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      export class PostDto { id: string; }
+      class TestController {
+        @ApiResponse({ status: 200, type: PostDto })
+        show() {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('show');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.error ?? null).toBeNull();
   });
 });
 
@@ -1078,5 +1139,51 @@ describe('extractDtoContract — inline type fallback', () => {
     const result = extractDtoContract(method, sf, project);
     expect(result).not.toBeNull();
     expect(result?.response).toBe('{ foo: string }');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTypeNodeToString — generic wrapper DTO fidelity (PaginatedDto<T>)
+// ---------------------------------------------------------------------------
+
+describe('extractDtoContract — generic wrapper DTOs', () => {
+  it('substitutes the type parameter so PaginatedDto<Item> resolves faithfully', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class Item { id: string; }
+      class PaginatedDto<T> { data: T[]; total: number; }
+      class TestController {
+        getData(): PaginatedDto<Item> { return null as any; }
+      }
+    `);
+    const method = sf.getClassOrThrow('TestController').getMethodOrThrow('getData');
+    const result = extractDtoContract(method, sf, project);
+    expect(result).not.toBeNull();
+    // T[] becomes Array<{ id: string }>, NOT Array<unknown>.
+    expect(result?.response).toBe('{ data: Array<{ id: string }>; total: number }');
+  });
+
+  it('substitutes a generic body DTO too', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class Item { id: string; }
+      class Wrapper<T> { value: T; }
+      class TestController {
+        create(@Body() body: Wrapper<Item>) {}
+      }
+    `);
+    const method = sf.getClassOrThrow('TestController').getMethodOrThrow('create');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.body).toBe('{ value: { id: string } }');
+  });
+
+  it('a non-generic class is unchanged (no substitution regression)', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class PostDto { id: string; title: string; }
+      class TestController {
+        getData(): PostDto { return null as any; }
+      }
+    `);
+    const method = sf.getClassOrThrow('TestController').getMethodOrThrow('getData');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.response).toBe('{ id: string; title: string }');
   });
 });

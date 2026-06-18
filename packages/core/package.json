@@ -18,21 +18,37 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./nest": {
-      "types": "./dist/nest/index.d.ts",
-      "import": "./dist/nest/index.js",
-      "require": "./dist/nest/index.cjs"
+      "import": {
+        "types": "./dist/nest/index.d.ts",
+        "default": "./dist/nest/index.js"
+      },
+      "require": {
+        "types": "./dist/nest/index.d.cts",
+        "default": "./dist/nest/index.cjs"
+      }
     },
     "./extension": {
-      "types": "./dist/extension/index.d.ts",
-      "import": "./dist/extension/index.js",
-      "require": "./dist/extension/index.cjs"
+      "import": {
+        "types": "./dist/extension/index.d.ts",
+        "default": "./dist/extension/index.js"
+      },
+      "require": {
+        "types": "./dist/extension/index.d.cts",
+        "default": "./dist/extension/index.cjs"
+      }
     }
   },
+  "sideEffects": ["./dist/nest/index.js", "./dist/nest/index.cjs"],
   "files": ["dist", "bin", "README.md", "CHANGELOG.md"],
   "scripts": {
     "build": "tsup",

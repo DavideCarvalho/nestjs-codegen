@@ -8,21 +8,21 @@ import type { Fetcher } from '@dudousxd/nestjs-client';
 
 export type ApiRouter = {
   users: {
-    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; filterFields: never };
-    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; filterFields: never };
-    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; filterFields: never };
-    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; filterFields: never };
+    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; error: unknown; filterFields: never; stream: false };
+    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; error: unknown; filterFields: never; stream: false };
+    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; error: unknown; filterFields: never; stream: false };
+    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; error: unknown; filterFields: never; stream: false };
   };
   admin: {
     reports: {
-      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; filterFields: never };
+      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; error: unknown; filterFields: never; stream: false };
     };
   };
   pipelineRuns: {
-    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; filterFields: "status" | "name" };
+    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; error: unknown; filterFields: "status" | "name"; stream: false };
   };
   orders: {
-    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; filterFields: "total" | "state" };
+    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; error: unknown; filterFields: "total" | "state"; stream: false };
   };
 };
 
@@ -111,6 +111,8 @@ export namespace Route {
   export type Params<K extends string> = ResolveByName<K, "params">;
   export type Error<K extends string> = ResolveByName<K, "error">;
   export type FilterFields<K extends string> = ResolveByName<K, "filterFields">;
+  /** The streamed element type of an \`@Sse()\`/streaming route — the type yielded by its \`stream()\` AsyncIterable. */
+  export type Stream<K extends string> = ResolveByName<K, "response">;
   export type Request<K extends string> = {
     body: Body<K>;
     query: Query<K>;
@@ -125,6 +127,7 @@ export namespace Path {
   export type Params<M extends string, U extends string> = ResolveByPath<M, U, "params">;
   export type Error<M extends string, U extends string> = ResolveByPath<M, U, "error">;
   export type FilterFields<M extends string, U extends string> = ResolveByPath<M, U, "filterFields">;
+  export type Stream<M extends string, U extends string> = ResolveByPath<M, U, "response">;
 }
 "
 `;
@@ -149,6 +152,7 @@ export namespace Route {
   export type Params<K extends string> = never;
   export type Error<K extends string> = never;
   export type FilterFields<K extends string> = never;
+  export type Stream<K extends string> = never;
   export type Request<K extends string> = { body: never; query: never; params: never };
 }
 
@@ -159,6 +163,7 @@ export namespace Path {
   export type Params<M extends string, U extends string> = never;
   export type Error<M extends string, U extends string> = never;
   export type FilterFields<M extends string, U extends string> = never;
+  export type Stream<M extends string, U extends string> = never;
 }
 "
 `;
@@ -172,21 +177,21 @@ import type { Fetcher } from '@dudousxd/nestjs-client';
 
 export type ApiRouter = {
   users: {
-    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; filterFields: never };
-    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; filterFields: never };
-    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; filterFields: never };
-    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; filterFields: never };
+    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; error: unknown; filterFields: never; stream: false };
+    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; error: unknown; filterFields: never; stream: false };
+    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; error: unknown; filterFields: never; stream: false };
+    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; error: unknown; filterFields: never; stream: false };
   };
   admin: {
     reports: {
-      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; filterFields: never };
+      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; error: unknown; filterFields: never; stream: false };
     };
   };
   pipelineRuns: {
-    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; filterFields: "status" | "name" };
+    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; error: unknown; filterFields: "status" | "name"; stream: false };
   };
   orders: {
-    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; filterFields: "total" | "state" };
+    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; error: unknown; filterFields: "total" | "state"; stream: false };
   };
 };
 
@@ -221,13 +226,13 @@ export function createApi(fetcher: Fetcher) {
         ...__req<ApiRouter["users"]["list"]['response']>(() => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined })),
         queryKey: () => ["users.list", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["users.list", input] as const, queryFn: () => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["users.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["users.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       show: (input?: { params: ApiRouter["users"]["show"]['params']; query?: ApiRouter["users"]["show"]['query'] }) => ({
         ...__req<ApiRouter["users"]["show"]['response']>(() => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined })),
         queryKey: () => ["users.show", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["users.show", input] as const, queryFn: () => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["users.show", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["users.show", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       create: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => ({
         ...__req<ApiRouter["users"]["create"]['response']>(() => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body })),
@@ -246,7 +251,7 @@ export function createApi(fetcher: Fetcher) {
           ...__req<ApiRouter["admin"]["reports"]["list"]['response']>(() => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined })),
           queryKey: () => ["admin.reports.list", input] as const,
           queryOptions: () => _queryOptions({ queryKey: ["admin.reports.list", input] as const, queryFn: () => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined }) }),
-          infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["admin.reports.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+          infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["admin.reports.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
         }),
       },
     },
@@ -263,7 +268,7 @@ export function createApi(fetcher: Fetcher) {
         ...__req<ApiRouter["orders"]["list"]['response']>(() => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined })),
         queryKey: () => ["orders.list", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["orders.list", input] as const, queryFn: () => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["orders.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["orders.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
     },
   };
@@ -294,6 +299,8 @@ export namespace Route {
   export type Params<K extends string> = ResolveByName<K, "params">;
   export type Error<K extends string> = ResolveByName<K, "error">;
   export type FilterFields<K extends string> = ResolveByName<K, "filterFields">;
+  /** The streamed element type of an \`@Sse()\`/streaming route — the type yielded by its \`stream()\` AsyncIterable. */
+  export type Stream<K extends string> = ResolveByName<K, "response">;
   export type Request<K extends string> = {
     body: Body<K>;
     query: Query<K>;
@@ -308,6 +315,7 @@ export namespace Path {
   export type Params<M extends string, U extends string> = ResolveByPath<M, U, "params">;
   export type Error<M extends string, U extends string> = ResolveByPath<M, U, "error">;
   export type FilterFields<M extends string, U extends string> = ResolveByPath<M, U, "filterFields">;
+  export type Stream<M extends string, U extends string> = ResolveByPath<M, U, "response">;
 }
 "
 `;
@@ -321,21 +329,21 @@ import type { Fetcher } from '@dudousxd/nestjs-client';
 
 export type ApiRouter = {
   users: {
-    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; filterFields: never };
-    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; filterFields: never };
-    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; filterFields: never };
-    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; filterFields: never };
+    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; error: unknown; filterFields: never; stream: false };
+    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; error: unknown; filterFields: never; stream: false };
+    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; error: unknown; filterFields: never; stream: false };
+    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; error: unknown; filterFields: never; stream: false };
   };
   admin: {
     reports: {
-      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; filterFields: never };
+      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; error: unknown; filterFields: never; stream: false };
     };
   };
   pipelineRuns: {
-    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; filterFields: "status" | "name" };
+    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; error: unknown; filterFields: "status" | "name"; stream: false };
   };
   orders: {
-    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; filterFields: "total" | "state" };
+    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; error: unknown; filterFields: "total" | "state"; stream: false };
   };
 };
 
@@ -370,13 +378,13 @@ export function createApi(fetcher: Fetcher) {
         ...__req<ApiRouter["users"]["list"]['response']>(() => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined })),
         queryKey: () => ["users.list", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["users.list", input] as const, queryFn: () => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["users.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["users.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       show: (input?: { params: ApiRouter["users"]["show"]['params']; query?: ApiRouter["users"]["show"]['query'] }) => ({
         ...__req<ApiRouter["users"]["show"]['response']>(() => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined })),
         queryKey: () => ["users.show", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["users.show", input] as const, queryFn: () => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["users.show", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["users.show", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       create: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => ({
         ...__req<ApiRouter["users"]["create"]['response']>(() => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body })),
@@ -395,7 +403,7 @@ export function createApi(fetcher: Fetcher) {
           ...__req<ApiRouter["admin"]["reports"]["list"]['response']>(() => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined })),
           queryKey: () => ["admin.reports.list", input] as const,
           queryOptions: () => _queryOptions({ queryKey: ["admin.reports.list", input] as const, queryFn: () => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined }) }),
-          infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["admin.reports.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+          infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["admin.reports.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
         }),
       },
     },
@@ -412,7 +420,7 @@ export function createApi(fetcher: Fetcher) {
         ...__req<ApiRouter["orders"]["list"]['response']>(() => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined })),
         queryKey: () => ["orders.list", input] as const,
         queryOptions: () => _queryOptions({ queryKey: ["orders.list", input] as const, queryFn: () => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: () => _infiniteQueryOptions({ queryKey: ["orders.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: 1, getNextPageParam: (lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; } }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => unknown; getPreviousPageParam?: (firstPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => unknown; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: ["orders.list", input] as const, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
     },
   };
@@ -443,6 +451,8 @@ export namespace Route {
   export type Params<K extends string> = ResolveByName<K, "params">;
   export type Error<K extends string> = ResolveByName<K, "error">;
   export type FilterFields<K extends string> = ResolveByName<K, "filterFields">;
+  /** The streamed element type of an \`@Sse()\`/streaming route — the type yielded by its \`stream()\` AsyncIterable. */
+  export type Stream<K extends string> = ResolveByName<K, "response">;
   export type Request<K extends string> = {
     body: Body<K>;
     query: Query<K>;
@@ -457,6 +467,7 @@ export namespace Path {
   export type Params<M extends string, U extends string> = ResolveByPath<M, U, "params">;
   export type Error<M extends string, U extends string> = ResolveByPath<M, U, "error">;
   export type FilterFields<M extends string, U extends string> = ResolveByPath<M, U, "filterFields">;
+  export type Stream<M extends string, U extends string> = ResolveByPath<M, U, "response">;
 }
 "
 `;

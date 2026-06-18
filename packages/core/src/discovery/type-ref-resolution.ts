@@ -7,6 +7,7 @@ import {
   type Project,
   type SourceFile,
   type TypeNode,
+  type VariableDeclaration,
 } from 'ts-morph';
 import type { TypeRef } from './types.js';
 
@@ -275,6 +276,128 @@ function followModuleForType(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Variable-declaration (const) lookup — for cross-file @ApplyContract refs
+// ---------------------------------------------------------------------------
+
+/** A resolved value-level `const`/variable declaration plus its declaring file. */
+export interface VariableDeclResult {
+  decl: VariableDeclaration;
+  file: SourceFile;
+}
+
+/**
+ * Resolve an identifier that names a value-level `const` (e.g. an imported
+ * `defineContract(...)` result applied via `@ApplyContract(thatConst)`) to its
+ * variable declaration and declaring file. Resolution order:
+ *   1. local declaration in the current file;
+ *   2. follow the file's import declarations to the declaring module;
+ *   3. follow `export { X } from './mod'` / `export *` re-exports (barrels).
+ *
+ * Returns null when the identifier cannot be resolved to a variable declaration
+ * (the caller then warns + skips, preserving the prior behavior).
+ */
+export function resolveImportedVariable(
+  name: string,
+  sourceFile: SourceFile,
+  project: Project,
+): VariableDeclResult | null {
+  const local = sourceFile.getVariableDeclaration(name);
+  if (local) return { decl: local, file: sourceFile };
+  return resolveVariableViaImports(name, sourceFile, project, new Set());
+}
+
+/** Follow the file's import declarations to a variable declaration in another module. */
+function resolveVariableViaImports(
+  name: string,
+  sourceFile: SourceFile,
+  project: Project,
+  seen: Set<string>,
+): VariableDeclResult | null {
+  for (const importDecl of sourceFile.getImportDeclarations()) {
+    const namedImport = importDecl
+      .getNamedImports()
+      .find((n) => (n.getAliasNode()?.getText() ?? n.getName()) === name);
+    if (!namedImport) continue;
+    // The source-side (pre-alias) name to look up in the target module.
+    const sourceName = namedImport.getName();
+    const moduleSpecifier = importDecl.getModuleSpecifierValue();
+    const found = followModuleForVariable(sourceName, moduleSpecifier, sourceFile, project, seen);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Resolve `name` to a variable declaration inside the module at `moduleSpecifier`. */
+function followModuleForVariable(
+  name: string,
+  moduleSpecifier: string,
+  fromFile: SourceFile,
+  project: Project,
+  seen: Set<string>,
+): VariableDeclResult | null {
+  const candidates = resolveModuleSpecifier(moduleSpecifier, fromFile, project);
+  for (const candidate of candidates) {
+    let importedFile = project.getSourceFile(candidate);
+    if (!importedFile) {
+      try {
+        importedFile = project.addSourceFileAtPath(candidate);
+      } catch {
+        continue;
+      }
+    }
+    const found = resolveVariableInFile(name, importedFile, project, seen);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Find a variable declaration `name` in `file`: directly, then via re-exports
+ * (`export { X } from './mod'`, `export *`, bare `export { X }`) and that file's
+ * own imports. Guards against import/re-export cycles via `seen`.
+ */
+function resolveVariableInFile(
+  name: string,
+  file: SourceFile,
+  project: Project,
+  seen: Set<string>,
+): VariableDeclResult | null {
+  const filePath = file.getFilePath();
+  if (seen.has(filePath)) return null;
+  seen.add(filePath);
+
+  const local = file.getVariableDeclaration(name);
+  if (local) return { decl: local, file };
+
+  for (const exportDecl of file.getExportDeclarations()) {
+    const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+    const namedExports = exportDecl.getNamedExports();
+
+    if (moduleSpecifier) {
+      const hasStar = namedExports.length === 0; // `export * from './mod'`
+      const reExport = namedExports.find(
+        (n) => (n.getAliasNode()?.getText() ?? n.getName()) === name,
+      );
+      if (!hasStar && !reExport) continue;
+      const sourceName = hasStar ? name : (reExport?.getName() ?? name);
+      const found = followModuleForVariable(sourceName, moduleSpecifier, file, project, seen);
+      if (found) return found;
+      continue;
+    }
+
+    // Bare `export { X }` — X was imported into this file above.
+    const reExport = namedExports.find(
+      (n) => (n.getAliasNode()?.getText() ?? n.getName()) === name,
+    );
+    if (!reExport) continue;
+    const sourceName = reExport.getName();
+    const viaImports = resolveVariableViaImports(sourceName, file, project, seen);
+    if (viaImports) return viaImports;
+  }
+  return null;
+}
+
 /**
  * Per-`Project` memoization of {@link findType}. Within one discovery run the
  * `Project` is effectively immutable (`addSourceFileAtPath` is idempotent and
@@ -288,6 +411,19 @@ function followModuleForType(
  * too (use `.has` to distinguish "cached null" from "not yet computed").
  */
 const _findTypeCache = new WeakMap<Project, Map<string, TypeDeclResult | null>>();
+
+/**
+ * Evict the per-`Project` resolution caches for a Project. Required by the watch
+ * mode, which reuses ONE persistent `Project` across file changes: without a
+ * fresh Project per run the WeakMap entries would otherwise never auto-invalidate,
+ * so a changed file would resolve against stale, pre-change declarations. Clearing
+ * the whole per-Project map on each change is the simple, always-correct choice
+ * (the cold one-shot path keeps building a fresh Project and never calls this).
+ */
+export function clearTypeResolutionCaches(project: Project): void {
+  _findTypeCache.delete(project);
+  _resolveNamedRefCache.delete(project);
+}
 
 /**
  * Find a type declaration by name: first in the current file, then by following imports.

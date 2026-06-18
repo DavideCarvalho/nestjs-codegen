@@ -83,8 +83,12 @@ function render(node: SchemaNode, ctx: RenderContext): string {
       return `v.picklist([${node.literals.join(', ')}])`;
     case 'literal':
       return `v.literal(${node.raw})`;
-    case 'union':
-      return `v.union([${node.options.map((o) => render(o, ctx)).join(', ')}])`;
+    case 'union': {
+      const opts = node.options.map((o) => render(o, ctx)).join(', ');
+      return node.discriminator
+        ? `v.variant(${JSON.stringify(node.discriminator)}, [${opts}])`
+        : `v.union([${opts}])`;
+    }
     case 'object': {
       if (node.fields.length === 0) {
         return node.passthrough ? 'v.looseObject({})' : 'v.object({})';

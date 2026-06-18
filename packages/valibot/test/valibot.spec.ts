@@ -134,3 +134,42 @@ describe('valibotAdapter — end-to-end from class-validator DTO', () => {
     expect(out.namedAnnotations?.get('ColumnFilterSchema')).toBe('v.GenericSchema<ColumnFilter>');
   });
 });
+
+describe('valibotAdapter — unions', () => {
+  it('plain union → v.union', () => {
+    const node: SchemaNode = {
+      kind: 'union',
+      options: [
+        { kind: 'literal', raw: "'a'" },
+        { kind: 'literal', raw: "'b'" },
+      ],
+    };
+    expect(render(node)).toBe("v.union([v.literal('a'), v.literal('b')])");
+  });
+
+  it('discriminated union → v.variant', () => {
+    const node: SchemaNode = {
+      kind: 'union',
+      discriminator: 'kind',
+      options: [
+        { kind: 'ref', name: 'DogSchema' },
+        { kind: 'ref', name: 'CatSchema' },
+      ],
+    };
+    expect(render(node)).toBe('v.variant("kind", [DogSchema, CatSchema])');
+  });
+
+  it('end-to-end: class-transformer discriminator DTO → v.variant + hoisted subtypes', () => {
+    const out = dtoToValibot(`
+      class Dog { @IsString() kind!: 'dog'; @IsString() bark!: string; }
+      class Cat { @IsString() kind!: 'cat'; @IsString() meow!: string; }
+      class Dto {
+        @ValidateNested()
+        @Type(() => Object, { discriminator: { property: 'kind', subTypes: [{ value: 'dog', name: Dog }, { value: 'cat', name: Cat }] } })
+        animal!: Dog | Cat;
+      }`);
+    expect(out.schemaText).toContain('v.variant("kind", [DogSchema, CatSchema])');
+    expect(out.namedNestedSchemas.has('DogSchema')).toBe(true);
+    expect(out.namedNestedSchemas.has('CatSchema')).toBe(true);
+  });
+});

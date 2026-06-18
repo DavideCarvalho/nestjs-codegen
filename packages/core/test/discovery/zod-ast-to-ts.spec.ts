@@ -6,6 +6,7 @@
 import { Project, SyntaxKind } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
 import { zodAstToTs } from '../../src/discovery/contracts-fast.js';
+import { parseDefineContractCall } from '../../src/discovery/zod-ast-to-ts.js';
 
 /** Parse a TypeScript expression snippet and return the root CallExpression node. */
 function parseExpr(snippet: string) {
@@ -124,5 +125,27 @@ describe('zodAstToTs', () => {
     expect(result).toContain('id');
     expect(result).toContain('name');
     expect(result).toContain('string');
+  });
+});
+
+describe('parseDefineContractCall — error key', () => {
+  it('parses the error schema into the error type string', () => {
+    const def = parseDefineContractCall(
+      parseExpr(
+        'defineContract({ response: z.object({ id: z.string() }), error: z.object({ code: z.string(), message: z.string() }) })',
+      ),
+    );
+    expect(def).not.toBeNull();
+    expect(def?.error).toContain('code');
+    expect(def?.error).toContain('message');
+    expect(def?.error).toContain('string');
+  });
+
+  it('error is null when the contract declares no error', () => {
+    const def = parseDefineContractCall(
+      parseExpr('defineContract({ response: z.object({ id: z.string() }) })'),
+    );
+    expect(def).not.toBeNull();
+    expect(def?.error).toBeNull();
   });
 });

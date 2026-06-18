@@ -132,3 +132,57 @@ describe('createFetcher', () => {
     });
   });
 });
+
+describe('fetcher.sse — server-sent events streaming', () => {
+  function sseResponse(chunks: string[], status = 200): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const enc = new TextEncoder();
+        for (const c of chunks) controller.enqueue(enc.encode(c));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      status,
+      headers: { 'content-type': 'text/event-stream' },
+    });
+  }
+
+  it('yields JSON-parsed data payloads as a typed async iterable', async () => {
+    const fetch = vi.fn(async () =>
+      sseResponse(['data: {"count":1}\n\n', 'data: {"count":2}\n\n']),
+    );
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const seen: number[] = [];
+    for await (const ev of api.sse<{ count: number }>('/events')) {
+      seen.push(ev.count);
+    }
+    expect(seen).toEqual([1, 2]);
+    // accept header negotiates the event-stream content type
+    expect((fetch.mock.calls[0]?.[1] as RequestInit).headers).toMatchObject({
+      accept: 'text/event-stream',
+    });
+  });
+
+  it('handles events split across chunk boundaries', async () => {
+    const fetch = vi.fn(async () => sseResponse(['data: {"co', 'unt":7}\n\n']));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const seen: number[] = [];
+    for await (const ev of api.sse<{ count: number }>('/events')) {
+      seen.push(ev.count);
+    }
+    expect(seen).toEqual([7]);
+  });
+
+  it('throws ApiHttpError on a non-ok response', async () => {
+    const fetch = vi.fn(
+      async () => new Response('nope', { status: 500, headers: { 'content-type': 'text/plain' } }),
+    );
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    await expect(async () => {
+      for await (const _ of api.sse('/events')) {
+        // unreachable
+      }
+    }).rejects.toBeInstanceOf(ApiHttpError);
+  });
+});

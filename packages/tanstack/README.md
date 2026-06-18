@@ -85,7 +85,30 @@ function Users() {
 
 The mutation's `mutationFn` takes the **full leaf input** (`{ params?, query?, body? }`), so path params can be supplied dynamically at `mutate()` time rather than only when you build the handle.
 
-`infiniteQueryOptions()` appends `page` to the query string and derives the next page from `response.meta.page` / `response.meta.lastPage`.
+### Pagination / cursor selector
+
+By default `infiniteQueryOptions()` appends `page` to the query string and derives the next page from `response.meta.page` / `response.meta.lastPage`. That contract is now configurable from two places, and both keep the old default so existing output is unchanged.
+
+**Generation-time** — the query-string key is structural to the API, so it is a `tanstackQuery()` option:
+
+```ts
+tanstackQuery({ pageParamName: 'cursor' }); // sends `?cursor=…` instead of `?page=…`
+```
+
+**Call-site** — `infiniteQueryOptions()` now takes an optional overrides object, mirroring how Orval and tRPC expose `getNextPageParam`. Anything you pass wins over the defaults (and any other TanStack infinite-query option is spread through), so a non-`meta` response shape no longer silently stops at page one:
+
+```tsx
+const pages = useInfiniteQuery(
+  api.users.list().infiniteQueryOptions({
+    getNextPageParam: (lastPage) => lastPage.pagination?.nextCursor,
+    getPreviousPageParam: (firstPage) => firstPage.pagination?.prevCursor,
+    initialPageParam: 0,
+  }),
+);
+
+// No args = the meta.page / meta.lastPage default, exactly as before.
+const defaultPages = useInfiniteQuery(api.users.list().infiniteQueryOptions());
+```
 
 ## How it fits
 

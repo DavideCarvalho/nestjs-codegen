@@ -130,4 +130,91 @@ describe('extractSchemaFromDto', () => {
       expect(mod.recursive?.size ?? 0).toBe(0);
     });
   });
+
+  describe('discriminated unions (class-transformer @Type discriminator)', () => {
+    const DISCRIMINATED = `
+      class Dog { @IsString() kind!: 'dog'; @IsString() bark!: string; }
+      class Cat { @IsString() kind!: 'cat'; @IsString() meow!: string; }
+      class Dto {
+        @ValidateNested()
+        @Type(() => Object, {
+          discriminator: {
+            property: 'kind',
+            subTypes: [
+              { value: 'dog', name: Dog },
+              { value: 'cat', name: Cat },
+            ],
+          },
+        })
+        animal!: Dog | Cat;
+      }`;
+
+    it('produces a discriminated union node referencing each subtype schema', () => {
+      const node = field(ir(DISCRIMINATED).root, 'animal');
+      expect(node.kind).toBe('union');
+      if (node.kind === 'union') {
+        expect(node.discriminator).toBe('kind');
+        expect(node.options).toEqual([
+          { kind: 'ref', name: 'DogSchema' },
+          { kind: 'ref', name: 'CatSchema' },
+        ]);
+      }
+    });
+
+    it('hoists each subtype as a named schema', () => {
+      const mod = ir(DISCRIMINATED);
+      expect(mod.named.has('DogSchema')).toBe(true);
+      expect(mod.named.has('CatSchema')).toBe(true);
+    });
+
+    it('wraps an array discriminated union in an array node', () => {
+      const ARR = DISCRIMINATED.replace('animal!: Dog | Cat;', 'animals!: (Dog | Cat)[];').replace(
+        '@ValidateNested()',
+        '@ValidateNested({ each: true }) @IsArray()',
+      );
+      const node = field(ir(ARR).root, 'animals');
+      expect(node.kind).toBe('array');
+      if (node.kind === 'array') {
+        expect(node.element.kind).toBe('union');
+        if (node.element.kind === 'union') expect(node.element.discriminator).toBe('kind');
+      }
+    });
+  });
+
+  describe('generic wrapper DTOs (PaginatedDto<T>)', () => {
+    const PAGINATED = `
+      class Item { @IsString() id!: string; }
+      class PageMeta { @IsNumber() total!: number; }
+      class PaginatedDto<T> {
+        @ValidateNested({ each: true }) @Type(() => Object) data!: T[];
+        @ValidateNested() @Type(() => PageMeta) meta!: PageMeta;
+      }
+      class Dto {
+        @ValidateNested() @Type(() => PaginatedDto) page!: PaginatedDto<Item>;
+      }`;
+
+    it('substitutes the type parameter so PaginatedDto<Item>.data is Array<ItemSchema>', () => {
+      const mod = ir(PAGINATED);
+      // The wrapper resolves to a hoisted named schema, not unknown.
+      const page = field(mod.root, 'page');
+      expect(page.kind).toBe('ref');
+      if (page.kind !== 'ref') return;
+      const wrapper = mod.named.get(page.name);
+      expect(wrapper?.kind).toBe('object');
+      if (wrapper?.kind !== 'object') return;
+      const data = wrapper.fields.find((f) => f.key === 'data')?.value;
+      // data!: T[] with T=Item → array of a ref/object to Item (NOT unknown)
+      expect(data?.kind).toBe('array');
+      if (data?.kind === 'array') {
+        expect(JSON.stringify(data.element)).not.toContain('unknown');
+      }
+    });
+
+    it('does not degrade the wrapper itself to unknown', () => {
+      const mod = ir(PAGINATED);
+      const serialized = JSON.stringify([...mod.named.values()]);
+      // meta resolves to a real object (total: number), proving the wrapper expanded.
+      expect(serialized).toContain('total');
+    });
+  });
 });

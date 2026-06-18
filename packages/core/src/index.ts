@@ -43,5 +43,18 @@ export type {
 export { emitForms } from './emit/emit-forms.js';
 export { emitApi } from './emit/emit-api.js';
 export { emitRoutes } from './emit/emit-routes.js';
+export { emitOpenApi, buildOpenApiSpec } from './emit/emit-openapi.js';
+export type {
+  OpenApiDocument,
+  OpenApiEmitOptions,
+  OpenApiInfo,
+} from './emit/emit-openapi.js';
+export { emitMocks, buildMocksFile } from './emit/emit-mocks.js';
+export type { MocksEmitOptions } from './emit/emit-mocks.js';
+export {
+  schemaNodeToJsonSchema,
+  schemaModuleToJsonSchema,
+} from './ir/schema-node-to-json-schema.js';
+export type { JsonSchema } from './ir/schema-node-to-json-schema.js';
 export { discoverContractsFast } from './discovery/contracts-fast.js';
 export type { FastDiscoveryOptions } from './discovery/contracts-fast.js';

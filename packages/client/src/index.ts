@@ -1,10 +1,11 @@
 export const VERSION = '0.2.1';
 
-export { createFetcher, composeTransformers } from './fetcher/fetcher.js';
+export { createFetcher, composeTransformers, consumeSse } from './fetcher/fetcher.js';
 export type {
   Fetcher,
   FetcherOptions,
   PayloadTransformer,
+  SseOpts,
   Transport,
   TransportRequest,
   TransportResponse,

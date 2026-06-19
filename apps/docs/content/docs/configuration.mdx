@@ -45,7 +45,7 @@ export default defineConfig({
       default: "'zod'",
     },
     extensions: {
-      description: "Codegen extensions, applied in registration order. Each may augment routes, emit extra files, and shape api.ts. e.g. tanstackQuery() adds TanStack Query handles, nestjsFilterCodegen() adds typed filterQuery helpers, nestjsInertiaCodegen() adds the Inertia router + navigate(). See /docs/extensions.",
+      description: "Codegen extensions, applied in registration order. Each may augment routes, emit extra files, and shape api.ts. e.g. tanstackQuery() adds TanStack Query handles, nestjsFilterCodegen() adds typed filterQuery helpers, nestjsInertiaCodegen() adds the Inertia router + navigate(). See /docs/integrations/extensions.",
       type: 'CodegenExtension[]',
       default: '[]',
     },
@@ -73,5 +73,5 @@ export default defineConfig({
 <Callout>
   The **fetcher** is no longer a config concern. The generated `api.ts` is a
   `createApi(fetcher)` factory — you inject the fetcher (with its baseUrl, transport,
-  and transformer) at runtime. See [API client](/docs/api-client).
+  and transformer) at runtime. See [API client](/docs/client/api-client).
 </Callout>

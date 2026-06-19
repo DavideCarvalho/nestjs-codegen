@@ -101,17 +101,17 @@ const created = await api.users.create({ body });  // typed body + response
   (bundled), [valibot](https://valibot.dev), or [arktype](https://arktype.io) adapters.
   See [Validation](/docs/validation).
 - **Typed API client** — `createApi(fetcher)`: inject your own client at runtime. See
-  [API client](/docs/api-client).
+  [API client](/docs/client/api-client).
 - **Bring your own fetcher** — native `fetch` by default, or an axios instance; superjson
-  and transformer pipelines supported. See [Fetcher](/docs/fetcher).
+  and transformer pipelines supported. See [Fetcher](/docs/client/fetcher).
 - **Extension-based integrations** — register integrations in `extensions: [...]`; each
-  shapes the generated `api.ts`. See [Extensions](/docs/extensions).
+  shapes the generated `api.ts`. See [Extensions](/docs/integrations/extensions).
   - **TanStack Query** (`tanstackQuery()`) — emits `queryOptions`/`mutationOptions` from
-    *your* adapter package (react/vue/svelte/solid). See [TanStack Query](/docs/tanstack-query).
+    *your* adapter package (react/vue/svelte/solid). See [TanStack Query](/docs/client/tanstack-query).
   - **nestjs-filter** (`nestjsFilterCodegen()`) — `@FilterFor`/`@ApplyFilter` → typed
-    `filterQuery()` helpers. See [Filters](/docs/filters).
+    `filterQuery()` helpers. See [Filters](/docs/integrations/filters).
   - **nestjs-inertia** (`nestjsInertiaCodegen()`) — pages, shared props, and the Inertia
-    `router` + `navigate()` helper. See [Inertia](/docs/inertia).
+    `router` + `navigate()` helper. See [Inertia](/docs/integrations/inertia).
 
 ## Where to go next
 
@@ -120,9 +120,9 @@ const created = await api.users.create({ body });  // typed body + response
   <Card title="Configuration" href="/docs/configuration" description="Every forRoot / defineConfig option, in one place." />
   <Card title="CLI" href="/docs/cli" description="The codegen / init / doctor commands and the CI drift check." />
   <Card title="Validation" href="/docs/validation" description="The SchemaNode IR and the zod, valibot, and arktype adapters." />
-  <Card title="API client" href="/docs/api-client" description="The createApi(fetcher) factory and the typed call surface." />
-  <Card title="Fetcher" href="/docs/fetcher" description="Bring your own transport — native fetch, axios, and superjson." />
-  <Card title="TanStack Query" href="/docs/tanstack-query" description="Opt-in queryOptions / mutationOptions handles in api.ts." />
-  <Card title="Extensions" href="/docs/extensions" description="How integrations register and shape the generated client." />
-  <Card title="Programmatic" href="/docs/programmatic" description="loadConfig, generate, and watch — the codegen as a library." />
+  <Card title="API client" href="/docs/client/api-client" description="The createApi(fetcher) factory and the typed call surface." />
+  <Card title="Fetcher" href="/docs/client/fetcher" description="Bring your own transport — native fetch, axios, and superjson." />
+  <Card title="TanStack Query" href="/docs/client/tanstack-query" description="Opt-in queryOptions / mutationOptions handles in api.ts." />
+  <Card title="Extensions" href="/docs/integrations/extensions" description="How integrations register and shape the generated client." />
+  <Card title="Programmatic" href="/docs/reference" description="loadConfig, generate, and watch — the codegen as a library." />
 </Cards>

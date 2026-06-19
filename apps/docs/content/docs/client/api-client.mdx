@@ -43,7 +43,7 @@ Awaiting the same handle twice is memoized (one network call). It also exposes
 
 ## TanStack Query helpers
 
-Register the [`tanstackQuery()`](/docs/tanstack-query) extension and the **same handle**
+Register the [`tanstackQuery()`](/docs/client/tanstack-query) extension and the **same handle**
 additionally carries `.queryKey()`, `.queryOptions()` (GET) / `.mutationOptions()` (the rest),
 and `.infiniteQueryOptions()` (GET) — from your TanStack adapter. The call still awaits:
 
@@ -72,6 +72,6 @@ import type { Api } from '../generated/api';
 
 ## Inertia navigation
 
-Register the [`nestjsInertiaCodegen()`](/docs/inertia) extension and the generated
+Register the [`nestjsInertiaCodegen()`](/docs/integrations/inertia) extension and the generated
 client additionally exposes a typed `navigate()` helper backed by the Inertia `router`,
-so links and mutations can drive Inertia visits. See [nestjs-inertia](/docs/inertia).
+so links and mutations can drive Inertia visits. See [nestjs-inertia](/docs/integrations/inertia).

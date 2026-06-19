@@ -4,7 +4,7 @@ description: queryOptions / mutationOptions from your framework adapter.
 ---
 
 TanStack Query is an **extension**, not a core flag. By default the client is a [plain typed
-fetch](/docs/api-client#calling-endpoints) with no TanStack dependency. Install the extension
+fetch](/docs/client/api-client#calling-endpoints) with no TanStack dependency. Install the extension
 and register it, and each endpoint returns a handle exposing TanStack's
 **`queryOptions`/`mutationOptions`** helpers — GET routes get `queryOptions()`, everything
 else `mutationOptions()`.
@@ -51,7 +51,7 @@ tanstackQuery({ import: '@tanstack/solid-query' });
 
 ## Usage
 
-The leaf is still [awaitable](/docs/api-client#calling-endpoints) — `await api.users.list()`
+The leaf is still [awaitable](/docs/client/api-client#calling-endpoints) — `await api.users.list()`
 does a plain request — and the same handle exposes the TanStack helpers:
 
 ```tsx

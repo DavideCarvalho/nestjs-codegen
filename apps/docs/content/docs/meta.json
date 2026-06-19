@@ -1,24 +1,13 @@
 {
   "title": "nestjs-codegen",
   "pages": [
-    "---Getting Started---",
     "index",
     "getting-started",
     "configuration",
     "cli",
-    "---Validation---",
     "validation",
-    "forms",
-    "---Client---",
-    "api-client",
-    "fetcher",
-    "tanstack-query",
-    "routes",
-    "---Integrations---",
-    "extensions",
-    "inertia",
-    "filters",
-    "---Reference---",
-    "programmatic"
+    "client",
+    "integrations",
+    "reference"
   ]
 }

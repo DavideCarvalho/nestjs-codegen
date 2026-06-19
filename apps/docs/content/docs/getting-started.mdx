@@ -47,9 +47,9 @@ export class AppModule {}
 
 Integrations are **extensions** you register in `extensions: [...]`. Besides
 `tanstackQuery()` there's `nestjsFilterCodegen()` (typed `filterQuery` helpers, see
-[nestjs-filter](/docs/filters)) and `nestjsInertiaCodegen()` (Inertia `router` +
-`navigate()`, see [nestjs-inertia](/docs/inertia)). Leave the array empty for a plain
-typed-fetch client. See [Extensions](/docs/extensions).
+[nestjs-filter](/docs/integrations/filters)) and `nestjsInertiaCodegen()` (Inertia `router` +
+`navigate()`, see [nestjs-inertia](/docs/integrations/inertia)). Leave the array empty for a plain
+typed-fetch client. See [Extensions](/docs/integrations/extensions).
 
 Now run your app as usual (`nest start --watch`) and the generated files appear in
 `src/generated` — kept in sync while the server runs.
@@ -104,7 +104,7 @@ git diff --exit-code src/generated   # non-zero if the client is stale
 
 <Callout type="info">
   `pages` is **Inertia-only** and optional — add it only if you build a NestJS +
-  Inertia app (see [nestjs-inertia](/docs/inertia)). A plain NestJS API needs just
+  Inertia app (see [nestjs-inertia](/docs/integrations/inertia)). A plain NestJS API needs just
   `contracts` + `codegen`.
 </Callout>
 

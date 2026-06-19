@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-codegen-valibot
 
+## 0.5.1
+
+### Patch Changes
+
+- f432450: Internal refactors (behavior-preserving): share `renderModule` across the zod/valibot adapters via a `createChainModuleRenderer` factory, and dedupe the nested-reference array-wrap + presence tail in `buildProperty` (`dto-to-ir`) behind a single `asField` closure.
+
 ## 0.5.0
 
 ### Minor Changes

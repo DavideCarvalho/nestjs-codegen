@@ -28,6 +28,12 @@ export type {
 } from './adapters/types.js';
 export { resolveAdapter } from './adapters/registry.js';
 export type { ValidationOption } from './adapters/registry.js';
+export {
+  createChainModuleRenderer,
+  typeNameFor,
+  toObjectKey,
+} from './adapters/chain-module.js';
+export type { ChainModuleRendererOptions } from './adapters/chain-module.js';
 
 // class-validator DTO → SchemaModule IR (consumed by the validation adapters)
 export { extractSchemaFromDto } from './discovery/dto-to-ir.js';

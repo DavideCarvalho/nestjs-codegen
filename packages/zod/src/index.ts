@@ -1,23 +1,12 @@
 import {
   type AdapterUsage,
   type RenderContext,
-  type RenderedModule,
-  type SchemaModule,
   type SchemaNode,
   type StringCheck,
   type ValidationAdapter,
-  renderTsType,
+  createChainModuleRenderer,
+  toObjectKey,
 } from '@dudousxd/nestjs-codegen';
-
-/** Schema const name → hoisted TS type-alias name (`ColumnFilterSchema` → `ColumnFilter`). */
-function typeNameFor(schemaName: string): string {
-  return schemaName.replace(/Schema(_\d+)?$/, '$1');
-}
-
-/** Valid JS identifier → bare key, else quoted. */
-function toObjectKey(name: string): string {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
-}
 
 function messageSuffix(messageRaw: string | undefined): string {
   return messageRaw ? `{ message: ${messageRaw} }` : '';
@@ -119,27 +108,8 @@ export const zodAdapter: ValidationAdapter = {
   inferType(schemaConst: string): string {
     return `z.infer<typeof ${schemaConst}>`;
   },
-  renderModule(mod: SchemaModule): RenderedModule {
-    const ctx: RenderContext = { named: mod.named };
-    const recursive = mod.recursive ?? new Set<string>();
-    const tctx = { named: mod.named, recursive, typeNameFor };
-    const namedNestedSchemas = new Map<string, string>();
-    const namedTypeAliases = new Map<string, string>();
-    const namedAnnotations = new Map<string, string>();
-    for (const [name, node] of mod.named) {
-      namedNestedSchemas.set(name, render(node, ctx));
-      if (recursive.has(name)) {
-        const typeName = typeNameFor(name);
-        namedTypeAliases.set(name, `type ${typeName} = ${renderTsType(node, tctx)}`);
-        namedAnnotations.set(name, `z.ZodType<${typeName}>`);
-      }
-    }
-    return {
-      schemaText: render(mod.root, ctx),
-      namedNestedSchemas,
-      namedTypeAliases,
-      namedAnnotations,
-      warnings: mod.warnings,
-    };
-  },
+  renderModule: createChainModuleRenderer({
+    render,
+    recursiveAnnotation: (typeName) => `z.ZodType<${typeName}>`,
+  }),
 };

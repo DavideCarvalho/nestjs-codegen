@@ -140,6 +140,15 @@ function buildProperty(
   // ends in "[]" but is NOT an array type.
   const isArrayType = !!typeNode && Node.isArrayTypeNode(typeNode);
 
+  // Finish a property whose value is a nested/union reference: wrap in an array
+  // when the field is a collection (`@IsArray` or a `T[]` type), then apply
+  // `@IsOptional`/`@IsDefined` presence. Shared by the three reference paths below.
+  const asField = (child: SchemaNode): SchemaNode =>
+    applyPresence(
+      has('IsArray') || isArrayType ? { kind: 'array', element: child } : child,
+      decorators,
+    );
+
   // ── Discriminated union via @Type(() => Base, { discriminator: {...} }) ──
   // class-transformer's documented polymorphism convention. The `subTypes`
   // entries map a discriminator literal to a concrete class; we emit a union of
@@ -150,14 +159,7 @@ function buildProperty(
     const options: SchemaNode[] = discriminator.subTypes.map((name) =>
       buildNestedReference(name, classFile, ctx),
     );
-    const unionNode: SchemaNode = {
-      kind: 'union',
-      options,
-      discriminator: discriminator.property,
-    };
-    const wrapArray = has('IsArray') || isArrayType;
-    const node: SchemaNode = wrapArray ? { kind: 'array', element: unionNode } : unionNode;
-    return applyPresence(node, decorators);
+    return asField({ kind: 'union', options, discriminator: discriminator.property });
   }
 
   // ── Generic type-parameter property (T / T[]) resolved via active bindings ─
@@ -168,10 +170,7 @@ function buildProperty(
   const propTypeParam = singularClassName(typeText);
   if (propTypeParam && ctx.typeBindings.has(propTypeParam)) {
     const bound = ctx.typeBindings.get(propTypeParam) as string;
-    const childNode = buildNestedReference(bound, classFile, ctx);
-    const wrapArray = has('IsArray') || isArrayType;
-    const node: SchemaNode = wrapArray ? { kind: 'array', element: childNode } : childNode;
-    return applyPresence(node, decorators);
+    return asField(buildNestedReference(bound, classFile, ctx));
   }
 
   // ── Nested / array-of-nested via @ValidateNested + @Type ────────────────
@@ -183,10 +182,7 @@ function buildProperty(
     const typeArgs = genericTypeArgNames(typeNode);
     const childName = typeRefName ?? singularClassName(typeText);
     if (childName) {
-      const childNode = buildNestedReference(childName, classFile, ctx, typeArgs);
-      const wrapArray = has('IsArray') || isArrayType;
-      const node: SchemaNode = wrapArray ? { kind: 'array', element: childNode } : childNode;
-      return applyPresence(node, decorators);
+      return asField(buildNestedReference(childName, classFile, ctx, typeArgs));
     }
   }
 

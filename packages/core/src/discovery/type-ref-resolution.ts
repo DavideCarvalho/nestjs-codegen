@@ -174,7 +174,6 @@ export function resolveImportedType(
 
     const moduleSpecifier = importDecl.getModuleSpecifierValue();
     const candidates = resolveModuleSpecifier(moduleSpecifier, sourceFile, project);
-    if (candidates.length === 0) continue;
 
     for (const candidate of candidates) {
       let importedFile = project.getSourceFile(candidate);
@@ -192,9 +191,44 @@ export function resolveImportedType(
       const viaReExport = resolveReExportedType(name, importedFile, project, new Set());
       if (viaReExport) return viaReExport;
     }
+
+    // Bare node_modules specifier (e.g. `@scope/pkg`): our manual relative /
+    // tsconfig-paths resolver yields no candidates. Fall back to the TS
+    // compiler's own module resolution, which locates the package's `.d.ts`
+    // declaration file. This is what lets a `@Filterable({ entity: X })` whose
+    // entity lives in an external package still be resolved (and its columns
+    // enumerated from the declaration file), rather than silently degrading the
+    // route to a non-filter route.
+    if (candidates.length === 0) {
+      const viaCompiler = resolveBareSpecifierType(name, importDecl, project);
+      if (viaCompiler) return viaCompiler;
+    }
   }
   // The current file may re-export the symbol from another module.
   return resolveReExportedType(name, sourceFile, project, new Set());
+}
+
+/**
+ * Resolve `name` against a bare (node_modules) import specifier using the TS
+ * compiler's module resolution. `getModuleSpecifierSourceFile()` returns the
+ * declaration (`.d.ts`) or source file the package resolves to; we then look up
+ * the type there (and follow that file's own re-exports / barrels).
+ */
+function resolveBareSpecifierType(
+  name: string,
+  importDecl: import('ts-morph').ImportDeclaration,
+  project: Project,
+): TypeDeclResult | null {
+  let target: SourceFile | undefined;
+  try {
+    target = importDecl.getModuleSpecifierSourceFile();
+  } catch {
+    return null;
+  }
+  if (!target) return null;
+  const direct = findTypeInFile(name, target);
+  if (direct) return direct;
+  return resolveReExportedType(name, target, project, new Set());
 }
 
 /**

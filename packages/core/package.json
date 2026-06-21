@@ -1,6 +1,6 @@
 {
   "name": "@dudousxd/nestjs-codegen",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
@@ -48,8 +48,16 @@
       }
     }
   },
-  "sideEffects": ["./dist/nest/index.js", "./dist/nest/index.cjs"],
-  "files": ["dist", "bin", "README.md", "CHANGELOG.md"],
+  "sideEffects": [
+    "./dist/nest/index.js",
+    "./dist/nest/index.cjs"
+  ],
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

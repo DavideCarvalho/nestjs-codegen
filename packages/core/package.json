@@ -48,16 +48,8 @@
       }
     }
   },
-  "sideEffects": [
-    "./dist/nest/index.js",
-    "./dist/nest/index.cjs"
-  ],
-  "files": [
-    "dist",
-    "bin",
-    "README.md",
-    "CHANGELOG.md"
-  ],
+  "sideEffects": ["./dist/nest/index.js", "./dist/nest/index.cjs"],
+  "files": ["dist", "bin", "README.md", "CHANGELOG.md"],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

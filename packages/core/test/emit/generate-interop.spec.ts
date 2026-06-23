@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveConfig } from '../../src/config/load-config.js';
+import type { CodegenExtension } from '../../src/extension/types.js';
 import type { RouteDescriptor } from '../../src/discovery/types.js';
 import { generate } from '../../src/generate.js';
 
@@ -67,5 +68,41 @@ describe('generate() interop targets', () => {
     expect(src).toContain('export const handlers = [');
     expect(src).toContain('const SEED = 3;');
     expect(src).toContain('// users.show');
+  });
+
+  it('route-injecting extension does not clobber contract routes on second generate() call', async () => {
+    // Regression: pages watcher used to call generate(config) with no routes, so a
+    // route-injecting extension's transformRoutes would produce an extension-only api.ts,
+    // dropping every contract-derived route. Passing contractRoutes prevents the clobber.
+    const injectedRoute: RouteDescriptor = {
+      method: 'POST',
+      path: '/api/notifications',
+      name: 'notifications.create',
+      params: [],
+      contract: {
+        contractSource: { query: null, body: 'CreateNotificationDto', response: 'void', error: null },
+      },
+    };
+    const injectingExtension: CodegenExtension = {
+      name: 'injecting-extension',
+      transformRoutes(existingRoutes) {
+        return [...existingRoutes, injectedRoute];
+      },
+    };
+    const config = resolveConfig(
+      { validation: zodAdapter, codegen: { outDir }, extensions: [injectingExtension] },
+      outDir,
+    );
+
+    // First call establishes the full api.ts with both contract + injected routes.
+    await generate(config, routes);
+    // Second call simulates a pages-watcher regen: contractRoutes passed in (not empty).
+    await generate(config, routes);
+
+    const apiTs = await readFile(join(outDir, 'api.ts'), 'utf8');
+    // Original contract route must still be present.
+    expect(apiTs).toContain('users');
+    // Injected route must also be present (extension still runs).
+    expect(apiTs).toContain('notifications');
   });
 });

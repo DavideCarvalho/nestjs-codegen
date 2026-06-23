@@ -59,6 +59,10 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
   // notifications) would still emit — overwriting api.ts with an extension-only
   // stub and dropping every contract-derived route. Kept in sync with the initial
   // pass and every contracts rediscovery.
+  //
+  // Bounded-staleness tradeoff: if a page edit races a concurrent controller edit,
+  // api.ts is stale by at most config.contracts.debounceMs until the contracts
+  // watcher fires and overwrites — acceptable and self-correcting.
   let lastRoutes: RouteDescriptor[] = [];
   async function getDiscovery(): Promise<PersistentDiscovery> {
     if (discovery === null) {
@@ -83,7 +87,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
       `[nestjs-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
     );
     try {
-      await generate(config);
+      await generate(config, lastRoutes);
     } catch {
       /* fallback: pages only */
     }

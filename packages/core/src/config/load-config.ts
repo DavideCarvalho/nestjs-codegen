@@ -19,23 +19,39 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 async function importTs(filePath: string): Promise<unknown> {
-  // Use tsx ESM API to load TypeScript config files at runtime
-  let tsImport:
-    | ((specifier: string, options: string | { parentURL: string }) => Promise<unknown>)
-    | undefined;
-  try {
-    const tsxEsm = await import('tsx/esm/api');
-    tsImport = tsxEsm.tsImport;
-  } catch {
-    throw new ConfigError(
-      'Failed to load config: `tsx` is required for loading TypeScript config files. ' +
-        'Install it as a dev dependency: pnpm add -D tsx',
-    );
-  }
-
-  const parentURL = pathToFileURL(`${filePath}__parent__`).href;
   const fileUrl = pathToFileURL(filePath).href;
-  return tsImport(fileUrl, { parentURL });
+
+  // Native-first: modern Node (>=22.18 / 23.6 / 24 / 25) strips TypeScript types
+  // natively, so a plain dynamic import loads a `.ts` config with zero deps. This is
+  // also the only path that works on Node 25, where tsx 4.22.4's resolver appends a
+  // `?namespace=<ts>` query that Node 25's stricter finalizeResolution rejects with
+  // ERR_MODULE_NOT_FOUND. We fall back to tsx only when native import fails (older
+  // Node without type stripping, or configs using syntax that needs transformation
+  // like enums/namespaces).
+  try {
+    return await import(fileUrl);
+  } catch (nativeError) {
+    // Native import failed — try the tsx ESM API as a fallback transformer.
+    let tsImport:
+      | ((specifier: string, options: string | { parentURL: string }) => Promise<unknown>)
+      | undefined;
+    try {
+      const tsxEsm = await import('tsx/esm/api');
+      tsImport = tsxEsm.tsImport;
+    } catch {
+      // Both native import and tsx are unusable. Surface the actionable
+      // "install tsx" guidance (the established behavior), chaining the native
+      // error so the underlying load failure isn't lost.
+      throw new ConfigError(
+        'Failed to load config: `tsx` is required for loading TypeScript config files. ' +
+          'Install it as a dev dependency: pnpm add -D tsx',
+        { cause: nativeError },
+      );
+    }
+
+    const parentURL = pathToFileURL(`${filePath}__parent__`).href;
+    return tsImport(fileUrl, { parentURL });
+  }
 }
 
 function resolveAbsolute(cwd: string, p: string): string {

@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveConfig } from '../../src/config/load-config.js';
-import type { CodegenExtension } from '../../src/extension/types.js';
 import type { RouteDescriptor } from '../../src/discovery/types.js';
+import type { CodegenExtension } from '../../src/extension/types.js';
 import { generate } from '../../src/generate.js';
 
 const routes: RouteDescriptor[] = [
@@ -80,7 +80,12 @@ describe('generate() interop targets', () => {
       name: 'notifications.create',
       params: [],
       contract: {
-        contractSource: { query: null, body: 'CreateNotificationDto', response: 'void', error: null },
+        contractSource: {
+          query: null,
+          body: 'CreateNotificationDto',
+          response: 'void',
+          error: null,
+        },
       },
     };
     const injectingExtension: CodegenExtension = {

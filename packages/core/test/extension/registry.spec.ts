@@ -22,6 +22,7 @@ function fakeConfig(extensions: CodegenExtension[]): ResolvedConfig {
     codegen: { outDir: '/tmp/out', cwd: '/tmp' },
     app: null,
     fetcher: null,
+    serialization: 'json',
     forms: { enabled: true, watch: 'src/**/*.dto.ts', zodImport: 'zod' },
   };
 }

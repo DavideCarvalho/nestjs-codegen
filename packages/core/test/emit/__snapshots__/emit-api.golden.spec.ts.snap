@@ -5,24 +5,25 @@ exports[`emitApi golden output > default (plain fetch) 1`] = `
 
 import { route, ROUTES, type RouteName, type ExtractParams, type RouteParams } from './routes.js';
 import type { Fetcher } from '@dudousxd/nestjs-client';
+import type { Jsonify } from '@dudousxd/nestjs-client';
 
 export type ApiRouter = {
   users: {
-    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; error: unknown; filterFields: never; stream: false };
-    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; error: unknown; filterFields: never; stream: false };
-    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; error: unknown; filterFields: never; stream: false };
-    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; error: unknown; filterFields: never; stream: false };
+    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: Jsonify<User[]>; error: unknown; filterFields: never; stream: false };
+    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
+    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
+    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
   };
   admin: {
     reports: {
-      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; error: unknown; filterFields: never; stream: false };
+      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Jsonify<Report[]>; error: unknown; filterFields: never; stream: false };
     };
   };
   pipelineRuns: {
-    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; error: unknown; filterFields: "status" | "name"; stream: false };
+    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: Jsonify<{ data: Run[] }>; error: unknown; filterFields: "status" | "name"; stream: false };
   };
   orders: {
-    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; error: unknown; filterFields: "total" | "state"; stream: false };
+    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Jsonify<Order[]>; error: unknown; filterFields: "total" | "state"; stream: false };
   };
 };
 
@@ -174,24 +175,25 @@ exports[`emitApi golden output > query: true (TanStack handles) 1`] = `
 import { queryOptions as _queryOptions, infiniteQueryOptions as _infiniteQueryOptions, mutationOptions as _mutationOptions } from '@tanstack/react-query';
 import { route, ROUTES, type RouteName, type ExtractParams, type RouteParams } from './routes.js';
 import type { Fetcher } from '@dudousxd/nestjs-client';
+import type { Jsonify } from '@dudousxd/nestjs-client';
 
 export type ApiRouter = {
   users: {
-    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; error: unknown; filterFields: never; stream: false };
-    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; error: unknown; filterFields: never; stream: false };
-    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; error: unknown; filterFields: never; stream: false };
-    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; error: unknown; filterFields: never; stream: false };
+    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: Jsonify<User[]>; error: unknown; filterFields: never; stream: false };
+    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
+    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
+    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
   };
   admin: {
     reports: {
-      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; error: unknown; filterFields: never; stream: false };
+      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Jsonify<Report[]>; error: unknown; filterFields: never; stream: false };
     };
   };
   pipelineRuns: {
-    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; error: unknown; filterFields: "status" | "name"; stream: false };
+    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: Jsonify<{ data: Run[] }>; error: unknown; filterFields: "status" | "name"; stream: false };
   };
   orders: {
-    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; error: unknown; filterFields: "total" | "state"; stream: false };
+    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Jsonify<Order[]>; error: unknown; filterFields: "total" | "state"; stream: false };
   };
 };
 
@@ -326,24 +328,25 @@ exports[`emitApi golden output > tanstack with a custom queryImport 1`] = `
 import { queryOptions as _queryOptions, infiniteQueryOptions as _infiniteQueryOptions, mutationOptions as _mutationOptions } from '@tanstack/vue-query';
 import { route, ROUTES, type RouteName, type ExtractParams, type RouteParams } from './routes.js';
 import type { Fetcher } from '@dudousxd/nestjs-client';
+import type { Jsonify } from '@dudousxd/nestjs-client';
 
 export type ApiRouter = {
   users: {
-    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: User[]; error: unknown; filterFields: never; stream: false };
-    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: User; error: unknown; filterFields: never; stream: false };
-    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: User; error: unknown; filterFields: never; stream: false };
-    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: User; error: unknown; filterFields: never; stream: false };
+    list: { method: "GET"; url: "/api/users"; params: never; query: { active?: boolean }; body: never; response: Jsonify<User[]>; error: unknown; filterFields: never; stream: false };
+    show: { method: "GET"; url: "/api/users/:id"; params: { id: string }; query: never; body: never; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
+    create: { method: "POST"; url: "/api/users"; params: never; query: never; body: { name: string }; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
+    update: { method: "PATCH"; url: "/api/users/:id"; params: { id: string }; query: never; body: { name?: string }; response: Jsonify<User>; error: unknown; filterFields: never; stream: false };
   };
   admin: {
     reports: {
-      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Report[]; error: unknown; filterFields: never; stream: false };
+      list: { method: "GET"; url: "/api/admin/reports"; params: never; query: never; body: never; response: Jsonify<Report[]>; error: unknown; filterFields: never; stream: false };
     };
   };
   pipelineRuns: {
-    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: { data: Run[] }; error: unknown; filterFields: "status" | "name"; stream: false };
+    search: { method: "POST"; url: "/api/pipeline-runs/search"; params: never; query: never; body: never; response: Jsonify<{ data: Run[] }>; error: unknown; filterFields: "status" | "name"; stream: false };
   };
   orders: {
-    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Order[]; error: unknown; filterFields: "total" | "state"; stream: false };
+    list: { method: "GET"; url: "/api/orders"; params: never; query: import('@dudousxd/nestjs-filter-client').TypedFilterQuery<"total" | "state">; body: never; response: Jsonify<Order[]>; error: unknown; filterFields: "total" | "state"; stream: false };
   };
 };
 

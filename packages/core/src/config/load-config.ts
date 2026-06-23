@@ -149,6 +149,7 @@ function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig
     },
     app,
     fetcher: userConfig.fetcher ?? null,
+    serialization: userConfig.serialization ?? 'json',
     forms: {
       enabled: userConfig.forms?.enabled ?? true,
       watch: userConfig.forms?.watch ?? 'src/**/*.dto.ts',

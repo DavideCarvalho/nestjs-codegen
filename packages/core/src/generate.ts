@@ -69,6 +69,7 @@ export async function generate(
   if (hasContracts) {
     await emitApi(routes, config.codegen.outDir, {
       ...(config.fetcher?.importPath ? { fetcherImportPath: config.fetcher.importPath } : {}),
+      serialization: config.serialization,
       extensions,
       ctx,
     });

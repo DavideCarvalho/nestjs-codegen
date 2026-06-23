@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative } from 'node:path';
+import type { SerializationMode } from '../config/types.js';
 import type {
   ContractSource,
   ControllerRef,
@@ -24,13 +25,20 @@ import type {
  * output: an `apiClientLayer` (e.g. `@dudousxd/nestjs-codegen-tanstack`) turns leaves into
  * handles wrapping the neutral fetcher request; `apiMembers` add handle members; `apiHeader`
  * contributes top-level imports/statements.
+ *
+ * `serialization` controls how response types are emitted (default `'json'`):
+ * in `'json'` mode each `response` type is wrapped in `Jsonify<...>` (so the
+ * generated type reflects the JSON wire shape, e.g. `Date` → `string`); in
+ * `'superjson'` mode the raw controller return type is emitted unchanged.
  */
 export interface ApiEmitOptions {
-  fetcherImportPath?: string;
+  fetcherImportPath?: string | undefined;
   /** Registered extensions. Their api.ts hooks (transport/layer/members/header) are applied. */
-  extensions?: CodegenExtension[];
+  extensions?: CodegenExtension[] | undefined;
   /** Shared extension context (from `generate()`). When omitted, a minimal one is built from routes. */
-  ctx?: ExtensionContext;
+  ctx?: ExtensionContext | undefined;
+  /** How response payloads deserialize on the client. Default `'json'`. */
+  serialization?: SerializationMode | undefined;
 }
 
 export async function emitApi(
@@ -248,9 +256,21 @@ function emitFilterQueryType(c: LeafEntry): string {
 }
 
 /**
- * Emit the nested ApiRouter type block.
+ * The route `response` type expression for a leaf.
+ *
+ * In `'json'` mode the response crosses the wire as plain JSON, so wrap the raw
+ * type in `Jsonify<...>` to reflect the serialized shape (Date → string, etc.).
+ * In `'superjson'` mode the payload is revived on the client, so emit the raw
+ * controller return type unchanged. Only the `response` field is wrapped — never
+ * `error`, `body`, or `query`.
  */
-function buildResponseType(c: LeafEntry, outDir: string): string {
+function buildResponseType(c: LeafEntry, outDir: string, serialization: SerializationMode): string {
+  const raw = rawResponseType(c, outDir);
+  return serialization === 'json' ? `Jsonify<${raw}>` : raw;
+}
+
+/** The un-wrapped response type expression for a leaf (stream / controllerRef / ref / inline). */
+function rawResponseType(c: LeafEntry, outDir: string): string {
   const respRef = c.contractSource.responseRef;
   // Streaming routes: `response` is the streamed ELEMENT type `T`. The method's
   // ReturnType is `Observable<...>` / `AsyncIterable<...>` (the container), so the
@@ -289,6 +309,7 @@ function emitRouterTypeBlock(
   tree: Map<string, TreeNode>,
   indent: number,
   outDir: string,
+  serialization: SerializationMode,
 ): string[] {
   const pad = ' '.repeat(indent);
   const lines: string[] = [];
@@ -320,7 +341,7 @@ function emitRouterTypeBlock(
               ? `Array<${bodyRef.name}>`
               : bodyRef.name
             : (c.contractSource.body ?? 'never');
-      const response = buildResponseType(c, outDir);
+      const response = buildResponseType(c, outDir, serialization);
       const error = buildErrorType(c);
       const params = buildParamsType(c.params);
       const safeMethod = JSON.stringify(method);
@@ -339,7 +360,7 @@ function emitRouterTypeBlock(
       );
     } else {
       lines.push(`${pad}${objKey}: {`);
-      lines.push(...emitRouterTypeBlock(node.children, indent + 2, outDir));
+      lines.push(...emitRouterTypeBlock(node.children, indent + 2, outDir, serialization));
       lines.push(`${pad}};`);
     }
   }
@@ -656,6 +677,7 @@ function buildApiFile(
   opts: ApiEmitOptions = {},
 ): string {
   const fetcherImportPath = opts.fetcherImportPath;
+  const serialization: SerializationMode = opts.serialization ?? 'json';
   const extensions = opts.extensions ?? [];
   const { layer } = resolveApiSlots(extensions);
   const memberExts = extensions.filter((e) => e.apiMembers);
@@ -736,6 +758,13 @@ function buildApiFile(
   // rather than the codegen hardcoding `import { fetcher } from '<path>'`.
   const runtimeImport = fetcherImportPath ?? '@dudousxd/nestjs-client';
   lines.push(`import type { Fetcher } from '${runtimeImport}';`);
+  // In `'json'` mode every `response` type is wrapped in `Jsonify<...>` so the
+  // generated type reflects the JSON wire shape; import the type helper (from the
+  // same `runtimeImport`, so it tracks `fetcherImportPath`). Only when at least
+  // one route is wrapped (the empty-routes branch wraps nothing).
+  if (serialization === 'json' && contracted.length > 0) {
+    lines.push(`import type { Jsonify } from '${runtimeImport}';`);
+  }
 
   // Emit type imports from source files.
   // When two different files export the same type name, alias the duplicate
@@ -808,7 +837,7 @@ function buildApiFile(
 
   // --- ApiRouter type ---
   lines.push('export type ApiRouter = {');
-  lines.push(...emitRouterTypeBlock(tree, 2, outDir ?? ''));
+  lines.push(...emitRouterTypeBlock(tree, 2, outDir ?? '', serialization));
   lines.push('};');
   lines.push('');
 

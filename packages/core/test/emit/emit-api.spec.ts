@@ -215,7 +215,8 @@ describe('emitApi', () => {
       await emitApi(streamRoutes, outDir, {});
       const c = await readFile(join(outDir, 'api.ts'), 'utf8');
       expect(c).toContain('stream: true');
-      expect(c).toContain('response: { count: number }');
+      // Default `'json'` serialization wraps the response element type in Jsonify.
+      expect(c).toContain('response: Jsonify<{ count: number }>');
     });
 
     it('exposes an AsyncIterable stream surface on the leaf', async () => {
@@ -252,7 +253,8 @@ describe('emitApi', () => {
       await emitApi(cref, outDir, {});
       const c = await readFile(join(outDir, 'api.ts'), 'utf8');
       // The element type is used directly — NOT Awaited<ReturnType<...>> (which would be the Observable).
-      expect(c).toContain('response: { count: number }');
+      // Default `'json'` serialization wraps it in Jsonify.
+      expect(c).toContain('response: Jsonify<{ count: number }>');
       expect(c).not.toContain('Awaited<ReturnType<');
     });
 
@@ -267,6 +269,52 @@ describe('emitApi', () => {
       const c = await readFile(join(outDir, 'api.ts'), 'utf8');
       expect(c).not.toContain('fetcher.sse<');
       expect(c).not.toContain('stream: () =>');
+    });
+  });
+
+  describe('response serialization (Jsonify-by-default)', () => {
+    it('json mode (default) wraps every response in Jsonify<...> and imports the helper', async () => {
+      await emitApi(routes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      // Each leaf's response is the JSON wire shape.
+      expect(c).toContain('response: Jsonify<User[]>');
+      expect(c).toContain('response: Jsonify<User>');
+      expect(c).toContain('response: Jsonify<{ data: User[] }>');
+      // The helper is imported from the runtime package (same module as Fetcher).
+      expect(c).toContain("import type { Jsonify } from '@dudousxd/nestjs-client'");
+      // Only the response field is wrapped — never error/body/query.
+      expect(c).not.toContain('error: Jsonify<');
+      expect(c).not.toContain('body: Jsonify<');
+      expect(c).not.toContain('query: Jsonify<');
+    });
+
+    it('json mode is the default when serialization is omitted', async () => {
+      await emitApi(routes, outDir, { serialization: 'json' });
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('response: Jsonify<User[]>');
+      expect(c).toContain("import type { Jsonify } from '@dudousxd/nestjs-client'");
+    });
+
+    it('superjson mode leaves the raw response type and emits no Jsonify import', async () => {
+      await emitApi(routes, outDir, { serialization: 'superjson' });
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('response: User[]');
+      expect(c).toContain('response: User');
+      expect(c).toContain('response: { data: User[] }');
+      expect(c).not.toContain('Jsonify<');
+      expect(c).not.toContain('import type { Jsonify }');
+    });
+
+    it('tracks fetcherImportPath for the Jsonify import in json mode', async () => {
+      await emitApi(routes, outDir, { fetcherImportPath: '~/lib/api' });
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain("import type { Jsonify } from '~/lib/api'");
+    });
+
+    it('emits no Jsonify import when there are no contracted routes (json mode)', async () => {
+      await emitApi([], outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).not.toContain('import type { Jsonify }');
     });
   });
 });

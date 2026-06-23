@@ -45,6 +45,9 @@ npx nestjs-codegen doctor
 ```
 
 <Callout type="info">
-  Loading a TypeScript config requires `tsx` (an optional peer). Install it if you see
-  a config-loading error: `pnpm add -D tsx`.
+  The TypeScript config (`nestjs-codegen.config.ts`) is loaded **natively** on modern Node
+  (>= 22.18 / 23.6 / 24 / 25), which strips TypeScript types on import — so no extra tooling
+  is needed, including on Node 25. On older Node without native type stripping the loader
+  falls back to `tsx` (an optional peer); install it if you see a config-loading error:
+  `pnpm add -D tsx`.
 </Callout>

@@ -41,6 +41,54 @@ const created = await api.users.create({ body: { email: 'a@b.com', password: 'se
 Awaiting the same handle twice is memoized (one network call). It also exposes
 `.fetch()`/`.catch()`/`.finally()` if you'd rather not `await` directly.
 
+## Response types & serialization
+
+By default the generated `response` type reflects the **JSON wire shape**, not the
+in-process server type. A controller that returns a `Date` doesn't send a `Date` — it
+sends the ISO string `Date.prototype.toJSON()` produces — so the client awaits a
+`string`. The codegen wraps every `response` type in the type-only `Jsonify<...>` utility
+from `@dudousxd/nestjs-client` to model exactly what `JSON.parse(JSON.stringify(value))`
+gives you back:
+
+```ts
+// Controller: returns { id: string; createdAt: Date }
+const user = await api.users.show({ params: { id } });
+// user.createdAt is `string`, not `Date` — matching the actual JSON response.
+```
+
+`Jsonify` transforms what JSON genuinely changes and leaves everything else alone:
+
+- `Date` (and anything with a `toJSON()`) → its serialized return shape.
+- Arrays and plain objects recurse; optional properties stay optional.
+- Non-serializable properties (methods, `symbol`, `undefined`-only) are dropped, and
+  `bigint` (which `JSON.stringify` throws on) maps to `never`.
+- `any` / `unknown` pass straight through.
+
+<Callout type="info">
+  This only affects the `response` type — `body`, `query`, `params`, and `error` are
+  emitted as-is. It's a compile-time type transform with **no runtime cost**: nothing in
+  your client code changes, the types just stop lying about `Date`.
+</Callout>
+
+### Opt out for superjson clients
+
+If you deserialize responses with [superjson](/docs/client/fetcher#superjson-runtime),
+`Date`/`Map`/`Set`/`BigInt` are **revived** on the client, so the raw controller return
+type is already correct and `Jsonify` would be wrong. Set `serialization: 'superjson'` in
+your config to emit the raw types unchanged:
+
+```ts title="nestjs-codegen.config.ts"
+import { defineConfig } from '@dudousxd/nestjs-codegen';
+
+export default defineConfig({
+  // ...
+  serialization: 'superjson', // emit raw controller return types (revived on the client)
+});
+```
+
+Pair this with the runtime superjson hook described in
+[Fetcher & Transports](/docs/client/fetcher#superjson-runtime).
+
 ## TanStack Query helpers
 
 Register the [`tanstackQuery()`](/docs/client/tanstack-query) extension and the **same handle**
@@ -66,7 +114,7 @@ calling anything:
 
 ```ts
 import type { Api } from '../generated/api';
-// the leaf returns an awaitable handle; the response type is:
+// the leaf returns an awaitable handle; the (already Jsonify-shaped) response type is:
 // Awaited<ReturnType<typeof api.users.show>>
 ```
 

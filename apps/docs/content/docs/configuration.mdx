@@ -29,6 +29,8 @@ export default defineConfig({
 
   forms: { enabled: true, watch: 'src/**/*.dto.ts' },
 
+  serialization: 'json',             // 'json' (default) | 'superjson'
+
   // ── Inertia only (omit for a plain NestJS API) ──────────────────
   pages: { glob: 'resources/pages/**/*.tsx' },
   app: { moduleEntry: 'src/app.module.ts', tsconfig: 'tsconfig.json' },
@@ -66,6 +68,11 @@ export default defineConfig({
       description: 'Emit forms.ts.',
       type: 'boolean',
       default: 'true',
+    },
+    serialization: {
+      description: "How responses deserialize on the client, which decides the generated `response` type shape. 'json': responses arrive as plain JSON, so each `response` type is wrapped in Jsonify<...> (Date → string, etc.). 'superjson': responses are revived on the client (the /superjson runtime), so the raw controller return type is emitted unchanged. See /docs/client/api-client#response-types-serialization.",
+      type: "'json' | 'superjson'",
+      default: "'json'",
     },
   }}
 />

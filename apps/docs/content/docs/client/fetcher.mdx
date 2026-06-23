@@ -3,6 +3,8 @@ title: Fetcher & Transports
 description: createFetcher, custom transports (axios), and serializers (superjson).
 ---
 
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
 `@dudousxd/nestjs-client` provides `createFetcher` — the typed client the generated
 `api.ts` calls. It owns URL building, headers, error mapping (`ApiHttpError`), and the
 payload transformer. The actual network call is a **pluggable transport**.
@@ -83,3 +85,98 @@ const fetcher = createFetcher({ transformer: [superjson, compress] });
 
 Bring your own — a transformer is just an object that implements
 `{ stringify(value): string; parse(text): T }`.
+
+## superjson runtime
+
+The `transformer` above replaces serialization on **both** directions for **every**
+consumer — the server must speak the exact same transformer, so adopting it is an atomic
+cross-app flip. When you only need to **revive rich types in responses** (so `Date`,
+`Map`, `Set`, `BigInt` round-trip) and want each client to opt in independently, use the
+dedicated `@dudousxd/nestjs-client/superjson` subpath instead.
+
+It is built on the fetcher's generic `deserialize` hook (applied to parsed JSON
+responses) and a `x-superjson` header so plain-JSON consumers are never affected:
+
+- **Client** sends `x-superjson: 1` and deserializes the response with `superjson`.
+- **Server** `SuperjsonInterceptor` superjson-serializes the response **only** when that
+  header is present; every other request gets plain JSON.
+
+This is the runtime complement to the
+[`serialization: 'superjson'` config](/docs/client/api-client#opt-out-for-superjson-clients):
+turn off the compile-time `Jsonify` wrapping there, and revive the values at runtime here.
+
+<Callout type="warn">
+  `superjson`, `rxjs`, and `@nestjs/common` are **optional** peer dependencies, pulled in
+  only by the `/superjson` subpath. Install `superjson` to use this runtime.
+</Callout>
+
+<Steps>
+<Step>
+
+### Opt the client in
+
+`superjsonFetcherOptions()` returns the `headers` + `deserialize` pair to spread into
+`createFetcher`:
+
+```ts title="src/lib/api.ts"
+import { createApi } from '../generated/api';
+import { createFetcher } from '@dudousxd/nestjs-client';
+import { superjsonFetcherOptions } from '@dudousxd/nestjs-client/superjson';
+
+export const api = createApi(
+  createFetcher({ baseUrl: '/api', ...superjsonFetcherOptions() }),
+);
+```
+
+Already passing your own `headers()` (e.g. auth)? Use `withSuperjson()` — it composes your
+headers with the `x-superjson` opt-in header so both are sent:
+
+```ts title="src/lib/api.ts"
+import { createFetcher } from '@dudousxd/nestjs-client';
+import { withSuperjson } from '@dudousxd/nestjs-client/superjson';
+
+const fetcher = createFetcher(
+  withSuperjson({ baseUrl: '/api', headers: () => ({ authorization: token() }) }),
+);
+```
+
+</Step>
+<Step>
+
+### Add the server interceptor
+
+Register `SuperjsonInterceptor` so responses are superjson-serialized **only** for
+requests carrying the opt-in header. Plain-JSON consumers (and any app that hasn't flipped
+yet) are untouched, so superjson can be adopted per-consumer without an atomic migration:
+
+```ts title="src/app.module.ts"
+import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { SuperjsonInterceptor } from '@dudousxd/nestjs-client/superjson';
+
+@Module({
+  providers: [{ provide: APP_INTERCEPTOR, useClass: SuperjsonInterceptor }],
+})
+export class AppModule {}
+```
+
+</Step>
+<Step>
+
+### Drop the compile-time Jsonify wrapping
+
+With responses revived at runtime, the raw controller return types are now correct. Set
+`serialization: 'superjson'` so the codegen stops wrapping `response` in `Jsonify<...>`:
+
+```ts title="nestjs-codegen.config.ts"
+export default defineConfig({
+  // ...
+  serialization: 'superjson',
+});
+```
+
+Now `api.users.show()` resolves to `{ createdAt: Date }` again — and the value really is a
+`Date` at runtime.
+
+</Step>
+</Steps>

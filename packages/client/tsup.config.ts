@@ -3,6 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
+    'superjson/index': 'src/superjson/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
@@ -10,5 +11,5 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   outDir: 'dist',
-  external: [],
+  external: ['@nestjs/common', 'rxjs', 'rxjs/operators', 'reflect-metadata', 'superjson'],
 });

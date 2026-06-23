@@ -186,3 +186,44 @@ describe('fetcher.sse — server-sent events streaming', () => {
     }).rejects.toBeInstanceOf(ApiHttpError);
   });
 });
+
+describe('createFetcher — deserialize hook', () => {
+  it('deserialize hook transforms the parsed JSON body', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ value: 1 }));
+    const deserialize = vi.fn((raw: unknown) => ({
+      ...(raw as Record<string, unknown>),
+      revived: true,
+    }));
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      deserialize,
+    });
+    const result = await api.get('/thing');
+    expect(deserialize).toHaveBeenCalledOnce();
+    expect(deserialize.mock.calls[0]?.[0]).toEqual({ value: 1 });
+    expect(result).toEqual({ value: 1, revived: true });
+  });
+
+  it('absent deserialize hook returns the body unchanged (identity)', async () => {
+    const payload = { value: 42 };
+    const fetch = vi.fn(async () => jsonResponse(payload));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const result = await api.get('/thing');
+    expect(result).toEqual(payload);
+  });
+
+  it('deserialize hook is NOT applied to non-JSON (text) responses', async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response('plain text', { status: 200, headers: { 'content-type': 'text/plain' } }),
+    );
+    const deserialize = vi.fn((raw: unknown) => raw);
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      deserialize,
+    });
+    const result = await api.get('/text');
+    expect(deserialize).not.toHaveBeenCalled();
+    expect(result).toBe('plain text');
+  });
+});

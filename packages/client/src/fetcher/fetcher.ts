@@ -99,6 +99,14 @@ export interface FetcherOptions {
    * wrappers like compression/encryption). Bring your own — it's just an object.
    */
   transformer?: PayloadTransformer | PayloadTransformer[];
+  /**
+   * Transforms the parsed JSON response body before it is returned. Applied
+   * only to `application/json` responses (not the text fallback or SSE).
+   * Serialization-agnostic seam: the `/superjson` subpath supplies
+   * `superjson.deserialize` here to revive `Date`/`Map`/`Set` etc. Default
+   * identity, so plain-JSON consumers are unaffected.
+   */
+  deserialize?: (raw: unknown) => unknown;
 }
 
 export interface Fetcher {
@@ -209,7 +217,8 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
     const ct = res.contentType ?? '';
     const text = await res.text();
     if (ct.includes('application/json')) {
-      return transformer ? transformer.parse<T>(text) : (JSON.parse(text) as T);
+      const parsed: unknown = transformer ? transformer.parse<unknown>(text) : JSON.parse(text);
+      return (opts.deserialize ? opts.deserialize(parsed) : parsed) as T;
     }
     return text as unknown as T;
   }

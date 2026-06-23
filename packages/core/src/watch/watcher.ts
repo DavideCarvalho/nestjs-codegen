@@ -53,6 +53,17 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
   // reconstructing the Project and re-parsing all controllers + DTOs. Lazily
   // (re)initialised so an initial-pass failure doesn't permanently disable it.
   let discovery: PersistentDiscovery | null = null;
+  // Last successfully-discovered routes, reused by the pages watcher. The pages
+  // fast path has no route discovery of its own; without this it would call
+  // generate() with an empty route list, and any route-injecting extension (e.g.
+  // notifications) would still emit — overwriting api.ts with an extension-only
+  // stub and dropping every contract-derived route. Kept in sync with the initial
+  // pass and every contracts rediscovery.
+  //
+  // Bounded-staleness tradeoff: if a page edit races a concurrent controller edit,
+  // api.ts is stale by at most config.contracts.debounceMs until the contracts
+  // watcher fires and overwrites — acceptable and self-correcting.
+  let lastRoutes: RouteDescriptor[] = [];
   async function getDiscovery(): Promise<PersistentDiscovery> {
     if (discovery === null) {
       discovery = await PersistentDiscovery.create({
@@ -68,6 +79,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
   // Run an initial full pass: pages + routes + contracts (same as a one-shot `codegen` run)
   try {
     const initialRoutes = (await getDiscovery()).discover();
+    lastRoutes = initialRoutes;
     await generate(config, initialRoutes);
   } catch (err) {
     // Best-effort; don't crash the watcher on initial generation failure
@@ -75,7 +87,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
       `[nestjs-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
     );
     try {
-      await generate(config);
+      await generate(config, lastRoutes);
     } catch {
       /* fallback: pages only */
     }
@@ -99,7 +111,9 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
     pagesDebounceTimer = setTimeout(async () => {
       pagesDebounceTimer = undefined;
       try {
-        await generate(config);
+        // Reuse the last-known routes so a pages-only regen never drops the
+        // contract-derived api.ts (see lastRoutes declaration).
+        await generate(config, lastRoutes);
       } catch (err) {
         console.error(
           '[nestjs-codegen] Pages generation failed:',
@@ -140,6 +154,7 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
         // for added/removed controllers, then re-extract. Avoids reconstructing
         // the Project and re-parsing every controller + DTO on each change.
         const routes: RouteDescriptor[] = await (await getDiscovery()).rediscover(changed);
+        lastRoutes = routes;
 
         // Route through generate() so the incremental pass honors the SAME emit
         // options as the initial pass (query / mutationClient / queryImport / fetcher

@@ -1,4 +1,6 @@
-import type { CallHandler, ExecutionContext } from '@nestjs/common';
+import 'reflect-metadata';
+import { Readable } from 'node:stream';
+import { type CallHandler, type ExecutionContext, StreamableFile } from '@nestjs/common';
 import { firstValueFrom, of } from 'rxjs';
 import superjson from 'superjson';
 import { describe, expect, it } from 'vitest';
@@ -10,12 +12,23 @@ import {
   withSuperjson,
 } from '../src/superjson/index.js';
 
-/** Minimal ExecutionContext exposing only the request headers the interceptor reads. */
-function makeContext(headers: Record<string, string>): ExecutionContext {
+/** Metadata key NestJS's `@Sse()` decorator stamps onto the route handler. */
+const SSE_METADATA = '__sse__';
+
+/**
+ * Minimal ExecutionContext exposing the request headers the interceptor reads
+ * and an optional `handler` so SSE-metadata detection (`getHandler()`) is
+ * exercisable. Defaults to a bare function with no metadata (a normal route).
+ */
+function makeContext(
+  headers: Record<string, string>,
+  handler: () => void = () => undefined,
+): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => ({ headers }),
     }),
+    getHandler: () => handler,
   } as unknown as ExecutionContext;
 }
 
@@ -67,6 +80,72 @@ describe('SuperjsonInterceptor (content negotiation)', () => {
     );
 
     expect(result).toBe(payload);
+  });
+
+  it('WITH header + StreamableFile → passed through unchanged (no envelope)', async () => {
+    const interceptor = new SuperjsonInterceptor();
+    const file = new StreamableFile(Buffer.from('hello'));
+
+    const result = await firstValueFrom(
+      interceptor.intercept(makeContext({ [SUPERJSON_HEADER]: '1' }), makeNext(file)),
+    );
+
+    expect(result).toBe(file);
+    expect(result).not.toHaveProperty('json');
+  });
+
+  it('WITH header + SSE handler → passed through unchanged (never serialized)', async () => {
+    const interceptor = new SuperjsonInterceptor();
+    // A handler tagged like NestJS `@Sse()` does (Reflect.defineMetadata on the fn).
+    const sseHandler = () => undefined;
+    Reflect.defineMetadata(SSE_METADATA, true, sseHandler);
+    // A MessageEvent-shaped payload an @Sse() route would emit.
+    const event = { data: { now: new Date('2024-01-02T03:04:05.000Z') } };
+
+    const result = await firstValueFrom(
+      interceptor.intercept(makeContext({ [SUPERJSON_HEADER]: '1' }, sseHandler), makeNext(event)),
+    );
+
+    // Untouched: still the raw event object, NOT a { json, meta } envelope.
+    expect(result).toBe(event);
+    expect(result).not.toHaveProperty('json');
+    expect(result).not.toHaveProperty('meta');
+  });
+
+  it('WITH header + Node Readable stream → passed through unchanged', async () => {
+    const interceptor = new SuperjsonInterceptor();
+    const stream = Readable.from(['chunk']);
+
+    const result = await firstValueFrom(
+      interceptor.intercept(makeContext({ [SUPERJSON_HEADER]: '1' }), makeNext(stream)),
+    );
+
+    expect(result).toBe(stream);
+    expect(result).not.toHaveProperty('json');
+  });
+
+  it('WITH header + Buffer → passed through unchanged (raw bytes, not base64 envelope)', async () => {
+    const interceptor = new SuperjsonInterceptor();
+    const buffer = Buffer.from('raw-bytes');
+
+    const result = await firstValueFrom(
+      interceptor.intercept(makeContext({ [SUPERJSON_HEADER]: '1' }), makeNext(buffer)),
+    );
+
+    expect(result).toBe(buffer);
+    expect(result).not.toHaveProperty('json');
+  });
+
+  it('WITH header + plain array → still gets the superjson envelope', async () => {
+    const interceptor = new SuperjsonInterceptor();
+    const payload = [1, 2, 3];
+
+    const result = (await firstValueFrom(
+      interceptor.intercept(makeContext({ [SUPERJSON_HEADER]: '1' }), makeNext(payload)),
+    )) as { json: unknown };
+
+    expect(result).toHaveProperty('json');
+    expect(result.json).toEqual([1, 2, 3]);
   });
 });
 

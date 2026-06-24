@@ -285,25 +285,77 @@ function extractBodyType(
 }
 
 /**
- * Extract the query type from a `@Query()` (no-arg) decorated parameter.
- * Returns a TS type string or null.
+ * Extract the query type from `@Query()`-decorated parameters.
+ *
+ * Two shapes are supported, in priority order:
+ *
+ *  1. Whole-object form — `@Query() dto: SomeQueryDto`. The parameter's declared
+ *     type is resolved and emitted as the entire `query` type. This is the
+ *     historical behavior and is preserved unchanged.
+ *
+ *  2. Named-param form — one or more `@Query('name')` decorators with a
+ *     string-literal name (e.g. `@Query('years') years?: number[]`). Each such
+ *     parameter contributes one property to a synthesized object type, keyed by
+ *     the string-literal name and typed by the parameter's annotation. This
+ *     mirrors {@link extractParamsType}'s handling of named `@Param('id')`.
+ *
+ * When BOTH shapes appear on the same handler (rare), the whole-object form
+ * wins (it already describes the full query shape); the named params are
+ * ignored to avoid emitting a conflicting partial type.
+ *
+ * Returns a TS type string or null when no usable `@Query` is present.
  */
 function extractQueryType(
   method: MethodDeclaration,
   sourceFile: SourceFile,
   project: Project,
 ): string | null {
+  // 1. Whole-object form takes precedence.
   for (const param of method.getParameters()) {
     const queryDecorator = param.getDecorators().find((d) => d.getName() === 'Query');
     if (!queryDecorator) continue;
-    const queryArgs = queryDecorator.getArguments();
-    if (queryArgs.length > 0) continue;
+    if (queryDecorator.getArguments().length > 0) continue;
     const typeNode = param.getTypeNode();
     if (typeNode) {
       return resolveTypeNodeToString(typeNode, sourceFile, project, 3);
     }
   }
-  return null;
+
+  // 2. Named `@Query('name')` form — synthesize an object type, one property per
+  //    named query param. Mirrors extractParamsType's named-`@Param` handling.
+  const entries: string[] = [];
+  for (const param of method.getParameters()) {
+    const queryDecorator = param.getDecorators().find((d) => d.getName() === 'Query');
+    if (!queryDecorator) continue;
+    const queryArgs = queryDecorator.getArguments();
+    const nameArg = queryArgs[0];
+    if (!nameArg || !Node.isStringLiteral(nameArg)) continue;
+    const queryName = nameArg.getLiteralValue();
+    const typeNode = param.getTypeNode();
+    // Pipes (ParseArrayPipe/ParseIntPipe/...) do not change the declared TS type,
+    // so the annotation is read verbatim. A missing annotation falls back to
+    // `string` (query-string values are always strings) — consistent with how
+    // extractParamsType defaults a typeless `@Param`.
+    const queryType = typeNode
+      ? resolveTypeNodeToString(typeNode, sourceFile, project, 3)
+      : 'string';
+    entries.push(`${queryName}${isParamOptional(param) ? '?' : ''}: ${queryType}`);
+  }
+  return entries.length > 0 ? `{ ${entries.join('; ')} }` : null;
+}
+
+/**
+ * Whether a handler parameter should be treated as an OPTIONAL query property.
+ * True when the parameter has a `?` token, a default value, or a declared type
+ * whose union includes `undefined` (e.g. `string | undefined`).
+ */
+function isParamOptional(param: import('ts-morph').ParameterDeclaration): boolean {
+  if (param.hasQuestionToken() || param.hasInitializer()) return true;
+  const typeNode = param.getTypeNode();
+  if (typeNode && Node.isUnionTypeNode(typeNode)) {
+    return typeNode.getTypeNodes().some((t) => t.getKind() === SyntaxKind.UndefinedKeyword);
+  }
+  return false;
 }
 
 /**

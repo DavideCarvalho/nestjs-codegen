@@ -545,6 +545,20 @@ describe('discoverContractsFast — DTO-based contract extraction', () => {
     expect(cs?.body).toBeNull();
   });
 
+  it('synthesizes query from individual named @Query("name") params', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'named-query.controller.ts',
+    });
+    const route = routes.find((r) => r.name === 'namedQuery.list');
+    expect(route).toBeDefined();
+    const cs = route?.contract?.contractSource;
+    // NOT `never`: a typed object with one property per @Query param,
+    // with the right optionality (kind required, years/q optional).
+    expect(cs?.query).toBe('{ kind: string; years?: Array<number>; q?: string | Array<string> }');
+    expect(cs?.body).toBeNull();
+  });
+
   it('extracts array response type from @ApiResponse({ type: [PostDto] })', async () => {
     const routes = await discoverContractsFast({
       cwd: fixturesDir,
@@ -679,7 +693,7 @@ describe('extractDtoContract', () => {
     expect(result?.body).toBeNull();
   });
 
-  it('skips @Query("key") single-param decorators', () => {
+  it('synthesizes query from a single named @Query("key") param', () => {
     const { sf, project } = makeSourceFileFromCode(`
       class TestController {
         get(@Query('page') page: string) {}
@@ -688,7 +702,79 @@ describe('extractDtoContract', () => {
     const cls = sf.getClassOrThrow('TestController');
     const method = cls.getMethodOrThrow('get');
     const result = extractDtoContract(method, sf, project);
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    // A required string param → required property, NOT `never`.
+    expect(result?.query).toBe('{ page: string }');
+    expect(result?.body).toBeNull();
+  });
+
+  it('synthesizes query from multiple named @Query params with correct optionality', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class TestController {
+        list(
+          @Query('kind') kind: string,
+          @Query('years') years?: number[],
+          @Query('q') q?: string | string[],
+        ) {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('list');
+    const result = extractDtoContract(method, sf, project);
+    expect(result).not.toBeNull();
+    expect(result?.query).toBe(
+      '{ kind: string; years?: Array<number>; q?: string | Array<string> }',
+    );
+  });
+
+  it('treats a defaulted named @Query param as optional', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class TestController {
+        list(@Query('page') page: number = 1) {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('list');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.query).toBe('{ page?: number }');
+  });
+
+  it('treats a `| undefined` named @Query param as optional', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class TestController {
+        list(@Query('q') q: string | undefined) {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('list');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.query).toBe('{ q?: string | undefined }');
+  });
+
+  it('falls back to string for a named @Query param with no annotation', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class TestController {
+        list(@Query('q') q) {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('list');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.query).toBe('{ q: string }');
+  });
+
+  it('prefers the whole-object @Query() DTO when both forms are present', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class QueryDto { page?: number; }
+      class TestController {
+        list(@Query() dto: QueryDto, @Query('extra') extra: string) {}
+      }
+    `);
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('list');
+    const result = extractDtoContract(method, sf, project);
+    // Whole-object form wins; the named param is not merged in.
+    expect(result?.query).toBe('{ page?: number }');
   });
 
   it('resolves optional properties correctly', () => {

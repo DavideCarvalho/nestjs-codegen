@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-client
 
+## 0.5.1
+
+### Patch Changes
+
+- 63a6e93: fix(client/superjson): SuperjsonInterceptor passes SSE handlers, StreamableFile, Node streams and Buffers through untouched instead of serializing them — only plain JSON payloads get the superjson envelope
+
 ## 0.5.0
 
 ### Minor Changes

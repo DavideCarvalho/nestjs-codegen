@@ -133,6 +133,115 @@ describe('createFetcher', () => {
   });
 });
 
+describe('createFetcher — fetchBlob / fetchRaw (binary + headers escape hatch)', () => {
+  it('fetchBlob returns the Blob untouched and exposes headers + status', async () => {
+    const blob = new Blob(['csv,data'], { type: 'text/csv' });
+    const fetch = vi.fn(
+      async () =>
+        new Response(blob, {
+          status: 200,
+          headers: {
+            'content-type': 'text/csv',
+            'content-disposition': 'attachment; filename="export.csv"',
+          },
+        }),
+    );
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const res = await api.fetchBlob('/export');
+    expect(res.data).toBeInstanceOf(Blob);
+    expect(await res.data.text()).toBe('csv,data');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toBe('attachment; filename="export.csv"');
+  });
+
+  it('fetchBlob requests responseType blob (defaults to GET)', async () => {
+    const fetch = vi.fn(async () => new Response(new Blob(['x']), { status: 200 }));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    await api.fetchBlob('/x');
+    expect((fetch.mock.calls[0]?.[1] as RequestInit).method).toBe('GET');
+  });
+
+  it('deserialize hook is NOT applied to a blob response', async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(new Blob(['bytes']), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    const deserialize = vi.fn((raw: unknown) => raw);
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      deserialize,
+    });
+    const res = await api.fetchBlob('/x');
+    expect(deserialize).not.toHaveBeenCalled();
+    expect(res.data).toBeInstanceOf(Blob);
+  });
+
+  it('fetchRaw json path returns parsed data + headers and DOES run deserialize', async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ id: 9 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json', 'x-auth-token': 'abc' },
+        }),
+    );
+    const deserialize = vi.fn((raw: unknown) => ({ ...(raw as object), revived: true }));
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      deserialize,
+    });
+    const res = await api.fetchRaw<{ id: number; revived: boolean }>('/thing');
+    expect(res.data).toEqual({ id: 9, revived: true });
+    expect(res.headers['x-auth-token']).toBe('abc');
+    expect(deserialize).toHaveBeenCalledOnce();
+  });
+
+  it('fetchRaw arrayBuffer returns the buffer untouched', async () => {
+    const fetch = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const res = await api.fetchRaw<ArrayBuffer>('/bin', { responseType: 'arrayBuffer' });
+    expect(res.data).toBeInstanceOf(ArrayBuffer);
+    expect(new Uint8Array(res.data)).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('fetchRaw maps non-2xx to ApiHttpError', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ message: 'gone' }, 404));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    await expect(api.fetchBlob('/missing')).rejects.toBeInstanceOf(ApiHttpError);
+  });
+
+  it('throws a clear error when the transport cannot produce a blob', async () => {
+    // A legacy/minimal transport without blob() — fetchBlob must fail loudly.
+    const transport = async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      contentType: 'application/octet-stream',
+      text: async () => '',
+    });
+    const api = createFetcher({ transport });
+    await expect(api.fetchBlob('/x')).rejects.toThrow(/responseType: 'blob'/);
+  });
+});
+
+describe('JSON path regression — unchanged after adding raw/blob support', () => {
+  it('verb methods still parse JSON and ignore the new TransportResponse fields', async () => {
+    const transport = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      contentType: 'application/json',
+      // Note: NO headers/blob/arrayBuffer — proves the JSON path is back-compat
+      // with transports written before this change.
+      text: async () => JSON.stringify({ kept: true }),
+    }));
+    const api = createFetcher({ transport });
+    expect(await api.get<{ kept: boolean }>('/x')).toEqual({ kept: true });
+  });
+});
+
 describe('fetcher.sse — server-sent events streaming', () => {
   function sseResponse(chunks: string[], status = 200): Response {
     const stream = new ReadableStream<Uint8Array>({

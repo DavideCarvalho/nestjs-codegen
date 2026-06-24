@@ -5,10 +5,13 @@ export type {
   Fetcher,
   FetcherOptions,
   PayloadTransformer,
+  RawResponse,
+  ResponseType,
   SseOpts,
   Transport,
   TransportRequest,
   TransportResponse,
+  UploadProgressHandler,
 } from './fetcher/fetcher.js';
 export { axiosTransport } from './transports/axios.js';
 export type { AxiosLike } from './transports/axios.js';

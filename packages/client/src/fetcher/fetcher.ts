@@ -40,6 +40,22 @@ export function composeTransformers(transformers: PayloadTransformer[]): Payload
   };
 }
 
+/**
+ * How a {@link Transport} should materialize the response body. `'json'`/`'text'`
+ * both read the body as text (the fetcher then parses JSON itself), `'blob'`
+ * returns a `Blob`, and `'arrayBuffer'` returns an `ArrayBuffer`. Defaults to
+ * text on the JSON path, so existing transports/callers are unaffected.
+ */
+export type ResponseType = 'json' | 'text' | 'blob' | 'arrayBuffer';
+
+/**
+ * Upload-progress callback for multipart/FormData bodies. `loaded` is the bytes
+ * sent so far and `total` the full body size when the transport can determine it
+ * (it may be `undefined`). Only the {@link axiosTransport} reports progress; the
+ * native-`fetch` transport cannot and ignores it.
+ */
+export type UploadProgressHandler = (progress: { loaded: number; total?: number }) => void;
+
 /** A normalized HTTP request handed to a {@link Transport}. */
 export interface TransportRequest {
   method: string;
@@ -47,6 +63,16 @@ export interface TransportRequest {
   headers: Record<string, string>;
   /** Serialized body (JSON string) or FormData; absent for bodyless requests. */
   body?: string | FormData;
+  /**
+   * Desired response materialization. Absent means text (the JSON path). A
+   * transport that does not support a given type should fall back to text.
+   */
+  responseType?: ResponseType;
+  /**
+   * Report upload progress for a FormData body. Optional; a transport that
+   * cannot observe upload progress (native `fetch`) ignores it.
+   */
+  onUploadProgress?: UploadProgressHandler;
 }
 
 /** A normalized HTTP response a {@link Transport} returns. */
@@ -56,8 +82,26 @@ export interface TransportResponse {
   statusText: string;
   /** Value of the `content-type` response header, if any. */
   contentType: string | null;
+  /**
+   * All response headers, lower-cased keys. Lets callers read e.g.
+   * `content-disposition` (original download filename) or `x-auth-token`.
+   * Optional for back-compat: transports written before this field still
+   * satisfy the contract, and `contentType` remains the source of truth for
+   * content-type detection.
+   */
+  headers?: Record<string, string>;
   /** The raw response body as text. */
   text(): Promise<string>;
+  /**
+   * The raw response body as a `Blob`. Present only when the request asked for
+   * `responseType: 'blob'`; transports may omit it otherwise.
+   */
+  blob?(): Promise<Blob>;
+  /**
+   * The raw response body as an `ArrayBuffer`. Present only when the request
+   * asked for `responseType: 'arrayBuffer'`; transports may omit it otherwise.
+   */
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }
 
 /**
@@ -109,6 +153,19 @@ export interface FetcherOptions {
   deserialize?: (raw: unknown) => unknown;
 }
 
+/**
+ * A raw response returned by the binary/escape-hatch methods: the materialized
+ * `data` (a `Blob`/`ArrayBuffer`/parsed-JSON/text depending on `responseType`)
+ * plus the `status` and all response `headers` (lower-cased keys) so callers can
+ * read `content-disposition`, `x-auth-token`, etc. No `superjson`/`deserialize`
+ * runs on a blob/arrayBuffer body.
+ */
+export interface RawResponse<T> {
+  data: T;
+  status: number;
+  headers: Record<string, string>;
+}
+
 export interface Fetcher {
   get<T>(path: string, opts?: RequestOpts): Promise<T>;
   post<T>(path: string, opts?: RequestOpts): Promise<T>;
@@ -123,6 +180,23 @@ export interface Fetcher {
    * {@link SseOpts.signal} stops it early.
    */
   sse<T>(path: string, opts?: SseOpts): AsyncIterable<T>;
+  /**
+   * Escape hatch for binary downloads: issues the request with
+   * `responseType: 'blob'` and resolves to the raw `Blob` plus response
+   * `status`/`headers`. Use the headers to read `content-disposition` (original
+   * filename) or `x-auth-token`. `superjson`/`deserialize` never runs on the
+   * body. Defaults to `GET`; pass `method` for downloads behind another verb.
+   */
+  fetchBlob(path: string, opts?: RawRequestOpts): Promise<RawResponse<Blob>>;
+  /**
+   * General escape hatch: like the verb methods but returns the full
+   * {@link RawResponse} (`data`/`status`/`headers`). `responseType` (default
+   * `'json'`) selects how the body is materialized — `'json'`/`'text'` go
+   * through the normal parse path; `'blob'`/`'arrayBuffer'` bypass
+   * `deserialize`. Supports `onUploadProgress` for FormData uploads (honored by
+   * {@link axiosTransport}; ignored by the native-`fetch` transport).
+   */
+  fetchRaw<T>(path: string, opts?: RawRequestOpts): Promise<RawResponse<T>>;
 }
 
 /** Options for a streaming {@link Fetcher.sse} consumption. */
@@ -142,8 +216,27 @@ interface RequestOpts {
   body?: unknown;
 }
 
+/** Options for the {@link Fetcher.fetchRaw} / {@link Fetcher.fetchBlob} escape hatches. */
+interface RawRequestOpts extends RequestOpts {
+  /** HTTP method; defaults to `'GET'` for `fetchBlob`, `'GET'` for `fetchRaw`. */
+  method?: string | undefined;
+  /** How to materialize the body. `fetchBlob` forces `'blob'`. */
+  responseType?: ResponseType | undefined;
+  /** Upload-progress callback for FormData bodies (axios transport only). */
+  onUploadProgress?: UploadProgressHandler | undefined;
+}
+
 function isFormData(b: unknown): b is FormData {
   return typeof FormData !== 'undefined' && b instanceof FormData;
+}
+
+/** Collect a `Headers` instance into a plain lower-cased-key record. */
+function headersToRecord(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key.toLowerCase()] = value;
+  });
+  return out;
 }
 
 /** Default transport: native fetch, normalizing the `Response` to a `TransportResponse`. */
@@ -154,6 +247,8 @@ function fetchTransport(fetchImpl: typeof fetch | undefined): Transport {
         'No fetch implementation: pass opts.fetch, opts.transport, or set globalThis.fetch',
       );
     }
+    // Native fetch cannot report upload progress; if a caller asked for it, that
+    // is a no-op here (axiosTransport honors it). Nothing to do.
     const res = await fetchImpl(req.url, {
       method: req.method,
       headers: req.headers,
@@ -164,7 +259,10 @@ function fetchTransport(fetchImpl: typeof fetch | undefined): Transport {
       status: res.status,
       statusText: res.statusText,
       contentType: res.headers.get('content-type'),
+      headers: headersToRecord(res.headers),
       text: () => res.text(),
+      blob: () => res.blob(),
+      arrayBuffer: () => res.arrayBuffer(),
     };
   };
 }
@@ -178,7 +276,12 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
     : opts.transformer;
   const transport = opts.transport ?? fetchTransport(opts.fetch ?? globalThis.fetch);
 
-  async function request<T>(method: string, path: string, ro: RequestOpts = {}): Promise<T> {
+  /** Build headers + body for a request, sending the transport call and mapping non-2xx. */
+  async function send(
+    method: string,
+    path: string,
+    ro: RawRequestOpts,
+  ): Promise<TransportResponse> {
     const url = buildUrl(path, ro, baseUrl);
     const headers: Record<string, string> = { ...getGlobalHeaders(), ...opts.headers?.() };
     let body: string | FormData | undefined;
@@ -197,7 +300,14 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
       headers.accept = 'application/json';
     }
 
-    const res = await transport({ method, url, headers, ...(body !== undefined ? { body } : {}) });
+    const res = await transport({
+      method,
+      url,
+      headers,
+      ...(body !== undefined ? { body } : {}),
+      ...(ro.responseType !== undefined ? { responseType: ro.responseType } : {}),
+      ...(ro.onUploadProgress !== undefined ? { onUploadProgress: ro.onUploadProgress } : {}),
+    });
 
     if (!res.ok) {
       const ct = res.contentType ?? '';
@@ -212,6 +322,12 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
       throw err;
     }
 
+    return res;
+  }
+
+  async function request<T>(method: string, path: string, ro: RequestOpts = {}): Promise<T> {
+    const res = await send(method, path, ro);
+
     if (res.status === 204) return undefined as T;
 
     const ct = res.contentType ?? '';
@@ -221,6 +337,54 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
       return (opts.deserialize ? opts.deserialize(parsed) : parsed) as T;
     }
     return text as unknown as T;
+  }
+
+  /**
+   * Raw escape hatch: materialize the body per `responseType` (default `'json'`)
+   * and return it alongside `status` + lower-cased `headers`. Blob/arrayBuffer
+   * bodies bypass `transformer.parse` and `deserialize` entirely — they are
+   * returned untouched.
+   */
+  async function requestRaw<T>(
+    method: string,
+    path: string,
+    ro: RawRequestOpts = {},
+  ): Promise<RawResponse<T>> {
+    const res = await send(method, path, ro);
+    const headers = res.headers ?? {};
+
+    const responseType = ro.responseType ?? 'json';
+    if (responseType === 'blob') {
+      if (!res.blob) {
+        throw new Error("Transport does not support responseType: 'blob'");
+      }
+      return { data: (await res.blob()) as T, status: res.status, headers };
+    }
+    if (responseType === 'arrayBuffer') {
+      if (!res.arrayBuffer) {
+        throw new Error("Transport does not support responseType: 'arrayBuffer'");
+      }
+      return { data: (await res.arrayBuffer()) as T, status: res.status, headers };
+    }
+
+    if (res.status === 204) {
+      return { data: undefined as T, status: res.status, headers };
+    }
+    const ct = res.contentType ?? '';
+    const text = await res.text();
+    if (responseType === 'text') {
+      return { data: text as T, status: res.status, headers };
+    }
+    // 'json'
+    if (ct.includes('application/json')) {
+      const parsed: unknown = transformer ? transformer.parse<unknown>(text) : JSON.parse(text);
+      return {
+        data: (opts.deserialize ? opts.deserialize(parsed) : parsed) as T,
+        status: res.status,
+        headers,
+      };
+    }
+    return { data: text as unknown as T, status: res.status, headers };
   }
 
   const fetchImpl = opts.fetch ?? globalThis.fetch;
@@ -246,6 +410,9 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
     patch: <T>(p: string, ro?: RequestOpts) => request<T>('PATCH', p, ro),
     delete: <T>(p: string, ro?: RequestOpts) => request<T>('DELETE', p, ro),
     sse,
+    fetchBlob: (p: string, ro: RawRequestOpts = {}) =>
+      requestRaw<Blob>(ro.method ?? 'GET', p, { ...ro, responseType: 'blob' }),
+    fetchRaw: <T>(p: string, ro: RawRequestOpts = {}) => requestRaw<T>(ro.method ?? 'GET', p, ro),
   };
 }
 

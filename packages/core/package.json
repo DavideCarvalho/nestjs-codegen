@@ -49,7 +49,7 @@
     }
   },
   "sideEffects": ["./dist/nest/index.js", "./dist/nest/index.cjs"],
-  "files": ["dist", "bin", "README.md", "CHANGELOG.md"],
+  "files": ["dist", "bin", "README.md", "CHANGELOG.md", "skills"],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -89,5 +89,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "keywords": ["tanstack-intent"]
 }

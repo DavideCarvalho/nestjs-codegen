@@ -36,7 +36,7 @@
     }
   },
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "files": ["dist", "README.md", "CHANGELOG.md", "skills"],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -69,5 +69,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "keywords": ["tanstack-intent"]
 }

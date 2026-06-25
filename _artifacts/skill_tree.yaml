@@ -1,0 +1,28 @@
+# Skill tree for nestjs-codegen. Flat structure (skills/<name>/SKILL.md). All type: core.
+structure: flat
+router: false
+
+skills:
+  - name: codegen-setup
+    package: "@dudousxd/nestjs-codegen"
+    path: packages/core/skills/codegen-setup/SKILL.md
+    type: core
+    summary: Wire NestjsCodegenModule.forRoot with a validation adapter instance; share defineConfig with the CI CLI.
+
+  - name: codegen-serialization-output
+    package: "@dudousxd/nestjs-codegen"
+    path: packages/core/skills/codegen-serialization-output/SKILL.md
+    type: core
+    summary: Generated routes.ts/api.ts/forms.ts and the json (Jsonify) vs superjson serialization seam.
+
+  - name: nestjs-client-runtime
+    package: "@dudousxd/nestjs-client"
+    path: packages/client/skills/nestjs-client-runtime/SKILL.md
+    type: core
+    summary: createApi(createFetcher()) factory, transports (axiosTransport), transformer pipelines, /superjson opt-in.
+
+  - name: tanstack-query-extension
+    package: "@dudousxd/nestjs-codegen-tanstack"
+    path: packages/tanstack/skills/tanstack-query-extension/SKILL.md
+    type: core
+    summary: tanstackQuery() extension and the queryOptions/mutationOptions/infiniteQueryOptions/queryKey handle.

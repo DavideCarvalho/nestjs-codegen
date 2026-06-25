@@ -39,7 +39,7 @@ The whole loop — install, register the module, use the client — in three ste
 Install the codegen and the runtime the generated client imports its `Fetcher` type from:
 
 ```bash
-pnpm add -D @dudousxd/nestjs-codegen
+pnpm add -D @dudousxd/nestjs-codegen @dudousxd/nestjs-codegen-zod
 pnpm add @dudousxd/nestjs-client
 ```
 
@@ -51,13 +51,14 @@ Register `NestjsCodegenModule` in your root module. It starts with your dev serv
 ```ts title="src/app.module.ts"
 import { Module } from '@nestjs/common';
 import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 
 @Module({
   imports: [
     NestjsCodegenModule.forRoot({
       contracts: { glob: 'src/**/*.controller.ts' }, // controllers to scan
       codegen: { outDir: 'src/generated' },          // where to write the client
-      validation: 'zod',                             // 'zod' | valibotAdapter | arktypeAdapter
+      validation: zodAdapter,                        // zodAdapter | valibotAdapter | arktypeAdapter
     }),
   ],
 })
@@ -97,8 +98,8 @@ const created = await api.users.create({ body });  // typed body + response
 
 ## Key features
 
-- **Pluggable validation** — one neutral `SchemaNode` IR, rendered by [zod](https://zod.dev)
-  (bundled), [valibot](https://valibot.dev), or [arktype](https://arktype.io) adapters.
+- **Pluggable validation** — one neutral `SchemaNode` IR, rendered by [zod](https://zod.dev),
+  [valibot](https://valibot.dev), or [arktype](https://arktype.io) adapters (each a separate package).
   See [Validation](/docs/validation).
 - **Typed API client** — `createApi(fetcher)`: inject your own client at runtime. See
   [API client](/docs/client/api-client).

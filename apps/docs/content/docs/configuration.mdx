@@ -24,7 +24,7 @@ export default defineConfig({
   contracts: { glob: 'src/**/*.controller.ts', debounceMs: 500 },
   codegen: { outDir: 'src/generated', cwd: process.cwd() },
 
-  validation: valibotAdapter,        // 'zod' | valibotAdapter | arktypeAdapter
+  validation: valibotAdapter,        // zodAdapter | valibotAdapter | arktypeAdapter
   extensions: [tanstackQuery({ import: '@tanstack/vue-query' })],
 
   forms: { enabled: true, watch: 'src/**/*.dto.ts' },
@@ -42,9 +42,8 @@ export default defineConfig({
 <TypeTable
   type={{
     validation: {
-      description: "Validation library for forms.ts. 'zod' is bundled; pass an imported adapter instance for others.",
-      type: "'zod' | ValidationAdapter",
-      default: "'zod'",
+      description: "Validation library for forms.ts. Required — no adapter is bundled in core; install an adapter package and pass its instance (zodAdapter / valibotAdapter / arktypeAdapter).",
+      type: "ValidationAdapter",
     },
     extensions: {
       description: "Codegen extensions, applied in registration order. Each may augment routes, emit extra files, and shape api.ts. e.g. tanstackQuery() adds TanStack Query handles, nestjsFilterCodegen() adds typed filterQuery helpers, nestjsInertiaCodegen() adds the Inertia router + navigate(). See /docs/integrations/extensions.",

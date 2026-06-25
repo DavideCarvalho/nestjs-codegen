@@ -7,6 +7,8 @@ description: Wire the module into your NestJS app and generate a typed client.
 
 ```bash
 pnpm add -D @dudousxd/nestjs-codegen
+# a validation adapter (no adapter is bundled in core) — zod shown; or -valibot / -arktype:
+pnpm add -D @dudousxd/nestjs-codegen-zod
 # the runtime the generated client imports its Fetcher type from:
 pnpm add @dudousxd/nestjs-client
 ```
@@ -27,6 +29,7 @@ controllers. No config file, no extra process to run.
 ```ts title="src/app.module.ts"
 import { Module } from '@nestjs/common';
 import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 
 @Module({
@@ -37,7 +40,7 @@ import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
       // output directory for the generated files
       codegen: { outDir: 'src/generated' },
 
-      validation: 'zod',              // 'zod' (bundled) | valibotAdapter | arktypeAdapter
+      validation: zodAdapter,         // zodAdapter | valibotAdapter | arktypeAdapter
       extensions: [tanstackQuery()],  // opt into TanStack Query handles (see below)
     }),
   ],
@@ -78,12 +81,13 @@ source of truth**, put your options in that file and import it into `forRoot()`:
 
 ```ts title="nestjs-codegen.config.ts"
 import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { tanstackQuery } from '@dudousxd/nestjs-codegen-tanstack';
 
 export default defineConfig({
   contracts: { glob: 'src/**/*.controller.ts' },
   codegen: { outDir: 'src/generated' },
-  validation: 'zod',
+  validation: zodAdapter,
   extensions: [tanstackQuery()],
 });
 ```

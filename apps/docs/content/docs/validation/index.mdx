@@ -5,8 +5,8 @@ description: zod, valibot, or arktype from one neutral schema IR.
 
 `nestjs-codegen` translates your `@Body()`/`@Query()` DTOs (class-validator decorators)
 and `defineContract` schemas into a neutral **`SchemaNode` IR**, then renders that IR
-with a **validation adapter**. zod ships in the box; valibot and arktype are separate
-packages. Adding a new library is one `render` function away (the interface is shaped
+with a **validation adapter**. zod, valibot, and arktype each ship as their own adapter
+package (none is bundled in core). Adding a new library is one `render` function away (the interface is shaped
 around [Standard Schema](https://standardschema.dev)).
 
 ## Choosing an adapter
@@ -15,9 +15,10 @@ around [Standard Schema](https://standardschema.dev)).
 
 ```ts tab="zod"
 import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 
 export default defineConfig({
-  validation: 'zod', // bundled — nothing else to install
+  validation: zodAdapter,
 });
 ```
 

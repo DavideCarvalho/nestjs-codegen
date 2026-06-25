@@ -16,6 +16,7 @@ import {
   type SourceFile,
 } from 'ts-morph';
 import type { NumberCheck, SchemaModule, SchemaNode, StringCheck } from '../ir/schema-node.js';
+import { debugWarn } from '../util/debug-log.js';
 import { findType } from './type-ref-resolution.js';
 
 interface BuildContext {
@@ -278,7 +279,7 @@ function buildProperty(
         ctx.warnedDecorators.add(name);
         const msg = `@${name} is not translatable to a client validation schema and was skipped (server-only validation).`;
         ctx.warnings.push(msg);
-        console.warn(`[nestjs-codegen] ${msg}`);
+        debugWarn(msg);
       }
     }
   }
@@ -363,7 +364,7 @@ function buildNestedReference(
       ctx.warnedDecorators.add(`recursive:${reserved}`);
       const msg = `${className} is a recursive type; the generated schema validates it via a lazy self-reference.`;
       ctx.warnings.push(msg);
-      console.warn(`[nestjs-codegen] ${msg}`);
+      debugWarn(msg);
     }
     return { kind: 'lazyRef', name: reserved };
   }
@@ -375,7 +376,7 @@ function buildNestedReference(
       ctx.warnedDecorators.add(`deep:${className}`);
       const msg = `${className} nesting is too deep to expand; the generated schema uses unknown for it.`;
       ctx.warnings.push(msg);
-      console.warn(`[nestjs-codegen] ${msg}`);
+      debugWarn(msg);
     }
     return { kind: 'unknown', note: 'nesting too deep — not expanded' };
   }
@@ -566,7 +567,7 @@ function enumSchemaFromDecorator(
     if (!ctx.warnedDecorators.has(`IsEnum:${name}`)) {
       ctx.warnedDecorators.add(`IsEnum:${name}`);
       ctx.warnings.push(msg);
-      console.warn(`[nestjs-codegen] ${msg}`);
+      debugWarn(msg);
     }
     return { kind: 'unknown', note: `@IsEnum(${name}): enum not resolvable to literals` };
   }

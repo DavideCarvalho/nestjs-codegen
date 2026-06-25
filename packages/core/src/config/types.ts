@@ -4,6 +4,15 @@ import type { CodegenExtension } from '../extension/types.js';
 
 export interface UserConfig {
   /**
+   * Print schema-translation advisories to the terminal (e.g. "@X is not
+   * translatable to a client validation schema", "T is a recursive type"). These
+   * are always preserved in generated output as `// warning:` comments regardless;
+   * this only controls the duplicate terminal chatter, which is off by default.
+   *
+   * @default false
+   */
+  debug?: boolean;
+  /**
    * Codegen extensions, applied in order. Each may augment the route IR
    * (`transformRoutes`), contribute extra output files (`emitFiles`), and — once a
    * client layer is active — shape `api.ts`. Registered explicitly, e.g.
@@ -165,6 +174,7 @@ export interface ResolvedMocksConfig {
 }
 
 export interface ResolvedConfig {
+  debug: boolean;
   extensions: CodegenExtension[];
   validation: ValidationAdapter;
   pages: ResolvedPagesConfig | null;

@@ -17,6 +17,7 @@ import {
   collectEmittedFiles,
   createExtensionContext,
 } from './extension/registry.js';
+import { setCodegenDebug } from './util/debug-log.js';
 
 /**
  * Run one full codegen pass: discover pages, emit pages.d.ts, components.json, index.d.ts.
@@ -31,6 +32,9 @@ export async function generate(
   config: ResolvedConfig,
   inputRoutes: RouteDescriptor[] = [],
 ): Promise<void> {
+  // Gate the schema-translation advisory chatter for this pass (off by default).
+  setCodegenDebug(config.debug);
+
   // Extensions: run transformRoutes (chained) before any emit so routes.ts/api.ts/
   // forms.ts all see the augmented IR. ctx.routes is a live getter over the active set.
   const extensions = config.extensions ?? [];

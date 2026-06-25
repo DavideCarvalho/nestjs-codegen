@@ -1,7 +1,8 @@
 import { Project } from 'ts-morph';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractSchemaFromDto } from '../../src/discovery/dto-to-ir.js';
 import type { SchemaNode } from '../../src/ir/schema-node.js';
+import { setCodegenDebug } from '../../src/util/debug-log.js';
 
 function ir(source: string, className = 'Dto') {
   const project = new Project({ useInMemoryFileSystem: true, skipAddingFilesFromTsConfig: true });
@@ -216,5 +217,39 @@ describe('extractSchemaFromDto', () => {
       // meta resolves to a real object (total: number), proving the wrapper expanded.
       expect(serialized).toContain('total');
     });
+  });
+});
+
+describe('schema-translation advisory terminal gate (config.debug)', () => {
+  // The flag is process-wide; reset after each case so it never leaks into the
+  // rest of the suite (every other ir() call must stay silent).
+  afterEach(() => setCodegenDebug(false));
+
+  const UNMAPPABLE = 'class Dto { @IsStrongPassword() a!: string; }';
+
+  it('stays silent on the terminal by default — but still records the warning in the IR', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setCodegenDebug(false);
+
+    const mod = ir(UNMAPPABLE);
+
+    // The advisory is always preserved (it is also emitted as a `// warning:`
+    // comment downstream), so gating the terminal copy loses nothing.
+    expect(mod.warnings.some((w) => w.includes('IsStrongPassword'))).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
+  });
+
+  it('prints the `[nestjs-codegen]` advisory when debug is enabled', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setCodegenDebug(true);
+
+    ir(UNMAPPABLE);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[nestjs-codegen]'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('IsStrongPassword'));
+
+    warn.mockRestore();
   });
 });

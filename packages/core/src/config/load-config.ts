@@ -144,6 +144,7 @@ function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig
   }
 
   return {
+    debug: userConfig.debug ?? false,
     extensions: userConfig.extensions ?? [],
     // Non-null: validateUserConfig() above throws when `validation` is absent.
     validation: resolveAdapter(userConfig.validation as NonNullable<typeof userConfig.validation>),

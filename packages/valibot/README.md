@@ -27,8 +27,8 @@ pnpm add valibot
 
 ## Setup
 
-zod is bundled and used by default. To emit valibot schemas instead, pass
-`valibotAdapter` to the codegen config:
+No adapter is bundled in core. To emit valibot schemas, pass `valibotAdapter` to the
+codegen config:
 
 ```ts
 import { defineConfig } from '@dudousxd/nestjs-codegen';
@@ -65,7 +65,7 @@ export type CreateBody = v.InferOutput<typeof CreateBodySchema>;
 The codegen builds **one** neutral schema IR from your DTOs and contracts. A validation
 adapter renders that IR into a concrete library's source:
 
-- **zod** — bundled, the default (`validation: 'zod'`)
+- **zod** — [`@dudousxd/nestjs-codegen-zod`](https://www.npmjs.com/package/@dudousxd/nestjs-codegen-zod) (`validation: zodAdapter`)
 - **valibot** — this package (`validation: valibotAdapter`)
 - **arktype** — [`@dudousxd/nestjs-codegen-arktype`](https://www.npmjs.com/package/@dudousxd/nestjs-codegen-arktype) (`validation: arktypeAdapter`)
 

@@ -24,7 +24,8 @@ repo, with pluggable validation, optional TanStack Query / superjson, and built-
 
 | Package | Role |
 |---|---|
-| `@dudousxd/nestjs-codegen` | The codegen: discovery (controllers, `defineContract`, DTOs, pages, shared props, filters), emitters (`routes.ts`/`api.ts`/`forms.ts`/`pages.d.ts`/`components.json`), config loader, watch mode, and the `codegen`/`init`/`doctor` CLI. Bundles the schema IR + zod adapter. |
+| `@dudousxd/nestjs-codegen` | The codegen: discovery (controllers, `defineContract`, DTOs, pages, shared props, filters), emitters (`routes.ts`/`api.ts`/`forms.ts`/`pages.d.ts`/`components.json`), config loader, watch mode, and the `codegen`/`init`/`doctor` CLI. Bundles the schema IR (no adapter is bundled — pick one below). |
+| `@dudousxd/nestjs-codegen-zod` | Zod validation adapter. |
 | `@dudousxd/nestjs-codegen-valibot` | Valibot validation adapter. |
 | `@dudousxd/nestjs-codegen-arktype` | ArkType validation adapter. |
 | `@dudousxd/nestjs-client` | Framework-neutral runtime (typed fetcher + superjson transformer hook) for generated `api.ts` in plain (non-Inertia) mode. |
@@ -32,8 +33,8 @@ repo, with pluggable validation, optional TanStack Query / superjson, and built-
 ## Features
 
 - **Pluggable validation** — a neutral `SchemaNode` IR with adapters for
-  [zod](https://zod.dev) (bundled), [valibot](https://valibot.dev), and
-  [arktype](https://arktype.io), designed around the
+  [zod](https://zod.dev), [valibot](https://valibot.dev), and
+  [arktype](https://arktype.io) (each a separate adapter package), designed around the
   [Standard Schema](https://standardschema.dev) shape.
 - **Optional TanStack Query** — framework-agnostic `queryOptions`/`mutationOptions`.
 - **Optional superjson** — a `transformer` on the runtime fetcher round-trips rich

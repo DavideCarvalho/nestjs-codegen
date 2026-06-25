@@ -15,6 +15,8 @@ layer.
 
 ```bash
 pnpm add -D @dudousxd/nestjs-codegen
+# a validation adapter (no adapter is bundled in core) — zod shown; or -valibot / -arktype:
+pnpm add -D @dudousxd/nestjs-codegen-zod
 # the runtime the generated client imports its Fetcher type from:
 pnpm add @dudousxd/nestjs-client
 ```
@@ -33,6 +35,7 @@ The watcher is a dev/CI concern, so the module skips itself automatically when
 ```ts title="src/app.module.ts"
 import { Module } from '@nestjs/common';
 import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 
 @Module({
   imports: [
@@ -42,7 +45,7 @@ import { NestjsCodegenModule } from '@dudousxd/nestjs-codegen/nest';
       // output directory for the generated files
       codegen: { outDir: 'src/generated' },
 
-      validation: 'zod', // 'zod' (bundled) | valibotAdapter | arktypeAdapter
+      validation: zodAdapter, // zodAdapter | valibotAdapter | arktypeAdapter
     }),
   ],
 })
@@ -87,7 +90,7 @@ import { arktypeAdapter } from '@dudousxd/nestjs-codegen-arktype';
 NestjsCodegenModule.forRoot({
   contracts: { glob: 'src/**/*.controller.ts' },
   codegen: { outDir: 'src/generated' },
-  validation: arktypeAdapter, // render the IR as arktype instead of the bundled zod
+  validation: arktypeAdapter, // render the IR as arktype instead of zod
   extensions: [tanstackQuery(), nestjsFilterCodegen(), nestjsInertiaCodegen()],
 });
 ```
@@ -136,11 +139,12 @@ with `defineConfig` and importing them into `forRoot()`:
 
 ```ts title="nestjs-codegen.config.ts"
 import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 
 export default defineConfig({
   contracts: { glob: 'src/**/*.controller.ts' },
   codegen: { outDir: 'src/generated' },
-  validation: 'zod',
+  validation: zodAdapter,
 });
 ```
 

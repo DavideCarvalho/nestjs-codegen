@@ -9,8 +9,8 @@ into one neutral schema IR (`SchemaNode`), then renders that IR with a **validat
 adapter**. This package is the **zod** adapter: it renders the IR into zod source in the
 generated `forms.ts`.
 
-zod is the default validation adapter — reach for this package when you want to pin the
-adapter explicitly, or when a future core release no longer bundles it by default.
+No validation adapter is bundled in core — install this package and pass `zodAdapter` to
+render `forms.ts` as zod.
 
 ## Install
 
@@ -27,8 +27,8 @@ pnpm add zod
 
 ## Setup
 
-zod is used by default. To pin the adapter explicitly, pass `zodAdapter` to the codegen
-config:
+Pass `zodAdapter` to the codegen config (no adapter is bundled in core, so this is
+required to emit zod):
 
 ```ts
 import { defineConfig } from '@dudousxd/nestjs-codegen';
@@ -65,7 +65,7 @@ export type CreateBody = z.infer<typeof CreateBodySchema>;
 The codegen builds **one** neutral schema IR from your DTOs and contracts. A validation
 adapter renders that IR into a concrete library's source:
 
-- **zod** — this package, the default (`validation: 'zod'`)
+- **zod** — this package (`validation: zodAdapter`)
 - **valibot** — [`@dudousxd/nestjs-codegen-valibot`](https://www.npmjs.com/package/@dudousxd/nestjs-codegen-valibot) (`validation: valibotAdapter`)
 - **arktype** — [`@dudousxd/nestjs-codegen-arktype`](https://www.npmjs.com/package/@dudousxd/nestjs-codegen-arktype) (`validation: arktypeAdapter`)
 

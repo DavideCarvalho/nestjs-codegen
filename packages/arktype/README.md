@@ -58,8 +58,9 @@ export type CreateBody = (typeof CreateBodySchema).infer;
 
 ## How it fits
 
-The core builds the IR once; adapters render it. Default validation is the bundled
-**zod** — no extra install. Swap in **valibot** ([`@dudousxd/nestjs-codegen-valibot`](https://www.npmjs.com/package/@dudousxd/nestjs-codegen-valibot))
+The core builds the IR once; adapters render it. No adapter is bundled in core — pick
+**zod** ([`@dudousxd/nestjs-codegen-zod`](https://www.npmjs.com/package/@dudousxd/nestjs-codegen-zod)),
+**valibot** ([`@dudousxd/nestjs-codegen-valibot`](https://www.npmjs.com/package/@dudousxd/nestjs-codegen-valibot)),
 or **arktype** (this package) by passing its adapter to `validation`. Pick one: the
 emitted schemas are written entirely in the chosen library's idiom.
 

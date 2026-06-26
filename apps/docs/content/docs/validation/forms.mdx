@@ -32,7 +32,7 @@ import { useMutation } from '@tanstack/react-query';
 
 function LoginForm() {
   const form = useForm<LoginBody>({ resolver: zodResolver(LoginBodySchema) });
-  const login = useMutation(api.auth.login());
+  const login = useMutation(api.auth.login().mutationOptions());
 
   return (
     <form onSubmit={form.handleSubmit((body) => login.mutate({ body }))}>

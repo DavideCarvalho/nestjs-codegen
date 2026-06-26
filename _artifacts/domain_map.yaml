@@ -1,0 +1,91 @@
+# Domain map for nestjs-codegen — produced autonomously (no maintainer interview).
+# One domain map for the whole monorepo. Source of truth: README.md, apps/docs/content/docs/**,
+# and packages/{core,client,tanstack,zod,valibot,arktype}/src/**.
+
+library: nestjs-codegen
+one_liner: >-
+  Extensible codegen for NestJS that turns controllers / contracts / DTOs into typed
+  client artifacts (routes.ts, api.ts, forms.ts) with a pluggable validation IR
+  (zod/valibot/arktype), an optional TanStack Query layer, and a framework-neutral
+  runtime fetcher.
+
+packages:
+  - name: "@dudousxd/nestjs-codegen"
+    dir: packages/core
+    role: primary
+    version: 0.8.0
+    why: >-
+      The codegen engine + the NestjsCodegenModule (Nest dev-time watcher) + the
+      codegen/init/doctor CLI + defineConfig. The package every consumer wires first.
+    public_entrypoints:
+      - "@dudousxd/nestjs-codegen": "defineConfig, loadConfig/resolveConfig, generate, watch, ConfigError/CodegenError, emit* + IR helpers"
+      - "@dudousxd/nestjs-codegen/nest": "NestjsCodegenModule, NestjsCodegenService, CodegenModuleOptions, CODEGEN_MODULE_OPTIONS, shouldRun"
+      - "@dudousxd/nestjs-codegen/extension": "defineExtension, requestShape + extension types (used by adapter/extension authors)"
+      - "bin: nestjs-codegen (codegen|init|doctor)"
+  - name: "@dudousxd/nestjs-client"
+    dir: packages/client
+    role: primary
+    version: 0.6.0
+    why: >-
+      The framework-neutral runtime the generated api.ts imports its Fetcher from.
+      Consumers call createFetcher, choose a transport, and pass it to createApi(fetcher).
+    public_entrypoints:
+      - "@dudousxd/nestjs-client": "createFetcher, FetcherOptions, Transport, axiosTransport, composeTransformers, ApiHttpError, buildUrl, Jsonify, setGlobalHeaders"
+      - "@dudousxd/nestjs-client/superjson": "superjsonFetcherOptions, withSuperjson, SuperjsonInterceptor, SUPERJSON_HEADER"
+  - name: "@dudousxd/nestjs-codegen-tanstack"
+    dir: packages/tanstack
+    role: primary
+    version: 0.4.1
+    why: >-
+      Headline optional client layer. tanstackQuery() extension makes every api.ts leaf
+      a handle with queryOptions/mutationOptions/infiniteQueryOptions/queryKey.
+    public_entrypoints:
+      - "@dudousxd/nestjs-codegen-tanstack": "tanstackQuery, TanstackQueryOptions"
+  - name: "@dudousxd/nestjs-codegen-zod"
+    dir: packages/zod
+    role: secondary-adapter
+    version: 0.5.1
+    note: "exports zodAdapter (ValidationAdapter). Covered conceptually in the setup skill; no own skill folder."
+  - name: "@dudousxd/nestjs-codegen-valibot"
+    dir: packages/valibot
+    role: secondary-adapter
+    version: 0.5.1
+    note: "exports valibotAdapter. Covered conceptually in the setup skill."
+  - name: "@dudousxd/nestjs-codegen-arktype"
+    dir: packages/arktype
+    role: secondary-adapter
+    version: 0.5.0
+    note: "exports arktypeAdapter. Covered conceptually in the setup skill."
+
+core_concepts:
+  - Module-first dev loop: NestjsCodegenModule.forRoot(...) boots a watcher on app start
+    (skipped when NODE_ENV=production unless enabled is set), regenerating routes.ts/api.ts/forms.ts.
+  - CLI-for-CI: `nestjs-codegen codegen` is one-shot for CI drift checks; the config file
+    (nestjs-codegen.config.ts via defineConfig) is the single source of truth shared with forRoot().
+  - Pluggable validation: `validation` takes a ValidationAdapter INSTANCE (zodAdapter/
+    valibotAdapter/arktypeAdapter). A bare string ('zod') THROWS ConfigError — no adapter is bundled in core.
+  - Factory client: api.ts exports createApi(fetcher); consumers inject createFetcher() so they
+    own baseUrl/transport/transformer/auth.
+  - Serialization seam: serialization:'json' (default) wraps response types in Jsonify<...>
+    (Date->string); 'superjson' emits raw controller types, paired with the /superjson runtime.
+  - Extensions: extensions:[...] augment the pipeline; tanstackQuery() / (filter / inertia) layers.
+
+primary_workflows:
+  - Wire NestjsCodegenModule + validation adapter, run nest start --watch, consume createApi.
+  - Add tanstackQuery() and use queryOptions/mutationOptions in components.
+  - Add CI drift gate with the CLI + git diff --exit-code.
+  - Swap transport (axiosTransport) or adopt superjson per-consumer via /superjson subpath.
+
+gaps:  # what a maintainer interview would have answered
+  - Relative priority of the validation adapters (zod vs valibot vs arktype) for new users — assumed zod (bundled-by-default in docs, default zodImport).
+  - Doc/registry inconsistency: getting-started.mdx shows `validation: 'zod'` but adapters/registry.ts
+    THROWS on the string and config requires an adapter instance. Treated the source (throw) as
+    authoritative and made it a Common Mistake. A maintainer should confirm which is intended.
+  - AI-agent-specific failure modes are inferred from source invariants (string adapter throw,
+    Jsonify vs superjson mismatch, double baseUrl with axios, missing tanstack extension) rather
+    than from real issue reports — `gh issue list` returned nothing in this environment.
+  - Production posture of the watcher (forRoot enabled flag) confirmed from source, not from a maintainer.
+  - defineContract is referenced in README/docs but is NOT a core export here (lives upstream in
+    nestjs-inertia); deliberately excluded from snippets to avoid an ungrounded import.
+  - Inertia + nestjs-filter extensions exist but their extension factories are not exported from the
+    three primary packages in scope; left for a dedicated pass (listed in skill_spec gaps).

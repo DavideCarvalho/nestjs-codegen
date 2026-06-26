@@ -32,12 +32,12 @@ const watcher = watch(config); // regenerates on change; holds a lock file
 ```ts
 import {
   extractSchemaFromDto, // class-validator class → SchemaModule (IR)
-  zodAdapter,           // render a SchemaModule to zod text
-  resolveAdapter,       // 'zod' | adapter instance → ValidationAdapter
+  resolveAdapter,       // adapter instance → ValidationAdapter (string names throw)
   emitRoutes,
   emitApi,
   emitForms,
 } from '@dudousxd/nestjs-codegen';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod'; // render a SchemaModule to zod text
 ```
 
 The validation IR (`SchemaNode`/`SchemaModule`), the `ValidationAdapter` interface, and

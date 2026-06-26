@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import type { SerializationMode } from '../config/types.js';
 import type {
   ContractSource,
@@ -17,6 +17,7 @@ import type {
   LeafModel,
   RequestModel,
 } from '../extension/types.js';
+import { toImportSpecifier } from '../util/import-path.js';
 
 /**
  * Emits `api.ts` into `outDir` for all routes that carry a `.contract`.
@@ -281,8 +282,7 @@ function rawResponseType(c: LeafEntry, outDir: string): string {
     return c.contractSource.response;
   }
   if (c.controllerRef) {
-    let relPath = relative(outDir, c.controllerRef.filePath).replace(/\.ts$/, '');
-    if (!relPath.startsWith('.')) relPath = `./${relPath}`;
+    const relPath = toImportSpecifier(outDir, c.controllerRef.filePath, /\.ts$/);
     return `Awaited<ReturnType<import('${relPath}').${c.controllerRef.className}['${c.controllerRef.methodName}']>>`;
   }
   if (respRef) {
@@ -777,8 +777,7 @@ function buildApiFile(
       // source files are always absolute paths → compute a relative import.
       let relPath: string;
       if (isAbsolute(filePath)) {
-        relPath = relative(outDir, filePath).replace(/\.ts$/, '');
-        if (!relPath.startsWith('.')) relPath = `./${relPath}`;
+        relPath = toImportSpecifier(outDir, filePath, /\.ts$/);
       } else {
         relPath = filePath;
       }

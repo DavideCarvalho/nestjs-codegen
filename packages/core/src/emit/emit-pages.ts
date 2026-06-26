@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import type { DiscoveredPage } from '../discovery/pages.js';
 import type { SharedPropsResult } from '../discovery/shared-props.js';
+import { toImportSpecifier } from '../util/import-path.js';
 
 export interface EmitPagesOptions {
   /** The export name to reference in import() type expressions (default: 'ComponentProps'). */
@@ -69,10 +70,7 @@ function buildSharedPropsBlock(sharedProps: SharedPropsResult | null): string {
  * directly from the default export — no named export needed.
  */
 function buildAugmentationType(page: DiscoveredPage, outDir: string): string {
-  let importPath = relative(outDir, page.absolutePath).replace(/\.(tsx?|vue|svelte)$/, '');
-  if (!importPath.startsWith('.')) {
-    importPath = `./${importPath}`;
-  }
+  const importPath = toImportSpecifier(outDir, page.absolutePath, /\.(tsx?|vue|svelte)$/);
   return `Parameters<typeof import('${importPath}').default>[0]`;
 }
 

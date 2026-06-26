@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import type { ValidationAdapter } from '../adapters/types.js';
 import type { ResolvedFormsConfig } from '../config/types.js';
 import type { RouteDescriptor, TypeRef } from '../discovery/types.js';
+import { toImportSpecifier } from '../util/import-path.js';
 
 /**
  * Emits `forms.ts` into `outDir`. Every validatable route is rendered through a
@@ -61,9 +62,7 @@ function deriveBaseName(routeName: string): { method: string; full: string } {
 
 /** Relative import specifier from outDir to a source file (no extension). */
 function relImport(outDir: string, filePath: string): string {
-  let relPath = relative(outDir, filePath).replace(/\.ts$/, '');
-  if (!relPath.startsWith('.')) relPath = `./${relPath}`;
-  return relPath;
+  return toImportSpecifier(outDir, filePath, /\.ts$/);
 }
 
 /** The root identifier of a ref name like `loginContract.body` → `loginContract`. */

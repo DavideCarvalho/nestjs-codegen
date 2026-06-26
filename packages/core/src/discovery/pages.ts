@@ -33,8 +33,10 @@ export async function discoverPages(opts: DiscoverPagesOptions): Promise<Discove
   const pagesBase = join(opts.cwd, globStatic);
   const out: DiscoveredPage[] = [];
   for (const file of files) {
-    const rel = relative(opts.cwd, file);
-    const nameRel = relative(pagesBase, file);
+    // Normalize Windows separators so names/paths are POSIX-style on every
+    // platform (Inertia page names use forward slashes; keeps cache portable).
+    const rel = relative(opts.cwd, file).replace(/\\/g, '/');
+    const nameRel = relative(pagesBase, file).replace(/\\/g, '/');
     const name = computeName(nameRel, opts.componentNameStrategy);
     const source = await readFile(file, 'utf8');
     const propsSource = extractPropsSource(source, opts.propsExport);

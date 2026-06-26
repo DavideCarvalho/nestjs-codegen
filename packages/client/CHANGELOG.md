@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-client
 
+## 0.6.1
+
+### Patch Changes
+
+- 81ba774: Ship TanStack Intent agent skills (SKILL.md) inside the package.
+
 ## 0.6.0
 
 ### Minor Changes

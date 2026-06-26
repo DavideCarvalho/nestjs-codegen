@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-codegen-tanstack
 
+## 0.4.2
+
+### Patch Changes
+
+- 81ba774: Ship TanStack Intent agent skills (SKILL.md) inside the package.
+
 ## 0.4.1
 
 ### Patch Changes

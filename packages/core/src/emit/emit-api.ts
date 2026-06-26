@@ -407,7 +407,11 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     urlExpr,
     optsExpr,
     responseType: `${TA}['response']`,
-    queryKeyExpr: `[${flat}, input] as const`,
+    // When no input is supplied the key omits the trailing element entirely
+    // (`[name]` rather than `[name, undefined]`) so the bare `.queryKey()` is a
+    // clean prefix that partial-matches every parametrized variant — making it
+    // directly usable for `invalidateQueries`.
+    queryKeyExpr: `(input === undefined ? [${flat}] as const : [${flat}, input] as const)`,
   };
 }
 

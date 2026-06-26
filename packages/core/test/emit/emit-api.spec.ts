@@ -110,7 +110,9 @@ describe('emitApi', () => {
       const c = await gen(true);
       expect(c).toContain('list: (input?:');
       expect(c).toContain('...__req<'); // still awaitable
-      expect(c).toContain('queryKey: () => ["users.list", input] as const');
+      expect(c).toContain(
+        'queryKey: () => (input === undefined ? ["users.list"] as const : ["users.list", input] as const)',
+      );
       expect(c).toContain('queryOptions: () => _queryOptions(');
       expect(c).toContain('infiniteQueryOptions: (overrides?:');
     });

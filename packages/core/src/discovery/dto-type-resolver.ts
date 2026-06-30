@@ -386,6 +386,81 @@ function extractParamsType(
 }
 
 /**
+ * Detect Multer file uploads on a handler and synthesize the browser-facing
+ * file fields for the request body.
+ *
+ * The HTTP field name(s) live in the `@UseInterceptors(FileInterceptor('x'))`
+ * call — the `@UploadedFile()` / `@UploadedFiles()` param decorators are usually
+ * arg-less — so the interceptor argument is the authoritative source of field
+ * names and arity. Server-side a file is `Express.Multer.File`, but the client
+ * sends a browser `File | Blob`, so that is what we emit (never the Multer type).
+ *
+ * Returns the file-field entries (e.g. `file: File | Blob`) and whether the
+ * route is multipart. `fields` is null for a multipart route whose field names
+ * aren't statically known (e.g. `AnyFilesInterceptor`).
+ */
+function extractUploadedFiles(method: MethodDeclaration): {
+  fields: string | null;
+  multipart: boolean;
+} {
+  const FILE = 'File | Blob';
+  const entries: string[] = [];
+  let multipart = false;
+
+  const hasUploadedFileParam = method.getParameters().some((p) =>
+    p.getDecorators().some((d) => {
+      const name = d.getName();
+      return name === 'UploadedFile' || name === 'UploadedFiles';
+    }),
+  );
+
+  for (const decorator of method.getDecorators()) {
+    if (decorator.getName() !== 'UseInterceptors') continue;
+    for (const arg of decorator.getArguments()) {
+      if (!Node.isCallExpression(arg)) continue;
+      const interceptor = arg.getExpression().getText();
+      const callArgs = arg.getArguments();
+      const firstArg = callArgs[0];
+
+      if (interceptor === 'FileInterceptor') {
+        if (firstArg && Node.isStringLiteral(firstArg)) {
+          entries.push(`${firstArg.getLiteralValue()}: ${FILE}`);
+          multipart = true;
+        }
+      } else if (interceptor === 'FilesInterceptor') {
+        if (firstArg && Node.isStringLiteral(firstArg)) {
+          entries.push(`${firstArg.getLiteralValue()}: Array<${FILE}>`);
+          multipart = true;
+        }
+      } else if (interceptor === 'FileFieldsInterceptor') {
+        if (firstArg && Node.isArrayLiteralExpression(firstArg)) {
+          for (const el of firstArg.getElements()) {
+            if (!Node.isObjectLiteralExpression(el)) continue;
+            const nameProp = el.getProperty('name');
+            if (nameProp && Node.isPropertyAssignment(nameProp)) {
+              const init = nameProp.getInitializer();
+              if (init && Node.isStringLiteral(init)) {
+                // FileFieldsInterceptor delivers each named field as an array.
+                entries.push(`${init.getLiteralValue()}: Array<${FILE}>`);
+              }
+            }
+          }
+          multipart = true;
+        }
+      } else if (interceptor === 'AnyFilesInterceptor') {
+        multipart = true;
+      }
+    }
+  }
+
+  // A bare @UploadedFile()/@UploadedFiles() with no recognized interceptor still
+  // marks the route multipart even though we can't name the field statically.
+  if (hasUploadedFileParam) multipart = true;
+
+  return { fields: entries.length > 0 ? entries.join('; ') : null, multipart };
+}
+
+/**
  * Extract the response type from `@ApiResponse({ type: X })` or `@ApiResponse({ type: [X] })`.
  * Falls back to the method return type annotation (unwrapping `Promise<>`).
  * Returns a TS type string (never null — falls back to 'unknown').
@@ -647,10 +722,21 @@ export function extractDtoContract(
   bodySchema?: import('../ir/schema-node.js').SchemaModule | null;
   querySchema?: import('../ir/schema-node.js').SchemaModule | null;
   stream?: boolean;
+  multipart?: boolean;
 } | null {
   let body = extractBodyType(method, sourceFile, project);
   const filterInfo = extractApplyFilterInfo(method, sourceFile, project);
   const query = extractQueryType(method, sourceFile, project);
+
+  // ── Multipart uploads: merge the uploaded-file field(s) into the body so the
+  // client gets `@Body DTO & { file: File | Blob }` and can build a FormData. ──
+  const uploads = extractUploadedFiles(method);
+  if (uploads.fields) {
+    const fileObject = `{ ${uploads.fields} }`;
+    // Parenthesize the existing body so the intersection binds to the WHOLE
+    // type even when it is a union (`(A | B) & { file }`, not `A | B & { file }`).
+    body = body ? `(${body}) & ${fileObject}` : fileObject;
+  }
 
   // ── SSE / streaming: the streamed element type replaces `response` ──────────
   const streamElement = detectStreamElement(method);
@@ -685,7 +771,8 @@ export function extractDtoContract(
     response === 'unknown' &&
     errorInfo === null &&
     filterInfo === null &&
-    !isStream
+    !isStream &&
+    !uploads.multipart
   ) {
     return null;
   }
@@ -784,6 +871,7 @@ export function extractDtoContract(
     bodySchema,
     querySchema,
     stream: isStream,
+    multipart: uploads.multipart,
   };
 }
 

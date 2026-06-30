@@ -90,6 +90,34 @@ describe('emitApi', () => {
       expect(c).toContain('() => fetcher.post<');
     });
 
+    it('a plain POST leaf does NOT pass multipart to the fetcher', async () => {
+      const c = await gen();
+      expect(c).not.toContain('multipart: true');
+    });
+
+    it('a multipart POST leaf passes multipart: true to the fetcher', async () => {
+      const multipartRoutes: RouteDescriptor[] = [
+        {
+          method: 'POST',
+          path: '/upload',
+          name: 'files.upload',
+          params: [],
+          contract: {
+            contractSource: {
+              query: null,
+              body: '{ type: string } & { file: File | Blob }',
+              response: '{ ok: boolean }',
+              multipart: true,
+            },
+          },
+        },
+      ];
+      await emitApi(multipartRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('() => fetcher.post<');
+      expect(c).toContain('multipart: true');
+    });
+
     it('nests by dotted name (api.admin.users.list)', async () => {
       const c = await gen();
       expect(c).toContain('admin: {');

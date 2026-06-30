@@ -394,6 +394,9 @@ function buildRequestModel(c: LeafEntry): RequestModel {
   const optsParts: string[] = [];
   if (hasQuery) optsParts.push('query: input?.query as Record<string, unknown> | undefined');
   if (hasBody) optsParts.push('body: input?.body');
+  // Multipart routes (an `@UploadedFile()` handler) signal the fetcher to
+  // serialize the body object to a `FormData` instead of JSON.
+  if (hasBody && c.contractSource.multipart) optsParts.push('multipart: true');
   const optsExpr = optsParts.length ? `{ ${optsParts.join(', ')} }` : '{}';
 
   return {

@@ -98,6 +98,13 @@ export interface ContractSource {
    * `AsyncIterable<T>` stream rather than a single awaited value.
    */
   stream?: boolean;
+  /**
+   * True when the route consumes `multipart/form-data` — its handler takes an
+   * `@UploadedFile()` / `@UploadedFiles()` (via a Multer interceptor). The
+   * uploaded-file field(s) are merged into `body` as `File | Blob`, and the
+   * generated client serializes the body to a `FormData` instead of JSON.
+   */
+  multipart?: boolean;
 }
 
 export interface ContractDescriptor {

@@ -214,6 +214,13 @@ interface RequestOpts {
   params?: Record<string, unknown> | undefined;
   query?: Record<string, unknown> | undefined;
   body?: unknown;
+  /**
+   * Serialize `body` as `multipart/form-data` instead of JSON. The generated
+   * client sets this for routes whose handler takes an `@UploadedFile()`. Each
+   * own-property of the body object becomes a form field; `File`/`Blob` values
+   * (and arrays of them) ride as file parts, scalars as strings, `Date` as ISO.
+   */
+  multipart?: boolean | undefined;
 }
 
 /** Options for the {@link Fetcher.fetchRaw} / {@link Fetcher.fetchBlob} escape hatches. */
@@ -228,6 +235,45 @@ interface RawRequestOpts extends RequestOpts {
 
 function isFormData(b: unknown): b is FormData {
   return typeof FormData !== 'undefined' && b instanceof FormData;
+}
+
+function isBlobLike(v: unknown): v is Blob {
+  // `File` extends `Blob`, so this covers both browser file inputs and Blobs.
+  return typeof Blob !== 'undefined' && v instanceof Blob;
+}
+
+/** Append one value to a FormData field, picking the right encoding for its type. */
+function appendFormValue(fd: FormData, key: string, value: unknown): void {
+  if (value === undefined || value === null) return;
+  if (isBlobLike(value)) {
+    fd.append(key, value);
+  } else if (value instanceof Date) {
+    fd.append(key, value.toISOString());
+  } else if (typeof value === 'object') {
+    // A nested object can't ride a flat multipart field; JSON-encode it.
+    fd.append(key, JSON.stringify(value));
+  } else {
+    fd.append(key, String(value));
+  }
+}
+
+/**
+ * Build a `FormData` from a plain body object for a multipart upload. Array
+ * values are appended as repeated parts (one per element), so a `File[]` field
+ * arrives as multiple file parts under the same name.
+ */
+function toFormData(body: unknown): FormData {
+  const fd = new FormData();
+  if (body && typeof body === 'object') {
+    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+      if (Array.isArray(value)) {
+        for (const item of value) appendFormValue(fd, key, item);
+      } else {
+        appendFormValue(fd, key, value);
+      }
+    }
+  }
+  return fd;
 }
 
 /** Collect a `Headers` instance into a plain lower-cased-key record. */
@@ -290,6 +336,10 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
       if (isFormData(ro.body)) {
         body = ro.body;
         // Do NOT set Content-Type — the runtime sets it with the multipart boundary
+      } else if (ro.multipart) {
+        // Multipart upload: serialize the body object to FormData and let the
+        // runtime set the multipart boundary Content-Type.
+        body = toFormData(ro.body);
       } else {
         body = transformer ? transformer.stringify(ro.body) : JSON.stringify(ro.body);
         headers['content-type'] = 'application/json';

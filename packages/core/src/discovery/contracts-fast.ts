@@ -604,6 +604,7 @@ function extractDtoRoute(args: {
       bodySchema: dtoContract?.bodySchema ?? null,
       querySchema: dtoContract?.querySchema ?? null,
       stream: dtoContract?.stream ?? false,
+      multipart: dtoContract?.multipart ?? false,
     },
   });
 }

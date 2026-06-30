@@ -39,6 +39,35 @@ describe('createFetcher', () => {
     expect(init.headers).toMatchObject({ 'content-type': 'application/json' });
   });
 
+  it('POST builds a FormData (not JSON) when multipart and keeps File parts', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const file = new Blob(['col1,col2'], { type: 'text/csv' });
+    await api.post('/upload', {
+      body: { type: 'MEL', date: '2026-06-30', file },
+      multipart: true,
+    });
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(init.body).toBeInstanceOf(FormData);
+    const fd = init.body as FormData;
+    expect(fd.get('type')).toBe('MEL');
+    expect(fd.get('date')).toBe('2026-06-30');
+    expect(fd.get('file')).toBeInstanceOf(Blob);
+    // The runtime sets the multipart boundary; we must NOT force a JSON content-type.
+    expect(init.headers).not.toMatchObject({ 'content-type': 'application/json' });
+  });
+
+  it('appends array fields as repeated multipart parts (multi-file)', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const a = new Blob(['a'], { type: 'text/csv' });
+    const b = new Blob(['b'], { type: 'text/csv' });
+    await api.post('/upload', { body: { files: [a, b] }, multipart: true });
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    const fd = init.body as FormData;
+    expect(fd.getAll('files')).toHaveLength(2);
+  });
+
   it('throws ApiHttpError on non-2xx and calls onError', async () => {
     const fetch = vi.fn(async () => jsonResponse({ message: 'nope' }, 403));
     const onError = vi.fn();

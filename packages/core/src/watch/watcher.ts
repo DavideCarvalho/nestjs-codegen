@@ -13,6 +13,19 @@ export interface Watcher {
   close(): Promise<void>;
 }
 
+export interface WatchOptions {
+  /**
+   * Run the initial discover + generate as fire-and-forget instead of awaiting it
+   * before returning. The lock is still acquired and the chokidar watchers are
+   * still set up synchronously; only the initial generate is backgrounded. Used by
+   * the Nest `onApplicationBootstrap` hook so codegen never blocks time-to-ready.
+   * The one-shot CLI leaves this `false` so the build step stays synchronous.
+   *
+   * @default false
+   */
+  deferInitialGenerate?: boolean;
+}
+
 /** No-op watcher returned when the lock is already held. */
 const NO_OP_WATCHER: Watcher = { close: async () => {} };
 
@@ -29,7 +42,11 @@ const NO_OP_WATCHER: Watcher = { close: async () => {} };
  * Both watchers share a single lock file in `config.codegen.outDir`. If another live process
  * already holds the lock, logs a warning and returns a no-op watcher.
  */
-export async function watch(config: ResolvedConfig, onChange?: () => void): Promise<Watcher> {
+export async function watch(
+  config: ResolvedConfig,
+  onChange?: () => void,
+  options: WatchOptions = {},
+): Promise<Watcher> {
   const lock = await acquireLock(config.codegen.outDir);
 
   if (lock === null) {
@@ -76,21 +93,36 @@ export async function watch(config: ResolvedConfig, onChange?: () => void): Prom
     return discovery;
   }
 
-  // Run an initial full pass: pages + routes + contracts (same as a one-shot `codegen` run)
-  try {
-    const initialRoutes = (await getDiscovery()).discover();
-    lastRoutes = initialRoutes;
-    await generate(config, initialRoutes);
-  } catch (err) {
-    // Best-effort; don't crash the watcher on initial generation failure
-    console.warn(
-      `[nestjs-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  // Initial full pass: pages + routes + contracts (same as a one-shot `codegen` run).
+  async function runInitialPass(): Promise<void> {
     try {
-      await generate(config, lastRoutes);
-    } catch {
-      /* fallback: pages only */
+      const initialRoutes = (await getDiscovery()).discover();
+      lastRoutes = initialRoutes;
+      await generate(config, initialRoutes);
+    } catch (err) {
+      // Best-effort; don't crash the watcher on initial generation failure
+      console.warn(
+        `[nestjs-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      try {
+        await generate(config, lastRoutes);
+      } catch {
+        /* fallback: pages only */
+      }
     }
+  }
+
+  if (options.deferInitialGenerate) {
+    // Fire-and-forget: return immediately so the caller (Nest boot) isn't blocked
+    // on codegen. runInitialPass swallows its own errors, but guard the promise
+    // too so a rejection can never surface as an unhandled rejection.
+    void runInitialPass().catch((err: unknown) => {
+      console.warn(
+        `[nestjs-codegen] Background initial generate failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  } else {
+    await runInitialPass();
   }
 
   // ── Pages watcher (fast path — no route discovery) ──────────────────────────

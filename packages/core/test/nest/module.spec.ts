@@ -1,4 +1,5 @@
 import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
+import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the watcher so the module never spawns real chokidar watchers in tests.
@@ -32,6 +33,30 @@ describe('shouldRun', () => {
 
   it('defaults off in production', () => {
     expect(shouldRun({}, 'production')).toBe(false);
+  });
+
+  it('normalizes NODE_ENV (case + whitespace) before the production check', () => {
+    expect(shouldRun({}, 'PRODUCTION')).toBe(false);
+    expect(shouldRun({}, '  production  ')).toBe(false);
+    expect(shouldRun({}, 'Production')).toBe(false);
+  });
+
+  it('runInProduction:true forces it on in production', () => {
+    expect(shouldRun({ runInProduction: true }, 'production')).toBe(true);
+    expect(shouldRun({ runInProduction: true }, 'PRODUCTION')).toBe(true);
+  });
+
+  it('runInProduction:false stays off in production (the default)', () => {
+    expect(shouldRun({ runInProduction: false }, 'production')).toBe(false);
+  });
+
+  it('runInProduction does not affect non-production envs', () => {
+    expect(shouldRun({ runInProduction: false }, 'development')).toBe(true);
+  });
+
+  it('explicit enabled overrides runInProduction', () => {
+    expect(shouldRun({ enabled: false, runInProduction: true }, 'production')).toBe(false);
+    expect(shouldRun({ enabled: true, runInProduction: false }, 'production')).toBe(true);
   });
 });
 
@@ -83,6 +108,36 @@ describe('NestjsCodegenService lifecycle', () => {
     const svc = new NestjsCodegenService({});
     await svc.onApplicationBootstrap();
     expect(watchMock).not.toHaveBeenCalled();
+  });
+
+  it('logs a single concise line when skipped in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    const svc = new NestjsCodegenService({});
+    await svc.onApplicationBootstrap();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Skipped in production'));
+    logSpy.mockRestore();
+  });
+
+  it('starts the watcher in production when runInProduction:true', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const svc = new NestjsCodegenService({
+      validation: zodAdapter,
+      runInProduction: true,
+      cwd: '/tmp',
+    });
+    await svc.onApplicationBootstrap();
+    expect(watchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires the initial generate non-blocking (deferInitialGenerate:true)', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const svc = new NestjsCodegenService({ validation: zodAdapter, cwd: '/tmp' });
+    await svc.onApplicationBootstrap();
+    expect(watchMock).toHaveBeenCalledTimes(1);
+    const optionsArg = watchMock.mock.calls[0][2] as { deferInitialGenerate?: boolean };
+    expect(optionsArg).toEqual({ deferInitialGenerate: true });
   });
 
   it('starts the watcher with a resolved config in dev', async () => {

@@ -17,6 +17,14 @@ import {
   collectEmittedFiles,
   createExtensionContext,
 } from './extension/registry.js';
+import {
+  computeInputsHash,
+  isManifestFresh,
+  listOutputFiles,
+  readManifest,
+  writeManifest,
+} from './generate-manifest.js';
+import { VERSION } from './index.js';
 import { setCodegenDebug } from './util/debug-log.js';
 
 /**
@@ -34,6 +42,18 @@ export async function generate(
 ): Promise<void> {
   // Gate the schema-translation advisory chatter for this pass (off by default).
   setCodegenDebug(config.debug);
+
+  // Skip-when-unchanged: if the inputs (source files + resolved config + lib
+  // version) hash-match the last run AND every recorded output still exists, this
+  // pass is a no-op. This stops watch/HMR from rewriting api.ts when nothing
+  // changed, which would otherwise churn downstream tsbuildinfo. Computed per
+  // call so an actual file change still regenerates.
+  const inputsHash = await computeInputsHash(config);
+  const manifest = await readManifest(config.codegen.outDir);
+  if (await isManifestFresh(config.codegen.outDir, manifest, inputsHash)) {
+    console.log(`[nestjs-codegen] ${config.codegen.outDir} up to date, skipped`);
+    return;
+  }
 
   // Extensions: run transformRoutes (chained) before any emit so routes.ts/api.ts/
   // forms.ts all see the augmented IR. ctx.routes is a live getter over the active set.
@@ -113,4 +133,14 @@ export async function generate(
       await writeFile(dest, file.contents, 'utf8');
     }
   }
+
+  // Record the inputs hash + the output file set, so the next call can skip when
+  // nothing changed. Recorded after a successful pass; a throw above leaves the
+  // old manifest (or none) in place, so the next run regenerates.
+  const outputFiles = await listOutputFiles(config.codegen.outDir);
+  await writeManifest(config.codegen.outDir, {
+    version: VERSION,
+    hash: inputsHash,
+    files: outputFiles,
+  });
 }

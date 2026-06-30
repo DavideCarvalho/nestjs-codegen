@@ -8,8 +8,9 @@ export { ConfigError, CodegenError } from './exceptions.js';
 
 export { generate } from './generate.js';
 export { watch } from './watch/watcher.js';
-export type { Watcher } from './watch/watcher.js';
+export type { Watcher, WatchOptions } from './watch/watcher.js';
 export { acquireLock } from './watch/lock-file.js';
+export type { CodegenManifest } from './generate-manifest.js';
 
 // Validation IR + pluggable adapters
 export type {

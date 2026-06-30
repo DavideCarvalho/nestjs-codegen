@@ -36,11 +36,21 @@ export interface CodegenModuleOptions extends Omit<UserConfig, 'validation'> {
   validation?: UserConfig['validation'];
   /**
    * Master switch for the boot-time watcher. When omitted, the watcher runs in every
-   * environment EXCEPT production (`process.env.NODE_ENV === 'production'`) — codegen is a
-   * dev/CI build step, not a production-runtime concern. Set `false` to disable entirely,
-   * or `true` to force it on even in production.
+   * environment EXCEPT production — codegen is a dev/CI build step, not a
+   * production-runtime concern. Set `false` to disable entirely, or `true` to force it
+   * on even in production (overrides {@link runInProduction}).
    */
   enabled?: boolean;
+  /**
+   * Run the boot-time watcher even when `NODE_ENV` is `production`. Codegen is a
+   * dev-time concern — in production the artifacts are already built by the CLI in the
+   * build pipeline — so this defaults to `false` (skip in production). Set `true` only
+   * if you genuinely need to regenerate at production runtime. Ignored when `enabled`
+   * is set explicitly.
+   *
+   * @default false
+   */
+  runInProduction?: boolean;
   /** Project root used to resolve globs / `outDir`. Defaults to `process.cwd()`. */
   cwd?: string;
 }
@@ -48,13 +58,20 @@ export interface CodegenModuleOptions extends Omit<UserConfig, 'validation'> {
 /** DI token holding the raw {@link CodegenModuleOptions} passed to `forRoot`. */
 export const CODEGEN_MODULE_OPTIONS = Symbol('NESTJS_CODEGEN_MODULE_OPTIONS');
 
+/** True when `NODE_ENV` (trimmed, lowercased) is exactly `production`. */
+export function isProductionEnv(env: string | undefined): boolean {
+  return (env ?? '').trim().toLowerCase() === 'production';
+}
+
 /**
  * Decide whether the boot-time watcher should start, given the module options and the
- * current `NODE_ENV`. Explicit `enabled` always wins; otherwise default on unless prod.
+ * current `NODE_ENV`. Explicit `enabled` always wins; otherwise default on everywhere
+ * except production, where it stays off unless `runInProduction` is set.
  */
 export function shouldRun(options: CodegenModuleOptions, env: string | undefined): boolean {
   if (options.enabled !== undefined) return options.enabled;
-  return env !== 'production';
+  if (isProductionEnv(env)) return options.runInProduction === true;
+  return true;
 }
 
 /**
@@ -71,12 +88,24 @@ export class NestjsCodegenService implements OnApplicationBootstrap, OnModuleDes
   constructor(@Inject(CODEGEN_MODULE_OPTIONS) private readonly options: CodegenModuleOptions) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    if (!shouldRun(this.options, process.env.NODE_ENV)) return;
+    if (!shouldRun(this.options, process.env.NODE_ENV)) {
+      if (this.options.enabled === undefined && isProductionEnv(process.env.NODE_ENV)) {
+        this.logger.log('Skipped in production (set runInProduction: true to override).');
+      }
+      return;
+    }
 
-    const { enabled: _enabled, cwd, ...userConfig } = this.options;
+    const {
+      enabled: _enabled,
+      runInProduction: _runInProduction,
+      cwd,
+      ...userConfig
+    } = this.options;
     try {
       const config = resolveConfig(userConfig, cwd ?? process.cwd());
-      this.watcher = await watch(config);
+      // Fire-and-forget the initial generate so codegen never blocks time-to-ready;
+      // the watcher (and its lock) are still set up synchronously.
+      this.watcher = await watch(config, undefined, { deferInitialGenerate: true });
       this.logger.log(`Watching ${config.contracts.glob} → ${config.codegen.outDir}`);
     } catch (err) {
       // Never crash app boot because codegen failed to start — log and move on.

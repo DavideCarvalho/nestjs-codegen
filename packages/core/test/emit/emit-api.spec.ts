@@ -95,7 +95,7 @@ describe('emitApi', () => {
       expect(c).not.toContain('multipart: true');
     });
 
-    it('a multipart POST leaf passes multipart: true to the fetcher', async () => {
+    it('a multipart POST leaf passes multipart: true and intersects the file field into body', async () => {
       const multipartRoutes: RouteDescriptor[] = [
         {
           method: 'POST',
@@ -105,7 +105,8 @@ describe('emitApi', () => {
           contract: {
             contractSource: {
               query: null,
-              body: '{ type: string } & { file: File | Blob }',
+              body: '{ type: string }',
+              multipartBody: '{ file: File | Blob }',
               response: '{ ok: boolean }',
               multipart: true,
             },
@@ -115,6 +116,84 @@ describe('emitApi', () => {
       await emitApi(multipartRoutes, outDir, {});
       const c = await readFile(join(outDir, 'api.ts'), 'utf8');
       expect(c).toContain('() => fetcher.post<');
+      expect(c).toContain('multipart: true');
+      // The file field is intersected onto the body in the route meta type.
+      expect(c).toContain('body: ({ type: string }) & { file: File | Blob }');
+    });
+
+    it('intersects the file field onto a named bodyRef (preserving the import)', async () => {
+      const multipartRoutes: RouteDescriptor[] = [
+        {
+          method: 'POST',
+          path: '/upload',
+          name: 'files.uploadRef',
+          params: [],
+          contract: {
+            contractSource: {
+              query: null,
+              body: null,
+              bodyRef: { name: 'BaseFileUploadDto', filePath: '/x/dto.ts' },
+              multipartBody: '{ file: File | Blob }',
+              response: '{ ok: boolean }',
+              multipart: true,
+            },
+          },
+        },
+      ];
+      await emitApi(multipartRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('body: (BaseFileUploadDto) & { file: File | Blob }');
+    });
+
+    it('uses only the file field as body when a multipart route has no @Body', async () => {
+      const multipartRoutes: RouteDescriptor[] = [
+        {
+          method: 'POST',
+          path: '/upload',
+          name: 'files.uploadBare',
+          params: [],
+          contract: {
+            contractSource: {
+              query: null,
+              body: null,
+              multipartBody: '{ file: File | Blob }',
+              response: '{ ok: boolean }',
+              multipart: true,
+            },
+          },
+        },
+      ];
+      await emitApi(multipartRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('body: { file: File | Blob }');
+    });
+
+    it('does NOT intersect the file field onto a deliberately-loose (any/unknown) body', async () => {
+      const multipartRoutes: RouteDescriptor[] = [
+        {
+          method: 'POST',
+          path: '/upload',
+          name: 'files.uploadLoose',
+          params: [],
+          contract: {
+            contractSource: {
+              // A controller with `@Body() x: SomeDto | any` resolves to a
+              // top-level `| unknown` arm — the author kept it loose on purpose.
+              query: null,
+              body: '{ a: string } | unknown',
+              multipartBody: '{ images: Array<File | Blob> }',
+              response: '{ ok: boolean }',
+              multipart: true,
+            },
+          },
+        },
+      ];
+      await emitApi(multipartRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      // Body stays loose (assignable-from-anything); no `& { images }` tightening.
+      expect(c).toContain('body: { a: string } | unknown');
+      expect(c).not.toContain('& { images: Array<File | Blob> }');
+      // Still a multipart route at runtime.
       expect(c).toContain('multipart: true');
     });
 

@@ -333,7 +333,7 @@ function emitRouterTypeBlock(
           ? emitFilterQueryType(c)
           : (c.contractSource.query ?? 'never');
       const bodyRef = c.contractSource.bodyRef;
-      const body =
+      let body =
         method === 'GET'
           ? 'never'
           : bodyRef
@@ -341,6 +341,19 @@ function emitRouterTypeBlock(
               ? `Array<${bodyRef.name}>`
               : bodyRef.name
             : (c.contractSource.body ?? 'never');
+      // Multipart routes intersect the uploaded-file field(s) onto whichever
+      // body representation we picked (named ref or inline text), parenthesizing
+      // the base so the `&` binds to a union body correctly. A deliberately-loose
+      // `@Body() x: Dto | any` body (a top-level `unknown`/`any` union arm) is left
+      // untouched — intersecting would collapse it and wrongly tighten it.
+      const multipartBody = c.contractSource.multipartBody;
+      if (c.contractSource.multipart && multipartBody) {
+        if (body === 'never') {
+          body = multipartBody;
+        } else if (!bodyAcceptsAnything(body)) {
+          body = `(${body}) & ${multipartBody}`;
+        }
+      }
       const response = buildResponseType(c, outDir, serialization);
       const error = buildErrorType(c);
       const params = buildParamsType(c.params);
@@ -373,6 +386,38 @@ function emitRouterTypeBlock(
  * input every transport/layer/member-contributor reads — the seam the extension system
  * plugs into. Pure string-building; no I/O.
  */
+/**
+ * Split a type string into its top-level union arms (depth 0 — not inside
+ * `{}`, `[]`, `<>`, or `()`), so `{ a: string } | unknown` → ['{ a: string }',
+ * 'unknown'] while `Record<string, unknown>` stays a single arm.
+ */
+function topLevelUnionArms(type: string): string[] {
+  const arms: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < type.length; i++) {
+    const ch = type[i];
+    if (ch === '{' || ch === '[' || ch === '<' || ch === '(') depth++;
+    else if (ch === '}' || ch === ']' || ch === '>' || ch === ')') depth--;
+    else if (ch === '|' && depth === 0) {
+      arms.push(type.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  arms.push(type.slice(start).trim());
+  return arms;
+}
+
+/**
+ * Whether a body type is already permissive — a bare `unknown`/`any`, or a
+ * top-level union arm that is (`Dto | any` → `Dto | unknown`). Such a body
+ * collapses under intersection, so multipart file fields are NOT merged into it
+ * (it stays as the author's deliberately-loose `@Body()`).
+ */
+function bodyAcceptsAnything(body: string): boolean {
+  return topLevelUnionArms(body).some((arm) => arm === 'unknown' || arm === 'any');
+}
+
 function buildRequestModel(c: LeafEntry): RequestModel {
   const m = c.method.toLowerCase() as RequestModel['method'];
   const flat = JSON.stringify(c.name);

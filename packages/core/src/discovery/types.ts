@@ -101,10 +101,18 @@ export interface ContractSource {
   /**
    * True when the route consumes `multipart/form-data` — its handler takes an
    * `@UploadedFile()` / `@UploadedFiles()` (via a Multer interceptor). The
-   * uploaded-file field(s) are merged into `body` as `File | Blob`, and the
-   * generated client serializes the body to a `FormData` instead of JSON.
+   * uploaded-file field(s) are carried in `multipartBody` (typed `File | Blob`)
+   * and intersected onto `body` at emit time, and the generated client
+   * serializes the body to a `FormData` instead of JSON.
    */
   multipart?: boolean;
+  /**
+   * The uploaded-file field(s) for a multipart route, as an object-type string
+   * (e.g. `{ file: File | Blob }`). Kept separate from `body` so the emitter can
+   * intersect it onto whichever body representation it picks — a named `bodyRef`
+   * or the inline `body` text — preserving the import when there is one.
+   */
+  multipartBody?: string | null;
 }
 
 export interface ContractDescriptor {

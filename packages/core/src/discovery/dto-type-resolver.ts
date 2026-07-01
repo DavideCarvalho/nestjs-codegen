@@ -723,20 +723,17 @@ export function extractDtoContract(
   querySchema?: import('../ir/schema-node.js').SchemaModule | null;
   stream?: boolean;
   multipart?: boolean;
+  multipartBody?: string | null;
 } | null {
   let body = extractBodyType(method, sourceFile, project);
   const filterInfo = extractApplyFilterInfo(method, sourceFile, project);
   const query = extractQueryType(method, sourceFile, project);
 
-  // ── Multipart uploads: merge the uploaded-file field(s) into the body so the
-  // client gets `@Body DTO & { file: File | Blob }` and can build a FormData. ──
+  // ── Multipart uploads: carry the uploaded-file field(s) separately. The
+  // emitter intersects them onto the final body expression (named ref or inline
+  // text), so `body` itself is left as the plain `@Body` DTO here. ──
   const uploads = extractUploadedFiles(method);
-  if (uploads.fields) {
-    const fileObject = `{ ${uploads.fields} }`;
-    // Parenthesize the existing body so the intersection binds to the WHOLE
-    // type even when it is a union (`(A | B) & { file }`, not `A | B & { file }`).
-    body = body ? `(${body}) & ${fileObject}` : fileObject;
-  }
+  const multipartBody = uploads.fields ? `{ ${uploads.fields} }` : null;
 
   // ── SSE / streaming: the streamed element type replaces `response` ──────────
   const streamElement = detectStreamElement(method);
@@ -872,6 +869,7 @@ export function extractDtoContract(
     querySchema,
     stream: isStream,
     multipart: uploads.multipart,
+    multipartBody,
   };
 }
 

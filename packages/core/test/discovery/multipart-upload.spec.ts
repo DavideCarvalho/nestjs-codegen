@@ -1,9 +1,10 @@
 /**
  * Multipart upload discovery: a controller that takes an `@UploadedFile()` /
  * `@UploadedFiles()` (via a Multer `FileInterceptor` / `FilesInterceptor` /
- * `FileFieldsInterceptor`) should produce a `body` type that MERGES the
- * `@Body` DTO with the uploaded-file fields (typed as the browser `File | Blob`,
- * NOT the server-side `Express.Multer.File`), and flag the route `multipart`.
+ * `FileFieldsInterceptor`) is flagged `multipart` and carries the uploaded-file
+ * field(s) in `multipartBody`, typed as the browser `File | Blob` (NOT the
+ * server-side `Express.Multer.File`). The intersection with the `@Body` DTO is
+ * applied at emit time (so a named `bodyRef` is preserved), not here.
  */
 import { Project, type SourceFile } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
@@ -31,7 +32,7 @@ function contractFor(code: string, methodName: string) {
 }
 
 describe('multipart upload discovery', () => {
-  it('merges a single @UploadedFile (FileInterceptor) into the body and flags multipart', () => {
+  it('flags multipart and carries the single @UploadedFile field, leaving body untouched', () => {
     const result = contractFor(
       `
       class UploadDto {
@@ -51,33 +52,12 @@ describe('multipart upload discovery', () => {
     );
 
     expect(result?.multipart).toBe(true);
-    // The @Body DTO (expanded by the resolver) is parenthesized and intersected
-    // with the uploaded-file field, typed for the browser as `File | Blob`.
-    expect(result?.body).toBe('({ type: string; date: string }) & { file: File | Blob }');
+    // Body stays the (resolved) @Body DTO; the file field rides in multipartBody.
+    expect(result?.body).toBe('{ type: string; date: string }');
+    expect(result?.multipartBody).toBe('{ file: File | Blob }');
   });
 
-  it('parenthesizes a union @Body so the file intersection applies to the whole union', () => {
-    const result = contractFor(
-      `
-      class TestController {
-        @Post()
-        @UseInterceptors(FileInterceptor('file'))
-        upload(
-          @Body() body: { a: string } | { b: number },
-          @UploadedFile() file: any,
-        ) {}
-      }
-    `,
-      'upload',
-    );
-
-    expect(result?.multipart).toBe(true);
-    // Without the parens this would be `{ a } | ({ b } & { file })` — the file
-    // would only land on the second arm.
-    expect(result?.body).toBe('({ a: string } | { b: number }) & { file: File | Blob }');
-  });
-
-  it('uses the file field as the whole body when there is no @Body', () => {
+  it('carries the file field even when there is no @Body', () => {
     const result = contractFor(
       `
       class TestController {
@@ -90,7 +70,8 @@ describe('multipart upload discovery', () => {
     );
 
     expect(result?.multipart).toBe(true);
-    expect(result?.body).toBe('{ avatar: File | Blob }');
+    expect(result?.body).toBeNull();
+    expect(result?.multipartBody).toBe('{ avatar: File | Blob }');
   });
 
   it('types a FilesInterceptor field as an array of files', () => {
@@ -106,7 +87,7 @@ describe('multipart upload discovery', () => {
     );
 
     expect(result?.multipart).toBe(true);
-    expect(result?.body).toBe('{ files: Array<File | Blob> }');
+    expect(result?.multipartBody).toBe('{ files: Array<File | Blob> }');
   });
 
   it('emits one array field per FileFieldsInterceptor entry', () => {
@@ -122,7 +103,9 @@ describe('multipart upload discovery', () => {
     );
 
     expect(result?.multipart).toBe(true);
-    expect(result?.body).toBe('{ avatar: Array<File | Blob>; background: Array<File | Blob> }');
+    expect(result?.multipartBody).toBe(
+      '{ avatar: Array<File | Blob>; background: Array<File | Blob> }',
+    );
   });
 
   it('does not flag a plain @Body POST as multipart', () => {
@@ -137,6 +120,7 @@ describe('multipart upload discovery', () => {
     );
 
     expect(result?.multipart).toBe(false);
+    expect(result?.multipartBody ?? null).toBeNull();
     expect(result?.body).toBe('{ name: string }');
   });
 });

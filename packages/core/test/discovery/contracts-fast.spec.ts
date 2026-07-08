@@ -1152,6 +1152,21 @@ describe('discoverContractsFast — SSE / streaming', () => {
     expect(cs?.response).not.toContain('MessageEvent');
   });
 
+  it('resolves named members of an inline object-literal element instead of emitting a bare identifier', async () => {
+    const routes = await discoverContractsFast({
+      cwd: fixturesDir,
+      glob: 'sse.controller.ts',
+    });
+    const wrapped = routes.find((r) => r.name === 'sse.wrapped');
+    const cs = wrapped?.contract?.contractSource;
+    expect(cs?.stream).toBe(true);
+    // Observable<{ data: Tick }> → the `data` member's `Tick` is expanded inline, so `count`
+    // appears and the bare `Tick` identifier (undefined in the emitted file) does not.
+    expect(cs?.response).toContain('data');
+    expect(cs?.response).toContain('count');
+    expect(cs?.response).not.toMatch(/\bTick\b/);
+  });
+
   it('discovers AsyncIterable streaming handlers', async () => {
     const routes = await discoverContractsFast({
       cwd: fixturesDir,

@@ -146,6 +146,28 @@ function resolveTypeNodeToString(
     return 'unknown';
   }
 
+  // Object literal type: `{ a: Foo; b: Bar }` — resolve each member's type so nested named refs
+  // get inlined (or reduced to `unknown`) instead of falling through to raw text, which would emit
+  // a bare, unimported identifier that is undefined in the generated file. Notably this is the shape
+  // of an SSE payload (`Observable<{ data: SomeType }>`), where `SomeType` often comes from another
+  // package.
+  if (Node.isTypeLiteral(typeNode)) {
+    const members: string[] = [];
+    for (const member of typeNode.getMembers()) {
+      if (Node.isPropertySignature(member)) {
+        const memberTypeNode = member.getTypeNode();
+        const memberType = memberTypeNode
+          ? resolveTypeNodeToString(memberTypeNode, sourceFile, project, depth, subst)
+          : 'unknown';
+        members.push(`${member.getName()}${member.hasQuestionToken() ? '?' : ''}: ${memberType}`);
+      } else {
+        // Index/call/construct signatures — keep their source text (no named ref to resolve).
+        members.push(member.getText());
+      }
+    }
+    return members.length > 0 ? `{ ${members.join('; ')} }` : '{}';
+  }
+
   // Primitive keyword types
   const kind = typeNode.getKind();
   if (kind === SyntaxKind.StringKeyword) return 'string';

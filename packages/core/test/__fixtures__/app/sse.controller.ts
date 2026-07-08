@@ -24,6 +24,13 @@ export class SseController {
     return {} as any;
   }
 
+  // @Sse() returning an inline object-literal element `{ data: Tick }` — the member type must be
+  // resolved (expanded inline), not emitted as a bare `Tick` that would be undefined in the output.
+  @Sse('wrapped')
+  wrapped(): Observable<{ data: Tick }> {
+    return {} as any;
+  }
+
   // AsyncIterable streaming handler (no @Sse, but async-generator-style stream).
   @Sse('async')
   async *asyncTicks(): AsyncIterable<Tick> {

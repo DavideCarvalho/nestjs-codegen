@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ResolvedConfig } from '../../src/config/types.js';
+import { DriftGuardError } from '../../src/generate-manifest.js';
 
 // Mock the heavy pieces so we control exactly when the initial generate resolves.
 // The watcher's lock + chokidar setup still run against a real tmp dir.
@@ -43,6 +44,7 @@ function makeConfig(outDir: string, cwd: string): ResolvedConfig {
       description: null,
     },
     mocks: { enabled: false, fileName: 'mocks.ts', seed: 1, baseUrl: '' },
+    driftGuard: true,
   };
 }
 
@@ -129,5 +131,31 @@ describe('watch(deferInitialGenerate)', () => {
     warnSpy.mockRestore();
     // Reaching here without an unhandled-rejection crash is the assertion.
     expect(generateMock).toHaveBeenCalled();
+  });
+
+  it('logs a DriftGuardError via console.error (loud), skips the misleading discovery-failure fallback, and does not retry generate()', async () => {
+    tmpBase = await mkdtemp(join(tmpdir(), 'watcher-defer-drift-'));
+    const config = makeConfig(join(tmpBase, '.out'), tmpBase);
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    generateMock.mockRejectedValue(new DriftGuardError('config drift between cli and module'));
+
+    const watcher = await watch(config, undefined, { deferInitialGenerate: true });
+    watchers.push(watcher);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The drift error is surfaced loudly, verbatim — never the generic
+    // "route discovery failed, falling back to pages-only" warn (a DriftGuardError
+    // is not a discovery failure, and retrying via the fallback would just throw
+    // the identical error again and get silently swallowed).
+    expect(errorSpy).toHaveBeenCalledWith('config drift between cli and module');
+    expect(warnSpy).not.toHaveBeenCalled();
+    // Exactly one call — the fallback retry never fires for a drift error.
+    expect(generateMock).toHaveBeenCalledTimes(1);
+
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });

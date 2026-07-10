@@ -606,6 +606,8 @@ function extractDtoRoute(args: {
       stream: dtoContract?.stream ?? false,
       multipart: dtoContract?.multipart ?? false,
       multipartBody: dtoContract?.multipartBody ?? null,
+      binaryResponse: dtoContract?.binaryResponse ?? false,
+      asQuery: dtoContract?.asQuery ?? false,
     },
   });
 }

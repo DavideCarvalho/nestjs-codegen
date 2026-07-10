@@ -1,11 +1,42 @@
 import type {
   ApiClientLayer,
+  ApiHeaderContribution,
   CodegenExtension,
   ExtensionContext,
   LeafModel,
   RequestModel,
 } from '@dudousxd/nestjs-codegen/extension';
 import { defineExtension, requestShape } from '@dudousxd/nestjs-codegen/extension';
+
+/**
+ * `handleQuery` source, emitted verbatim into `api.ts` whenever the TanStack
+ * layer is active. Solves two hand-rolled-adapter pain points: (a) a
+ * POST-as-query handle (pre-`@AsQuery()`, or any handle shaped like one) and
+ * (b) picking between two different handles dynamically — spreading a
+ * ternary of `queryOptions()` calls breaks the `useQuery` overload because
+ * the two branches' generic instantiations don't unify. `handleQuery` widens
+ * any `{ queryKey, fetch }`-shaped handle (every generated leaf has both, via
+ * the __req base + the queryKey member this layer adds) into the plain
+ * `{ queryKey, queryFn }` pair `useQuery` accepts directly.
+ */
+const HANDLE_QUERY_HELPER: readonly string[] = [
+  '/**',
+  ' * For dynamically-picked handles where spreading a ternary of `queryOptions()`',
+  ' * breaks the `useQuery` overload. Wraps any `{ queryKey, fetch }`-shaped handle',
+  ' * (e.g. a POST-as-query handle, or a runtime pick between two different handles)',
+  ' * into a plain `{ queryKey, queryFn }` pair that `useQuery` accepts directly.',
+  ' */',
+  'export function handleQuery<TData>(handle: {',
+  '  queryKey: () => readonly unknown[];',
+  '  fetch: () => Promise<TData>;',
+  '}): { queryKey: readonly unknown[]; queryFn: () => Promise<TData> } {',
+  '  return { queryKey: handle.queryKey(), queryFn: () => handle.fetch() };',
+  '}',
+];
+
+function apiHeaderHook(): ApiHeaderContribution {
+  return { statements: [...HANDLE_QUERY_HELPER] };
+}
 
 export interface TanstackQueryOptions {
   /**
@@ -46,11 +77,16 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
 
     buildMembers(requestExpr: string, leaf: LeafModel): Record<string, string> {
       const req: RequestModel = leaf.request;
+      // Binary (blob) routes have no meaningful "next page" — a download isn't
+      // paginated data — so they never get an `infiniteQueryOptions` member.
+      const isBinary = leaf.route.contract?.contractSource.binaryResponse === true;
       // `fetch` + awaitability come from the core __req base; we add the TanStack helpers.
       const members: Record<string, string> = {
         queryKey: `() => ${req.queryKeyExpr}`,
       };
-      // Reads (GET or filter-search) get query helpers...
+      // Reads (GET, filter-search, or `@AsQuery()`) get query helpers — this
+      // includes binary GET/`@AsQuery()` routes, whose `queryFn` resolves to
+      // `RawResponse<Blob>` (the response type the route carries through).
       if (req.isQuery) {
         members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
       }
@@ -59,7 +95,7 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       // their own cursor selector — mirroring how Orval/tRPC expose `getNextPageParam` as a
       // call-site option. Defaults (page param value, initialPageParam, and the
       // `meta.{page,lastPage}` selector) are kept so existing output keeps working unchanged.
-      if (req.isGet) {
+      if (req.isGet && !isBinary) {
         const resp = req.responseType;
         // Runtime overrides: any TanStack infinite-query option, spread last so it wins; the
         // three pagination-shaping fields are read explicitly so callers can override just
@@ -78,21 +114,31 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
     },
 
     imports(ctx: ExtensionContext): string[] {
-      const shapes = contracted(ctx).map(requestShape);
-      const hasGet = shapes.some((s) => s.isGet);
+      const routes = contracted(ctx);
+      const shapes = routes.map(requestShape);
       const hasQuery = shapes.some((s) => s.isQuery);
       const hasMutation = shapes.some((s) => !s.isGet);
+      // `infiniteQueryOptions` is imported only when a non-binary GET route
+      // exists — binary (blob) routes never get an infinite-query member (see
+      // buildMembers), so a route set that is entirely binary shouldn't pull it in.
+      const hasInfiniteGet = routes.some(
+        (r, i) => shapes[i]?.isGet && r.contract?.contractSource.binaryResponse !== true,
+      );
 
       const named: string[] = [];
       if (hasQuery) named.push('queryOptions as _queryOptions');
-      if (hasGet) named.push('infiniteQueryOptions as _infiniteQueryOptions');
+      if (hasInfiniteGet) named.push('infiniteQueryOptions as _infiniteQueryOptions');
       if (hasMutation) named.push('mutationOptions as _mutationOptions');
       if (named.length === 0) return [];
       return [`import { ${named.join(', ')} } from '${queryModule}';`];
     },
   };
 
-  return defineExtension({ name: 'tanstack-query', apiClientLayer: layer });
+  return defineExtension({
+    name: 'tanstack-query',
+    apiClientLayer: layer,
+    apiHeader: apiHeaderHook,
+  });
 }
 
 export default tanstackQuery;

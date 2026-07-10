@@ -46,6 +46,16 @@
         "types": "./dist/extension/index.d.cts",
         "default": "./dist/extension/index.cjs"
       }
+    },
+    "./markers": {
+      "import": {
+        "types": "./dist/markers.d.ts",
+        "default": "./dist/markers.js"
+      },
+      "require": {
+        "types": "./dist/markers.d.cts",
+        "default": "./dist/markers.cjs"
+      }
     }
   },
   "sideEffects": ["./dist/nest/index.js", "./dist/nest/index.cjs"],

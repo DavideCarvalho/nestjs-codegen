@@ -34,6 +34,7 @@ function makeConfig(cwd: string, outDir: string): ResolvedConfig {
       description: null,
     },
     mocks: { enabled: false, fileName: 'mocks.ts', seed: 1, baseUrl: '' },
+    driftGuard: true,
   };
 }
 

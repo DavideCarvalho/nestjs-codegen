@@ -2,6 +2,7 @@ import type { DynamicModule, OnApplicationBootstrap, OnModuleDestroy } from '@ne
 import { Inject, Injectable, Logger, Module } from '@nestjs/common';
 import { resolveConfig } from '../config/load-config.js';
 import type { UserConfig } from '../config/types.js';
+import { DriftGuardError } from '../generate-manifest.js';
 import type { Watcher } from '../watch/watcher.js';
 import { watch } from '../watch/watcher.js';
 
@@ -104,11 +105,23 @@ export class NestjsCodegenService implements OnApplicationBootstrap, OnModuleDes
     try {
       const config = resolveConfig(userConfig, cwd ?? process.cwd());
       // Fire-and-forget the initial generate so codegen never blocks time-to-ready;
-      // the watcher (and its lock) are still set up synchronously.
-      this.watcher = await watch(config, undefined, { deferInitialGenerate: true });
+      // the watcher (and its lock) are still set up synchronously. `entryPoint:
+      // 'module'` lets the drift guard (see `driftGuard` in CodegenModuleOptions)
+      // tell this apart from the CLI entry point.
+      this.watcher = await watch(config, undefined, {
+        deferInitialGenerate: true,
+        entryPoint: 'module',
+      });
       this.logger.log(`Watching ${config.contracts.glob} → ${config.codegen.outDir}`);
     } catch (err) {
-      // Never crash app boot because codegen failed to start — log and move on.
+      // Never crash app boot because codegen failed to start. A config-drift
+      // error (CLI and this module resolving to different configs for the same
+      // outDir) is actionable and must be loud (error level), not the generic
+      // best-effort warn other startup failures get.
+      if (err instanceof DriftGuardError) {
+        this.logger.error(err.message);
+        return;
+      }
       this.logger.warn(
         `Codegen watcher failed to start: ${err instanceof Error ? err.message : String(err)}`,
       );

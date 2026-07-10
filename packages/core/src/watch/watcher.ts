@@ -4,6 +4,7 @@ import chokidar from 'chokidar';
 import type { ResolvedConfig } from '../config/types.js';
 import { PersistentDiscovery } from '../discovery/contracts-fast.js';
 import type { RouteDescriptor } from '../discovery/types.js';
+import { DriftGuardError, type EntryPoint } from '../generate-manifest.js';
 import { generate } from '../generate.js';
 import { acquireLock } from './lock-file.js';
 
@@ -24,6 +25,16 @@ export interface WatchOptions {
    * @default false
    */
   deferInitialGenerate?: boolean;
+  /**
+   * Which entry point is running the watcher — threaded through to every
+   * `generate()` call so the drift guard (see `driftGuard` in
+   * {@link import('../config/types.js').UserConfig}) can tell the CLI and the
+   * Nest module apart. The one-shot/`--watch` CLI passes `'cli'` (the
+   * default); `NestjsCodegenModule` passes `'module'`.
+   *
+   * @default 'cli'
+   */
+  entryPoint?: EntryPoint;
 }
 
 /** No-op watcher returned when the lock is already held. */
@@ -47,6 +58,7 @@ export async function watch(
   onChange?: () => void,
   options: WatchOptions = {},
 ): Promise<Watcher> {
+  const entryPoint: EntryPoint = options.entryPoint ?? 'cli';
   const lock = await acquireLock(config.codegen.outDir);
 
   if (lock === null) {
@@ -98,14 +110,23 @@ export async function watch(
     try {
       const initialRoutes = (await getDiscovery()).discover();
       lastRoutes = initialRoutes;
-      await generate(config, initialRoutes);
+      await generate(config, initialRoutes, entryPoint);
     } catch (err) {
+      // A DriftGuardError is NOT a discovery failure — retrying via the pages-only
+      // fallback below would just throw the identical error again and get silently
+      // swallowed by its empty catch. Surface it loudly (console.error, the full
+      // actionable message) and skip this pass instead — never crash the app, but
+      // never hide the drift either.
+      if (err instanceof DriftGuardError) {
+        console.error(err.message);
+        return;
+      }
       // Best-effort; don't crash the watcher on initial generation failure
       console.warn(
         `[nestjs-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
       );
       try {
-        await generate(config, lastRoutes);
+        await generate(config, lastRoutes, entryPoint);
       } catch {
         /* fallback: pages only */
       }
@@ -145,7 +166,7 @@ export async function watch(
       try {
         // Reuse the last-known routes so a pages-only regen never drops the
         // contract-derived api.ts (see lastRoutes declaration).
-        await generate(config, lastRoutes);
+        await generate(config, lastRoutes, entryPoint);
       } catch (err) {
         console.error(
           '[nestjs-codegen] Pages generation failed:',
@@ -192,7 +213,7 @@ export async function watch(
         // options as the initial pass (query / mutationClient / queryImport / fetcher
         // importPath + the validation adapter). Emitting api.ts/forms.ts directly here
         // would silently drop those settings on every contract edit.
-        await generate(config, routes);
+        await generate(config, routes, entryPoint);
       } catch (err) {
         console.error(
           '[nestjs-codegen] Contracts generation failed:',

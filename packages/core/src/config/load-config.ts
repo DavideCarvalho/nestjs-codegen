@@ -185,6 +185,7 @@ function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig
       seed: userConfig.mocks?.seed ?? 1,
       baseUrl: userConfig.mocks?.baseUrl ?? '',
     },
+    driftGuard: userConfig.driftGuard ?? true,
   };
 }
 

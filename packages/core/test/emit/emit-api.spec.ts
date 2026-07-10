@@ -146,7 +146,7 @@ describe('emitApi', () => {
       await emitApi(bareMultipartRoutes, outDir, {});
       const c = await readFile(join(outDir, 'api.ts'), 'utf8');
       expect(c).toContain('body: { file: File | Blob }');
-      expect(c).toContain("body?:");
+      expect(c).toContain('body?:');
       expect(c).toContain('body: input?.body');
       expect(c).toContain('multipart: true');
     });

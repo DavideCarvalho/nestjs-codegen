@@ -92,8 +92,8 @@ describe('runCodegen watch mode (lines 28-36)', () => {
     // The promise should now resolve
     await expect(codegenPromise).resolves.toBeUndefined();
 
-    // Verify watch was called with the config
-    expect(mockWatch).toHaveBeenCalledWith(config);
+    // Verify watch was called with the config, entryPoint: 'cli' (this is the CLI)
+    expect(mockWatch).toHaveBeenCalledWith(config, undefined, { entryPoint: 'cli' });
     // Verify watcher.close() was called
     expect(mockWatcherClose).toHaveBeenCalled();
     // generate should NOT have been called in watch mode
@@ -112,7 +112,7 @@ describe('runCodegen watch mode (lines 28-36)', () => {
 
     await expect(codegenPromise).resolves.toBeUndefined();
 
-    expect(mockWatch).toHaveBeenCalledWith(config);
+    expect(mockWatch).toHaveBeenCalledWith(config, undefined, { entryPoint: 'cli' });
     expect(mockWatcherClose).toHaveBeenCalled();
   });
 
@@ -149,7 +149,7 @@ describe('runCodegen one-shot with tsconfig (line 43)', () => {
       glob: 'src/**/*.controller.ts',
       tsconfig: '/tmp/tsconfig.json',
     });
-    expect(mockGenerate).toHaveBeenCalledWith(config, []);
+    expect(mockGenerate).toHaveBeenCalledWith(config, [], 'cli');
   });
 
   it('does not pass tsconfig when config.app is null', async () => {

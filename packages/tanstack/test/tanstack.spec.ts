@@ -20,7 +20,13 @@ function req(over: Partial<RequestModel> = {}): RequestModel {
   };
 }
 
-const leaf = (r: RequestModel): LeafModel => ({ route: {} as never, request: r, requestExpr: '' });
+const leaf = (r: RequestModel, binaryResponse = false): LeafModel => ({
+  route: (binaryResponse
+    ? { contract: { contractSource: { binaryResponse: true } } }
+    : {}) as never,
+  request: r,
+  requestExpr: '',
+});
 
 function ctxWith(routes: Array<{ method: string; filterFields?: string[] }>): ExtensionContext {
   return {
@@ -89,6 +95,119 @@ describe('tanstackQuery', () => {
       {} as never,
     );
     expect(Object.keys(members)).toEqual(['queryKey', 'queryOptions', 'mutationOptions']);
+  });
+
+  describe('binary (blob) routes', () => {
+    it('binary GET gets queryKey/queryOptions but NOT infiniteQueryOptions', () => {
+      const r = req(); // GET, isQuery: true
+      const members = tanstackQuery().apiClientLayer!.buildMembers(
+        'fetcher.fetchBlob(u, o)',
+        leaf(r, true),
+        {} as never,
+      );
+      expect(Object.keys(members)).toEqual(['queryKey', 'queryOptions']);
+    });
+
+    it('binary POST gets queryKey/mutationOptions only, same as any other non-GET route', () => {
+      const r = req({ method: 'post', isGet: false, isQuery: false, hasBody: true });
+      const members = tanstackQuery().apiClientLayer!.buildMembers(
+        'fetcher.fetchBlob(u, o)',
+        leaf(r, true),
+        {} as never,
+      );
+      expect(Object.keys(members)).toEqual(['queryKey', 'mutationOptions']);
+    });
+
+    it('imports() omits infiniteQueryOptions when every GET route is binary', () => {
+      const layer = tanstackQuery().apiClientLayer!;
+      const ctx: ExtensionContext = {
+        cwd: '',
+        outDir: '',
+        config: {} as never,
+        project: () => {
+          throw new Error('unused');
+        },
+        routes: [
+          {
+            method: 'GET',
+            path: '/x',
+            name: 'x',
+            params: [],
+            contract: {
+              contractSource: { query: null, body: null, response: 'X', binaryResponse: true },
+            },
+          },
+        ] as never,
+      };
+      expect(layer.imports?.(ctx)).toEqual([
+        "import { queryOptions as _queryOptions } from '@tanstack/react-query';",
+      ]);
+    });
+
+    it('imports() still includes infiniteQueryOptions when a non-binary GET route also exists', () => {
+      const layer = tanstackQuery().apiClientLayer!;
+      const ctx: ExtensionContext = {
+        cwd: '',
+        outDir: '',
+        config: {} as never,
+        project: () => {
+          throw new Error('unused');
+        },
+        routes: [
+          {
+            method: 'GET',
+            path: '/x',
+            name: 'x',
+            params: [],
+            contract: {
+              contractSource: { query: null, body: null, response: 'X', binaryResponse: true },
+            },
+          },
+          {
+            method: 'GET',
+            path: '/y',
+            name: 'y',
+            params: [],
+            contract: { contractSource: { query: null, body: null, response: 'Y' } },
+          },
+        ] as never,
+      };
+      expect(layer.imports?.(ctx)).toEqual([
+        "import { queryOptions as _queryOptions, infiniteQueryOptions as _infiniteQueryOptions } from '@tanstack/react-query';",
+      ]);
+    });
+  });
+
+  describe('apiHeader: handleQuery helper', () => {
+    it('is contributed as a top-level statement', () => {
+      const ext = tanstackQuery();
+      const contribution = ext.apiHeader?.({} as never);
+      expect(contribution?.statements?.join('\n')).toContain(
+        'export function handleQuery<TData>(handle: {',
+      );
+    });
+
+    it('wraps a { queryKey, fetch } handle into { queryKey, queryFn }', () => {
+      const ext = tanstackQuery();
+      const source = ext.apiHeader?.({} as never)?.statements?.join('\n') ?? '';
+      // Transpile the emitted TS (an `export function` statement) to CommonJS so it can be
+      // evaluated directly — exercising the actual emitted source, not a hand-copy of it.
+      const js = ts.transpileModule(source, {
+        compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+      }).outputText;
+      const handleQuery = new Function('exports', `${js}\nreturn exports.handleQuery;`)({}) as <
+        TData,
+      >(handle: {
+        queryKey: () => readonly unknown[];
+        fetch: () => Promise<TData>;
+      }) => { queryKey: readonly unknown[]; queryFn: () => Promise<TData> };
+      const result = handleQuery({
+        queryKey: () => ['x'] as const,
+        fetch: () => Promise.resolve('ok'),
+      });
+      expect(result.queryKey).toEqual(['x']);
+      return expect(result.queryFn()).resolves.toBe('ok');
+    });
   });
 
   it('imports only what the routes use, from the configured module', () => {

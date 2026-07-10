@@ -113,6 +113,24 @@ export interface ContractSource {
    * or the inline `body` text — preserving the import when there is one.
    */
   multipartBody?: string | null;
+  /**
+   * True when the route's (Promise-unwrapped) handler return type is a binary
+   * download — NestJS `StreamableFile` or Node `Buffer`. The emitted `response`
+   * becomes `RawResponse<Blob>` (never `Jsonify<...>`) and the generated leaf
+   * issues its request via `fetcher.fetchBlob(...)` instead of the verb method,
+   * so callers get `{ data, status, headers }` — the headers carry
+   * `content-disposition` (download filename) etc. Mutually exclusive with
+   * {@link stream}: `Observable`/`ReadableStream` handlers stay on the SSE path.
+   */
+  binaryResponse?: boolean;
+  /**
+   * True when the handler carries the `@AsQuery()` marker decorator
+   * (`@dudousxd/nestjs-codegen/markers`) — an explicit per-route opt-in marking
+   * a non-GET route (e.g. a POST with a query-shaped payload) as a READ, so
+   * {@link import('../extension/types.js').requestShape} emits `queryOptions`
+   * for it the same way a GET or a filter-search route does.
+   */
+  asQuery?: boolean;
 }
 
 export interface ContractDescriptor {

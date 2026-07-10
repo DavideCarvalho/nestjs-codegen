@@ -265,6 +265,10 @@ function emitFilterQueryType(c: LeafEntry): string {
  * `error`, `body`, or `query`.
  */
 function buildResponseType(c: LeafEntry, outDir: string, serialization: SerializationMode): string {
+  // Binary (blob) routes always resolve to `RawResponse<Blob>` — never `Jsonify<...>`,
+  // and never the controllerRef/response-ref path: the wire shape is a download, not
+  // a JSON body, regardless of what the handler's declared return type resolves to.
+  if (c.contractSource.binaryResponse) return 'RawResponse<Blob>';
   const raw = rawResponseType(c, outDir);
   return serialization === 'json' ? `Jsonify<${raw}>` : raw;
 }
@@ -368,8 +372,13 @@ function emitRouterTypeBlock(
       // SSE/streaming routes carry `stream: true` so `Route.Stream<K>` and the
       // leaf's `stream()` surface can be derived purely from the ApiRouter type.
       const stream = c.contractSource.stream ? 'true' : 'false';
+      // Binary (blob) routes carry `binary: true` so `Route.Binary<K>` and any
+      // consumer introspecting `ApiRouter` can tell a download apart from a
+      // JSON route without inspecting `response` (which is `RawResponse<Blob>`
+      // for every binary route, so it can't distinguish them from each other).
+      const binary = c.contractSource.binaryResponse ? 'true' : 'false';
       lines.push(
-        `${pad}${objKey}: { method: ${safeMethod}; url: ${safeUrl}; params: ${params}; query: ${query}; body: ${body}; response: ${response}; error: ${error}; filterFields: ${filterFields}; stream: ${stream} };`,
+        `${pad}${objKey}: { method: ${safeMethod}; url: ${safeUrl}; params: ${params}; query: ${query}; body: ${body}; response: ${response}; error: ${error}; filterFields: ${filterFields}; stream: ${stream}; binary: ${binary} };`,
       );
     } else {
       lines.push(`${pad}${objKey}: {`);
@@ -442,6 +451,11 @@ function buildRequestModel(c: LeafEntry): RequestModel {
   // Multipart routes (an `@UploadedFile()` handler) signal the fetcher to
   // serialize the body object to a `FormData` instead of JSON.
   if (hasBody && c.contractSource.multipart) optsParts.push('multipart: true');
+  // `fetcher.fetchBlob` defaults to GET; a binary route on any other verb must
+  // say so explicitly so the download actually issues as e.g. POST.
+  if (c.contractSource.binaryResponse && m !== 'get') {
+    optsParts.unshift(`method: ${JSON.stringify(m.toUpperCase())}`);
+  }
   const optsExpr = optsParts.length ? `{ ${optsParts.join(', ')} }` : '{}';
 
   return {
@@ -467,8 +481,14 @@ function buildRequestModel(c: LeafEntry): RequestModel {
  * The neutral fetcher request: a typed call on the injected `fetcher`. Every leaf is built
  * on this; a registered `apiClientLayer` wraps it (e.g. into a TanStack handle), otherwise
  * the leaf is the bare awaitable callable.
+ *
+ * Binary routes (`RawResponse<Blob>`) issue via `fetcher.fetchBlob(...)` instead of the verb
+ * method — the escape hatch that resolves `{ data, status, headers }` (never JSON-parsed,
+ * never `Jsonify`-wrapped) so callers can read `content-disposition` etc. `fetchBlob` isn't
+ * generic over `T` (it's always `Blob`), so no `<...>` type arg is passed, unlike the verb call.
  */
-function renderFetcherRequest(req: RequestModel): string {
+function renderFetcherRequest(req: RequestModel, binaryResponse: boolean): string {
+  if (binaryResponse) return `fetcher.fetchBlob(${req.urlExpr}, ${req.optsExpr})`;
   return `fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, ${req.optsExpr})`;
 }
 
@@ -576,7 +596,7 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiP
     const leaf: LeafModel = {
       route: node.route,
       request: req,
-      requestExpr: renderFetcherRequest(req),
+      requestExpr: renderFetcherRequest(req, node.contractSource.binaryResponse === true),
     };
 
     // Every leaf is an awaitable handle (the __req base). A client layer (TanStack) spreads
@@ -668,6 +688,8 @@ const ROUTE_NAMESPACE: readonly string[] = [
   '  export type FilterFields<K extends string> = ResolveByName<K, "filterFields">;',
   '  /** The streamed element type of an `@Sse()`/streaming route — the type yielded by its `stream()` AsyncIterable. */',
   '  export type Stream<K extends string> = ResolveByName<K, "response">;',
+  '  /** True for a binary/blob route (`StreamableFile`/`Buffer` handler return type). */',
+  '  export type Binary<K extends string> = ResolveByName<K, "binary">;',
   '  export type Request<K extends string> = {',
   '    body: Body<K>;',
   '    query: Query<K>;',
@@ -687,6 +709,7 @@ const PATH_NAMESPACE: readonly string[] = [
   '  export type Error<M extends string, U extends string> = ResolveByPath<M, U, "error">;',
   '  export type FilterFields<M extends string, U extends string> = ResolveByPath<M, U, "filterFields">;',
   '  export type Stream<M extends string, U extends string> = ResolveByPath<M, U, "response">;',
+  '  export type Binary<M extends string, U extends string> = ResolveByPath<M, U, "binary">;',
   '}',
   '',
 ];
@@ -701,6 +724,7 @@ const EMPTY_ROUTE_NAMESPACE: readonly string[] = [
   '  export type Error<K extends string> = never;',
   '  export type FilterFields<K extends string> = never;',
   '  export type Stream<K extends string> = never;',
+  '  export type Binary<K extends string> = never;',
   '  export type Request<K extends string> = { body: never; query: never; params: never };',
   '}',
   '',
@@ -715,6 +739,7 @@ const EMPTY_PATH_NAMESPACE: readonly string[] = [
   '  export type Error<M extends string, U extends string> = never;',
   '  export type FilterFields<M extends string, U extends string> = never;',
   '  export type Stream<M extends string, U extends string> = never;',
+  '  export type Binary<M extends string, U extends string> = never;',
   '}',
   '',
 ];
@@ -817,6 +842,11 @@ function buildApiFile(
   if (serialization === 'json' && contracted.length > 0) {
     lines.push(`import type { Jsonify } from '${runtimeImport}';`);
   }
+  // `RawResponse<Blob>` is the response type for every binary (blob) route —
+  // imported only when at least one route needs it.
+  if (contracted.some((r) => r.contract?.contractSource.binaryResponse)) {
+    lines.push(`import type { RawResponse } from '${runtimeImport}';`);
+  }
 
   // Emit type imports from source files.
   // When two different files export the same type name, alias the duplicate
@@ -860,6 +890,15 @@ function buildApiFile(
     lines.push('');
     lines.push(...EMPTY_ROUTE_NAMESPACE);
     lines.push(...EMPTY_PATH_NAMESPACE);
+    // Extension-contributed top-level statements (e.g. the TanStack layer's `handleQuery`
+    // helper) are NOT route-dependent — they must still be emitted with zero routes,
+    // exactly like the populated path below.
+    for (const ext of headerExts) {
+      const statements = ext.apiHeader?.(ctx)?.statements;
+      if (statements?.length) {
+        lines.push(...statements, '');
+      }
+    }
     return lines.join('\n');
   }
 

@@ -6,6 +6,7 @@ export default defineConfig({
     'cli/main': 'src/cli/main.ts',
     'nest/index': 'src/nest/index.ts',
     'extension/index': 'src/extension/index.ts',
+    markers: 'src/markers.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

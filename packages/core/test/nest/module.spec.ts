@@ -1,6 +1,7 @@
 import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DriftGuardError } from '../../src/generate-manifest.js';
 
 // Mock the watcher so the module never spawns real chokidar watchers in tests.
 const watchMock = vi.fn();
@@ -136,8 +137,12 @@ describe('NestjsCodegenService lifecycle', () => {
     const svc = new NestjsCodegenService({ validation: zodAdapter, cwd: '/tmp' });
     await svc.onApplicationBootstrap();
     expect(watchMock).toHaveBeenCalledTimes(1);
-    const optionsArg = watchMock.mock.calls[0][2] as { deferInitialGenerate?: boolean };
-    expect(optionsArg).toEqual({ deferInitialGenerate: true });
+    const optionsArg = watchMock.mock.calls[0][2] as {
+      deferInitialGenerate?: boolean;
+      entryPoint?: string;
+    };
+    // entryPoint: 'module' lets the drift guard tell the Nest module apart from the CLI.
+    expect(optionsArg).toEqual({ deferInitialGenerate: true, entryPoint: 'module' });
   });
 
   it('starts the watcher with a resolved config in dev', async () => {
@@ -166,5 +171,18 @@ describe('NestjsCodegenService lifecycle', () => {
     watchMock.mockRejectedValueOnce(new Error('boom'));
     const svc = new NestjsCodegenService({ cwd: '/tmp' });
     await expect(svc.onApplicationBootstrap()).resolves.toBeUndefined();
+  });
+
+  it('logs a DriftGuardError at error level (loud, not the generic warn) without crashing boot', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    watchMock.mockRejectedValueOnce(new DriftGuardError('config drift between cli and module'));
+    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    const svc = new NestjsCodegenService({ validation: zodAdapter, cwd: '/tmp' });
+    await expect(svc.onApplicationBootstrap()).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith('config drift between cli and module');
+    expect(warnSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });

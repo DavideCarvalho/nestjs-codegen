@@ -119,6 +119,19 @@ export interface UserConfig {
     /** Base URL prepended to handler paths. Default: `''` (relative paths). */
     baseUrl?: string;
   };
+  /**
+   * Guard against the CLI (`nestjs-codegen.config.ts`) and the Nest module
+   * (`NestjsCodegenModule.forRoot()`) writing the SAME `outDir` from two
+   * different, drifted configs (classic case: `serialization` `'json'` on one
+   * entry point vs `'superjson'` on the other) — which otherwise ping-pongs
+   * `api.ts` between two shapes as each entry point overwrites the other's
+   * output. When both entry points' resolved configs differ, `generate()`
+   * throws before writing anything, naming both entry points and instructing
+   * you to make them read the same config object. Set `false` to opt out.
+   *
+   * @default true
+   */
+  driftGuard?: boolean;
 }
 
 export interface ScopeConfig {
@@ -187,4 +200,5 @@ export interface ResolvedConfig {
   forms: ResolvedFormsConfig;
   openapi: ResolvedOpenApiConfig;
   mocks: ResolvedMocksConfig;
+  driftGuard: boolean;
 }

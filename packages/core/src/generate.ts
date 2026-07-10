@@ -18,6 +18,9 @@ import {
   createExtensionContext,
 } from './extension/registry.js';
 import {
+  DriftGuardError,
+  type EntryPoint,
+  computeConfigHash,
   computeInputsHash,
   isManifestFresh,
   listOutputFiles,
@@ -28,6 +31,18 @@ import { VERSION } from './index.js';
 import { setCodegenDebug } from './util/debug-log.js';
 
 /**
+ * Build the drift-guard error message. Named exactly like the throw site so a
+ * caller catching {@link DriftGuardError} can log/report it verbatim.
+ */
+function driftGuardMessage(
+  outDir: string,
+  previousEntryPoint: EntryPoint,
+  currentEntryPoint: EntryPoint,
+): string {
+  return `[nestjs-codegen] Config drift detected in "${outDir}": the last generate ran from the "${previousEntryPoint}" entry point, this run is from the "${currentEntryPoint}" entry point, and their resolved configs differ (e.g. \`serialization: "json"\` vs \`"superjson"\`). Both entry points must read the SAME config — export a shared config object (e.g. codegen.config.ts) and import it from BOTH nestjs-codegen.config.ts (CLI) and NestjsCodegenModule.forRoot() (Nest module), or set \`driftGuard: false\` on either config to opt out of this check.`;
+}
+
+/**
  * Run one full codegen pass: discover pages, emit pages.d.ts, components.json, index.d.ts.
  * Route discovery is deliberately skipped — it requires spawning a Nest app and is
  * not appropriate for the hot path of a file watcher.
@@ -35,10 +50,14 @@ import { setCodegenDebug } from './util/debug-log.js';
  * Optionally accepts pre-discovered routes (e.g. from a full generate + route-discovery pass).
  * When routes are present, emits routes.ts.
  * When routes with contracts are present, also emits api.ts.
+ *
+ * `entryPoint` identifies which caller is running — the CLI or the Nest module — and is
+ * recorded in the manifest for the {@link DriftGuardError} check below.
  */
 export async function generate(
   config: ResolvedConfig,
   inputRoutes: RouteDescriptor[] = [],
+  entryPoint: EntryPoint = 'cli',
 ): Promise<void> {
   // Gate the schema-translation advisory chatter for this pass (off by default).
   setCodegenDebug(config.debug);
@@ -53,6 +72,28 @@ export async function generate(
   if (await isManifestFresh(config.codegen.outDir, manifest, inputsHash)) {
     console.log(`[nestjs-codegen] ${config.codegen.outDir} up to date, skipped`);
     return;
+  }
+
+  // Drift guard: the CLI and the Nest module can both target the same `outDir`
+  // from independently-resolved configs. If the last generate ran from a
+  // DIFFERENT entry point than this one AND the resolved configs actually
+  // differ, refuse to overwrite — this is the ping-pong-churn case (e.g. one
+  // entry point set `serialization: 'superjson'`, the other left the default
+  // `'json'`). Same entry point (a normal config edit) or same configHash
+  // (harmless cross-entry-point agreement) both proceed as usual; the manifest
+  // written at the end of this run always updates `entryPoint`/`configHash` to
+  // the current run's values.
+  const configHash = computeConfigHash(config);
+  if (
+    config.driftGuard &&
+    manifest?.entryPoint &&
+    manifest.entryPoint !== entryPoint &&
+    manifest.configHash &&
+    manifest.configHash !== configHash
+  ) {
+    throw new DriftGuardError(
+      driftGuardMessage(config.codegen.outDir, manifest.entryPoint, entryPoint),
+    );
   }
 
   // Extensions: run transformRoutes (chained) before any emit so routes.ts/api.ts/
@@ -141,6 +182,8 @@ export async function generate(
   await writeManifest(config.codegen.outDir, {
     version: VERSION,
     hash: inputsHash,
+    entryPoint,
+    configHash,
     files: outputFiles,
   });
 }

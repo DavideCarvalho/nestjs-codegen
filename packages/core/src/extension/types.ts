@@ -100,8 +100,9 @@ export interface RequestModel {
   routeName: string;
   method: 'get' | 'post' | 'put' | 'patch' | 'delete';
   isGet: boolean;
-  /** True for reads: a GET, or a filter-search route (has `filterFields`) even when POST.
-   *  Client layers use this (not `isGet`) to decide query vs mutation helpers. */
+  /** True for reads: a GET, a filter-search route (has `filterFields`), or an
+   *  `@AsQuery()`-marked route — even when the method is POST. Client layers
+   *  use this (not `isGet`) to decide query vs mutation helpers. */
   isQuery: boolean;
   hasParams: boolean;
   hasBody: boolean;
@@ -178,7 +179,10 @@ export interface RequestShape {
 export function requestShape(route: RouteDescriptor): RequestShape {
   const cs = route.contract?.contractSource;
   const isGet = route.method.toUpperCase() === 'GET';
-  const isQuery = isGet || !!cs?.filterFields?.length;
+  // A route counts as a read when it's a GET, a filter-search POST (carries
+  // `filterFields`), or explicitly opted in via `@AsQuery()` (`cs.asQuery`) —
+  // e.g. a POST whose semantics are a read (a query-shaped payload).
+  const isQuery = isGet || !!cs?.filterFields?.length || !!cs?.asQuery;
   const hasBody = !!cs?.bodyRef || (cs?.body != null && cs.body !== 'never');
   const hasQuery = isGet || !!cs?.queryRef || (cs?.query != null && cs.query !== 'never');
   return { isGet, isQuery, hasBody, hasQuery };

@@ -23,7 +23,7 @@ export async function runCodegen(opts: RunCodegenOptions = {}): Promise<void> {
   const config = await loadConfig(cwd);
 
   if (opts.watch) {
-    const watcher = await watch(config);
+    const watcher = await watch(config, undefined, { entryPoint: 'cli' });
 
     await new Promise<void>((resolve) => {
       function onSignal() {
@@ -42,6 +42,6 @@ export async function runCodegen(opts: RunCodegenOptions = {}): Promise<void> {
     ...(config.app?.tsconfig ? { tsconfig: config.app.tsconfig } : {}),
   });
 
-  await generate(config, routes);
+  await generate(config, routes, 'cli');
   console.log('✓ Codegen generated artifacts in', config.codegen.outDir);
 }

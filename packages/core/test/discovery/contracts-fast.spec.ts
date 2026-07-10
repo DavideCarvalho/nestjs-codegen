@@ -912,11 +912,12 @@ describe('discoverContractsFast — utility type preservation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// StreamableFile → unknown (no contract, since response=unknown + no body/query)
+// StreamableFile / Buffer → binaryResponse: true (a route by itself, even with
+// no body/query/params — the binary flag alone is enough to carry a contract)
 // ---------------------------------------------------------------------------
 
-describe('discoverContractsFast — StreamableFile maps to unknown', () => {
-  it('resolves StreamableFile return type to unknown, resulting in no contract', async () => {
+describe('discoverContractsFast — StreamableFile is a binary response', () => {
+  it('flags the route binaryResponse: true and still resolves response to unknown', async () => {
     const routes = await discoverContractsFast({
       cwd: fixturesDir,
       glob: 'stream.controller.ts',
@@ -925,11 +926,14 @@ describe('discoverContractsFast — StreamableFile maps to unknown', () => {
     expect(routes).toHaveLength(1);
     const route = routes[0];
     expect(route?.name).toBe('stream.download');
-    // StreamableFile resolves to 'unknown' which, with no body/query, means no contract
     expect(route?.contract).toBeDefined();
+    // response itself still resolves to 'unknown' — the emitter overrides it to
+    // `RawResponse<Blob>` purely off the `binaryResponse` flag (emit-api.ts).
+    expect(route?.contract?.contractSource.response).toBe('unknown');
+    expect(route?.contract?.contractSource.binaryResponse).toBe(true);
   });
 
-  it('StreamableFile is treated as a server-only type via extractDtoContract', () => {
+  it('extractDtoContract flags binaryResponse for a StreamableFile handler', () => {
     const project = new Project({
       skipAddingFilesFromTsConfig: true,
       skipLoadingLibFiles: true,
@@ -947,10 +951,77 @@ describe('discoverContractsFast — StreamableFile maps to unknown', () => {
     );
     const cls = sf.getClassOrThrow('TestController');
     const method = cls.getMethodOrThrow('download');
-    // extractDtoContract returns null because the resolved response is 'unknown'
-    // and there's no body/query/params
+    // A StreamableFile-returning handler now carries a contract (previously
+    // null: response resolved to 'unknown' and there was nothing else to emit).
     const result = extractDtoContract(method, sf, project);
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result?.binaryResponse).toBe(true);
+  });
+
+  it('flags binaryResponse for a Promise<StreamableFile> handler', () => {
+    const project = new Project({
+      skipAddingFilesFromTsConfig: true,
+      skipLoadingLibFiles: true,
+      skipFileDependencyResolution: true,
+      compilerOptions: { strict: false },
+    });
+    const sf = project.createSourceFile(
+      'test-stream-async.ts',
+      `
+      class StreamableFile {}
+      class TestController {
+        async download(): Promise<StreamableFile> { return {} as any; }
+      }
+    `,
+    );
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('download');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.binaryResponse).toBe(true);
+  });
+
+  it('flags binaryResponse for a Buffer handler', () => {
+    const project = new Project({
+      skipAddingFilesFromTsConfig: true,
+      skipLoadingLibFiles: true,
+      skipFileDependencyResolution: true,
+      compilerOptions: { strict: false },
+    });
+    const sf = project.createSourceFile(
+      'test-buffer.ts',
+      `
+      class TestController {
+        download(): Buffer { return {} as any; }
+      }
+    `,
+    );
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('download');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.binaryResponse).toBe(true);
+  });
+
+  it('does NOT flag binaryResponse for an Observable handler (SSE/stream stays on its own path)', () => {
+    const project = new Project({
+      skipAddingFilesFromTsConfig: true,
+      skipLoadingLibFiles: true,
+      skipFileDependencyResolution: true,
+      compilerOptions: { strict: false },
+    });
+    const sf = project.createSourceFile(
+      'test-observable.ts',
+      `
+      class Observable<T> {}
+      class TestController {
+        ticks(): Observable<{ count: number }> { return {} as any; }
+      }
+    `,
+    );
+    const cls = sf.getClassOrThrow('TestController');
+    const method = cls.getMethodOrThrow('ticks');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.binaryResponse).toBeFalsy();
+    expect(result?.stream).toBe(true);
   });
 });
 

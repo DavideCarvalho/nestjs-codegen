@@ -668,6 +668,35 @@ const STREAM_CONTAINERS_GENERATOR = new Set(['AsyncGenerator']);
 /** NestJS SSE event-envelope whose `.data` (first type arg) is the real payload. */
 const STREAM_ENVELOPES = new Set(['MessageEvent', 'MessageEventLike']);
 
+// ---------------------------------------------------------------------------
+// Binary (blob) response detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Handler return types (after unwrapping a leading `Promise<>`) that signal a
+ * binary download rather than a JSON body: NestJS `StreamableFile` (the
+ * standard file-download return type) and Node's `Buffer`. Deliberately NOT
+ * `Observable`/`ReadableStream` — those stay on the existing SSE/stream path
+ * (see {@link detectStreamElement}), which has different client semantics
+ * (an `AsyncIterable`, not a single downloaded blob).
+ */
+const BINARY_RESPONSE_TYPES = new Set(['StreamableFile', 'Buffer']);
+
+/**
+ * Whether a handler's (`Promise`-unwrapped) return type is a binary/blob
+ * response — `StreamableFile` or `Buffer`. Matched by bare identifier name
+ * (same least-magic approach as {@link detectStreamElement}), so it works
+ * whether the type is actually imported from `@nestjs/common` or declared
+ * locally in a test fixture.
+ */
+function detectBinaryResponse(method: MethodDeclaration): boolean {
+  const node = unwrapNamedContainer(method.getReturnTypeNode(), new Set(['Promise']));
+  if (!node || !Node.isTypeReference(node)) return false;
+  const typeName = node.getTypeName();
+  const name = Node.isIdentifier(typeName) ? typeName.getText() : '';
+  return BINARY_RESPONSE_TYPES.has(name);
+}
+
 /**
  * The streamed element type-node of an SSE/streaming handler, or null when the
  * route is not a stream. The signal (least-magic, fully static): a `@Sse()`
@@ -702,6 +731,18 @@ function streamContainerElement(node: TypeNode | undefined): TypeNode | null {
     return node.getTypeArguments()[0] ?? null;
   }
   return null;
+}
+
+/**
+ * Whether a handler carries the `@AsQuery()` marker decorator (from
+ * `@dudousxd/nestjs-codegen/markers`). Purely a static AST signal — the
+ * decorator is a runtime no-op — so matching is by bare decorator name, the
+ * same approach `extractUploadedFiles` uses for `@UploadedFile`/`@UploadedFiles`.
+ * Marks a non-GET route (e.g. a POST whose semantics are a READ) so codegen
+ * emits `queryOptions` for it via {@link import('../extension/types.js').requestShape}.
+ */
+function hasAsQueryDecorator(method: MethodDeclaration): boolean {
+  return method.getDecorators().some((d) => d.getName() === 'AsQuery');
 }
 
 /** Unwrap `node` once if it is one of `names` (a single-arg generic), else return as-is. */
@@ -746,6 +787,8 @@ export function extractDtoContract(
   stream?: boolean;
   multipart?: boolean;
   multipartBody?: string | null;
+  binaryResponse?: boolean;
+  asQuery?: boolean;
 } | null {
   let body = extractBodyType(method, sourceFile, project);
   const filterInfo = extractApplyFilterInfo(method, sourceFile, project);
@@ -760,6 +803,13 @@ export function extractDtoContract(
   // ── SSE / streaming: the streamed element type replaces `response` ──────────
   const streamElement = detectStreamElement(method);
   const isStream = streamElement !== null;
+
+  // ── Binary (blob) response: StreamableFile/Buffer, never a stream ───────────
+  const binaryResponse = detectBinaryResponse(method);
+
+  // ── @AsQuery(): explicit per-route opt-in for a non-GET READ (e.g. a POST
+  // whose semantics are a query) — see requestShape() in extension/types.ts.
+  const asQuery = hasAsQueryDecorator(method);
 
   // Place filter type on the correct field based on @ApplyFilter source. The
   // body-source case still pre-renders a fixed `FilterQueryResult` here; the
@@ -791,7 +841,9 @@ export function extractDtoContract(
     errorInfo === null &&
     filterInfo === null &&
     !isStream &&
-    !uploads.multipart
+    !uploads.multipart &&
+    !binaryResponse &&
+    !asQuery
   ) {
     return null;
   }
@@ -892,6 +944,8 @@ export function extractDtoContract(
     stream: isStream,
     multipart: uploads.multipart,
     multipartBody,
+    binaryResponse,
+    asQuery,
   };
 }
 

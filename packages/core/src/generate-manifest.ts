@@ -12,15 +12,52 @@ export const MANIFEST_FILE = '.codegen-manifest.json';
 const LOCK_FILE = '.watcher.lock';
 
 /**
+ * Which entry point produced a generate pass: the one-shot/`--watch` CLI
+ * (reads `nestjs-codegen.config.ts` from disk), or the Nest module
+ * (`NestjsCodegenModule.forRoot()`, options passed in-process). Recorded in
+ * the manifest so {@link CodegenManifest.configHash} drift between the two can
+ * be detected — see {@link DriftGuardError}.
+ */
+export type EntryPoint = 'cli' | 'module';
+
+/**
+ * Thrown by `generate()` when the drift guard (see `driftGuard` in
+ * {@link import('./config/types.js').UserConfig}) detects that the CLI and the
+ * Nest module are writing the same `outDir` from two different resolved
+ * configs. Distinguished from a generic `Error` so callers (the watcher's
+ * initial-pass fallback) can single it out instead of treating it as a
+ * transient discovery failure to retry.
+ */
+export class DriftGuardError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DriftGuardError';
+  }
+}
+
+/**
  * Persisted record of the last successful generate, written to
  * `<outDir>/.codegen-manifest.json`. Used to skip regeneration when nothing
- * relevant changed (see {@link isManifestFresh}).
+ * relevant changed (see {@link isManifestFresh}), and to detect CLI↔module
+ * config drift (see {@link DriftGuardError}).
  */
 export interface CodegenManifest {
   /** Lib version that produced the output. A lib upgrade invalidates the manifest. */
   version: string;
   /** Content hash over all generate inputs (source files + resolved config + version). */
   hash: string;
+  /**
+   * Which entry point produced this manifest. Absent on manifests written before
+   * this field existed — treated as "unknown", which never trips the drift guard.
+   */
+  entryPoint?: EntryPoint;
+  /**
+   * Hash of ONLY the serialized resolved config (not source files / version) —
+   * a narrower signal than {@link hash}, used to tell "same config, different
+   * entry point" (fine) apart from "different config" (drift) regardless of
+   * unrelated source-file changes. Absent on pre-drift-guard manifests.
+   */
+  configHash?: string;
   /** Generated output files, relative to `outDir`, recorded after the last run. */
   files: string[];
 }
@@ -28,7 +65,13 @@ export interface CodegenManifest {
 interface ManifestShape {
   version: string;
   hash: string;
+  entryPoint?: EntryPoint;
+  configHash?: string;
   files: string[];
+}
+
+function isEntryPoint(value: unknown): value is EntryPoint {
+  return value === 'cli' || value === 'module';
 }
 
 function isManifestShape(value: unknown): value is ManifestShape {
@@ -36,6 +79,8 @@ function isManifestShape(value: unknown): value is ManifestShape {
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.version !== 'string') return false;
   if (typeof candidate.hash !== 'string') return false;
+  if (candidate.entryPoint !== undefined && !isEntryPoint(candidate.entryPoint)) return false;
+  if (candidate.configHash !== undefined && typeof candidate.configHash !== 'string') return false;
   if (!Array.isArray(candidate.files)) return false;
   return candidate.files.every((entry) => typeof entry === 'string');
 }
@@ -105,10 +150,27 @@ export async function readManifest(outDir: string): Promise<CodegenManifest | nu
     const raw = await readFile(join(outDir, MANIFEST_FILE), 'utf8');
     const parsed: unknown = JSON.parse(raw);
     if (!isManifestShape(parsed)) return null;
-    return { version: parsed.version, hash: parsed.hash, files: parsed.files };
+    return {
+      version: parsed.version,
+      hash: parsed.hash,
+      ...(parsed.entryPoint ? { entryPoint: parsed.entryPoint } : {}),
+      ...(parsed.configHash ? { configHash: parsed.configHash } : {}),
+      files: parsed.files,
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * Hash of ONLY the serialized resolved config — narrower than
+ * {@link computeInputsHash} (which also folds in source-file contents and the
+ * lib version). Used by the drift guard to tell "same config, different entry
+ * point" apart from an actual config divergence between the CLI and the Nest
+ * module, independent of unrelated source-file edits.
+ */
+export function computeConfigHash(config: ResolvedConfig): string {
+  return createHash('sha256').update(serializeConfig(config)).digest('hex');
 }
 
 /** Write the manifest to `outDir`. */

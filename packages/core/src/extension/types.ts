@@ -183,7 +183,12 @@ export function requestShape(route: RouteDescriptor): RequestShape {
   // `filterFields`), or explicitly opted in via `@AsQuery()` (`cs.asQuery`) —
   // e.g. a POST whose semantics are a read (a query-shaped payload).
   const isQuery = isGet || !!cs?.filterFields?.length || !!cs?.asQuery;
-  const hasBody = !!cs?.bodyRef || (cs?.body != null && cs.body !== 'never');
+  // `multipart` implies a body even when the route has no `@Body()` at all (a bare
+  // `@UploadedFile()` route): the type block intersects `multipartBody` into the body
+  // type, so the runtime leaf must accept and forward it too — otherwise the ApiRouter
+  // type promises `body: { file: File | Blob }` while the generated call silently
+  // drops the file.
+  const hasBody = !!cs?.bodyRef || (cs?.body != null && cs.body !== 'never') || !!cs?.multipart;
   const hasQuery = isGet || !!cs?.queryRef || (cs?.query != null && cs.query !== 'never');
   return { isGet, isQuery, hasBody, hasQuery };
 }

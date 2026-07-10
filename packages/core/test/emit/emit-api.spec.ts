@@ -121,6 +121,36 @@ describe('emitApi', () => {
       expect(c).toContain('body: ({ type: string }) & { file: File | Blob }');
     });
 
+    it('a BARE @UploadedFile route (no @Body at all) still emits body + multipart', async () => {
+      // Regression: requestShape.hasBody ignored `multipart`, so a route whose only body
+      // is the file (body null/'never') emitted a leaf with no body param and no multipart
+      // flag — the ApiRouter type promised { file: File | Blob } while the generated call
+      // silently dropped the file.
+      const bareMultipartRoutes: RouteDescriptor[] = [
+        {
+          method: 'POST',
+          path: '/bulk-upload',
+          name: 'files.bulkUpload',
+          params: [],
+          contract: {
+            contractSource: {
+              query: null,
+              body: null,
+              multipartBody: '{ file: File | Blob }',
+              response: '{ ok: boolean }',
+              multipart: true,
+            },
+          },
+        },
+      ];
+      await emitApi(bareMultipartRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('body: { file: File | Blob }');
+      expect(c).toContain("body?:");
+      expect(c).toContain('body: input?.body');
+      expect(c).toContain('multipart: true');
+    });
+
     it('intersects the file field onto a named bodyRef (preserving the import)', async () => {
       const multipartRoutes: RouteDescriptor[] = [
         {

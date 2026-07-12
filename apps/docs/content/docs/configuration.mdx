@@ -30,6 +30,7 @@ export default defineConfig({
   forms: { enabled: true, watch: 'src/**/*.dto.ts' },
 
   serialization: 'json',             // 'json' (default) | 'superjson'
+  driftGuard: true,                  // throw instead of silently overwriting on CLI↔module config drift
 
   // ── Inertia only (omit for a plain NestJS API) ──────────────────
   pages: { glob: 'resources/pages/**/*.tsx' },
@@ -73,6 +74,11 @@ export default defineConfig({
       type: "'json' | 'superjson'",
       default: "'json'",
     },
+    driftGuard: {
+      description: "Guard against the CLI (nestjs-codegen.config.ts) and the Nest module (NestjsCodegenModule.forRoot()) writing the same outDir from two genuinely different resolved configs (e.g. serialization: 'json' vs 'superjson') — generate() throws a DriftGuardError before writing anything instead of silently overwriting. Set false to opt out. See Drift guard below.",
+      type: 'boolean',
+      default: 'true',
+    },
   }}
 />
 
@@ -81,3 +87,18 @@ export default defineConfig({
   `createApi(fetcher)` factory — you inject the fetcher (with its baseUrl, transport,
   and transformer) at runtime. See [API client](/docs/client/api-client).
 </Callout>
+
+## Drift guard
+
+The CLI and the Nest module can each independently resolve the config and target the same
+`codegen.outDir` — if they genuinely disagree (e.g. one sets `serialization: 'superjson'`,
+the other leaves the default `'json'`), each run used to silently overwrite the other's
+`api.ts` shape. `generate()` now records which entry point (`'cli'` or `'module'`) produced a
+run, plus a hash of its resolved config, in the manifest (`<outDir>/.codegen-manifest.json`).
+When a run's entry point AND config hash both differ from the last recorded ones, it throws a
+`DriftGuardError` before writing anything, naming both entry points.
+
+A normal config edit (same entry point) or two entry points that happen to resolve the same
+config both proceed as usual. The actual fix is a single source of truth — share one config
+object and import it into both `nestjs-codegen.config.ts` and `forRoot()`, as shown above —
+or set `driftGuard: false` on either config to opt out of the check entirely.

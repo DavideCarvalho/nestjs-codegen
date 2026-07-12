@@ -44,6 +44,20 @@ The validation IR (`SchemaNode`/`SchemaModule`), the `ValidationAdapter` interfa
 the discovery types (`RouteDescriptor`, `ContractSource`) are all exported for building
 your own tooling or adapters.
 
+## Markers subpath
+
+`@dudousxd/nestjs-codegen/markers` is a separate, zero-dependency entry point — no ts-morph,
+no CLI/Nest-module machinery — for decorators that are pure runtime no-ops, detected by
+codegen's static AST scan instead of `reflect-metadata`:
+
+```ts
+import { AsQuery } from '@dudousxd/nestjs-codegen/markers';
+```
+
+`AsQuery()` marks a non-GET route whose semantics are a read, so the generated client treats
+it like a GET for query purposes. See
+[TanStack Query](/docs/client/tanstack-query#asquery-treating-a-non-get-route-as-a-read).
+
 ## emit-api options
 
 `emitApi(routes, outDir, opts)` accepts:

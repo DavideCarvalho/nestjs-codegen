@@ -76,3 +76,51 @@ function Users() {
 Each handle builds a real `queryOptions`/`mutationOptions` object, so you compose it with
 your own `onSuccess`, `select`, `staleTime`, etc. — and `queryKey()` derives a stable key
 from the route name + input for you.
+
+## `@AsQuery()` — treating a non-GET route as a read
+
+GET routes (and [filter-search](/docs/integrations/filters) routes) get `queryOptions()`; every
+other method gets `mutationOptions()`. If a route's semantics are actually a read — e.g. a
+`POST` that accepts a query-shaped payload too large or complex for a query string — mark it
+with the `@AsQuery()` marker and it's treated like a GET for TanStack purposes too:
+
+```ts
+import { AsQuery } from '@dudousxd/nestjs-codegen/markers';
+
+@Controller('reports')
+class ReportsController {
+  @Post('search')
+  @AsQuery()
+  search(@Body() body: SearchDto) { /* … */ }
+}
+```
+
+```tsx
+const results = useQuery(api.reports.search({ body }).queryOptions());
+```
+
+`@AsQuery()` is a runtime no-op — codegen detects it statically via an AST scan, not
+`reflect-metadata` — so importing it from the zero-dependency `/markers` subpath has no
+runtime cost and no effect outside the generated client. See [Programmatic API](/docs/reference#markers-subpath).
+
+## Picking between handles dynamically (`handleQuery`)
+
+Spreading a ternary of two different `.queryOptions()` calls into `useQuery` breaks the
+overload — the two branches' generic instantiations don't unify. `handleQuery`, exported from
+the generated `api.ts` whenever the TanStack extension is registered, widens any
+`{ queryKey, fetch }`-shaped handle (every leaf has both) into the plain
+`{ queryKey, queryFn }` pair `useQuery` accepts directly:
+
+```tsx
+import { useQuery } from '@tanstack/react-query';
+import { api, handleQuery } from '../lib/api';
+
+const handle = isDraft ? api.reports.draft({ params }) : api.reports.published({ params });
+const results = useQuery(handleQuery(handle));
+```
+
+<Callout type="info">
+  `handleQuery` is a helper for you to call at the `useQuery` call site — nothing generated
+  calls it for you, and it's emitted regardless of how many routes you have as long as the
+  TanStack extension is active.
+</Callout>

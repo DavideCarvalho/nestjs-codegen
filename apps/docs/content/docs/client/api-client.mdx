@@ -41,6 +41,73 @@ const created = await api.users.create({ body: { email: 'a@b.com', password: 'se
 Awaiting the same handle twice is memoized (one network call). It also exposes
 `.fetch()`/`.catch()`/`.finally()` if you'd rather not `await` directly.
 
+## File uploads (multipart/form-data)
+
+A handler that accepts `@UploadedFile()` / `@UploadedFiles()` behind a Multer interceptor is
+discovered as a **multipart** route. The uploaded-file field(s) are merged into the route's
+`body` type — `File | Blob` in the browser, never the server-side `Express.Multer.File` —
+and the generated call passes `multipart: true` to the fetcher, which serializes `body` as
+`FormData` instead of JSON:
+
+```ts title="Controller"
+@Post('avatar')
+@UseInterceptors(FileInterceptor('file'))
+uploadAvatar(@UploadedFile() file: Express.Multer.File, @Body() body: UpdateAvatarDto) { /* … */ }
+```
+
+```ts title="Client"
+const updated = await api.users.uploadAvatar({
+  body: { ...fields, file: selectedFile }, // sent as FormData, not JSON
+});
+```
+
+The field name(s) and arity come from the Multer interceptor:
+
+| Interceptor | Body field |
+| --- | --- |
+| `FileInterceptor('file')` | `file: File \| Blob` |
+| `FilesInterceptor('files')` | `files: Array<File \| Blob>` |
+| `FileFieldsInterceptor([{ name: 'a' }, { name: 'b' }])` | `a: Array<File \| Blob>; b: Array<File \| Blob>` |
+| `AnyFilesInterceptor()` | flagged multipart (no statically known field names) |
+
+A bare `@UploadedFile()` with no `@Body()` DTO at all is still a fully typed multipart
+route — the uploaded field alone is enough for the generated call to require and send a body.
+
+<Callout type="info">
+  Each own-property of `body` becomes a form field: scalars as strings, `Date` as ISO,
+  `File`/`Blob` values (and arrays of them) as file parts. `fetcher.fetchRaw`/`fetchBlob`
+  accept `onUploadProgress` if you need upload progress — honored by `axiosTransport`,
+  ignored by the native-`fetch` transport.
+</Callout>
+
+## Binary responses (downloads)
+
+A handler that returns NestJS's `StreamableFile`, a Node `Buffer`, or `Promise<StreamableFile>`
+is discovered as a **binary response**. Its `response` type is never wrapped in
+`Jsonify<...>` — instead it's `RawResponse<Blob>`, and the call goes through
+`fetcher.fetchBlob(...)` instead of the verb method, so you get back `{ data, status, headers }`
+(`data` is a `Blob`; `headers` lets you read `content-disposition` for the original filename):
+
+```ts title="Controller"
+@Get(':id/download')
+download(@Param('id') id: string): StreamableFile { /* … */ }
+```
+
+```ts title="Client"
+const { data, headers } = await api.files.download({ params: { id } });
+// data: Blob — headers['content-disposition'] carries the filename.
+```
+
+Binary routes work on any HTTP method — `fetchBlob` defaults to `GET`, so a binary route on
+another verb passes its method explicitly. `Observable`/`ReadableStream` handlers are
+unaffected — they stay on the existing SSE/stream path (`fetcher.sse`).
+
+<Callout type="info">
+  A binary GET route still gets `queryOptions()` from the
+  [TanStack extension](/docs/client/tanstack-query), but never `infiniteQueryOptions()` —
+  a download isn't paginated data.
+</Callout>
+
 ## Response types & serialization
 
 By default the generated `response` type reflects the **JSON wire shape**, not the

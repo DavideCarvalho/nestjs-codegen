@@ -42,3 +42,68 @@ from `@inertiajs/react` for this helper; without the extension it isn't imported
   The pages typing augments `@dudousxd/nestjs-inertia`'s `InertiaPages` interface, so
   `inertia.render('Users/Index', props)` is checked against the discovered page props.
 </Callout>
+
+## Shared props
+
+By default, the codegen statically analyzes `InertiaModule.forRoot({ share })` in
+`app.moduleEntry` and augments `InertiaSharedProps` (declaration-merged into
+`@dudousxd/nestjs-inertia`) directly in `pages.d.ts`. That works as long as `share` is a
+plain function whose return type can be resolved from that one call site.
+
+When shared props are registered per-request instead — e.g. `req.inertia.share(...)` in
+middleware, which the static analysis above can't see — pass `shared` to
+`nestjsInertiaCodegen()` to declare the source **explicitly**:
+
+```ts title="nestjs-codegen.config.ts"
+extensions: [
+  nestjsInertiaCodegen({
+    shared: { module: 'src/middleware/inertia-share', export: 'buildSharedProps', kind: 'function' },
+  }),
+],
+```
+
+This emits a standalone `shared.ts` re-exporting a type-only `InertiaSharedProps`, so no
+runtime import of server code leaks into the frontend build:
+
+- `kind: 'function'` — the export is a factory (e.g. the `share()` callback); the type is
+  `Awaited<ReturnType<typeof theExport>>`.
+- `kind: 'type'` — the export IS the shape, a `type` alias or `interface`.
+
+Codegen throws an actionable error if `module` doesn't resolve to a file, or `export` doesn't
+exist in it (or doesn't look like the declared `kind`) — a broken `shared.ts` import would
+otherwise surface far from its cause, as a confusing type error in the frontend build.
+
+## Excluding pages from the API prefix
+
+If you call `setGlobalPrefix('api', { exclude })`, a hand-maintained exclude list is easy to
+let drift out of sync with your actual Inertia pages. Pass `pageExcludes: true` to generate it
+instead:
+
+```ts title="nestjs-codegen.config.ts"
+extensions: [nestjsInertiaCodegen({ pageExcludes: true })],
+```
+
+This scans `contracts.glob` for `@Inertia`-decorated, HTTP-method-decorated controller
+methods and emits a framework-free `page-excludes.ts`:
+
+```ts title="src/generated/page-excludes.ts"
+export const inertiaPageExcludes = [
+  { path: '/users', method: 'GET' },
+  { path: '/users/:id', method: 'GET' },
+] as const;
+```
+
+```ts title="src/main.ts"
+import { inertiaPageExcludes } from './generated/page-excludes';
+
+app.setGlobalPrefix('api', { exclude: inertiaPageExcludes });
+```
+
+Throws if zero `@Inertia` pages are found under `contracts.glob` — an empty list almost
+always means the glob doesn't reach your view controllers.
+
+<Callout type="warn">
+  Both `shared` and `pageExcludes` are additive and independently opt-in. Calling
+  `nestjsInertiaCodegen()` with no arguments is unchanged — no extra files, only the
+  `navigate()` header contribution described above.
+</Callout>

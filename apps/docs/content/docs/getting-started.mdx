@@ -107,6 +107,12 @@ git diff --exit-code src/generated   # non-zero if the client is stale
 ```
 
 <Callout type="info">
+  If dev and CI ever resolve genuinely *different* configs for the same `outDir`, `generate()`
+  throws instead of silently overwriting the other's output — see
+  [Drift guard](/docs/configuration#drift-guard).
+</Callout>
+
+<Callout type="info">
   `pages` is **Inertia-only** and optional — add it only if you build a NestJS +
   Inertia app (see [nestjs-inertia](/docs/integrations/inertia)). A plain NestJS API needs just
   `contracts` + `codegen`.

@@ -21,7 +21,9 @@ import {
   DriftGuardError,
   type EntryPoint,
   computeConfigHash,
+  computeConfigKeyHashes,
   computeInputsHash,
+  diffConfigKeyHashes,
   isManifestFresh,
   listOutputFiles,
   readManifest,
@@ -38,8 +40,15 @@ function driftGuardMessage(
   outDir: string,
   previousEntryPoint: EntryPoint,
   currentEntryPoint: EntryPoint,
+  differingKeys: string[],
 ): string {
-  return `[nestjs-codegen] Config drift detected in "${outDir}": the last generate ran from the "${previousEntryPoint}" entry point, this run is from the "${currentEntryPoint}" entry point, and their resolved configs differ (e.g. \`serialization: "json"\` vs \`"superjson"\`). Both entry points must read the SAME config — export a shared config object (e.g. codegen.config.ts) and import it from BOTH nestjs-codegen.config.ts (CLI) and NestjsCodegenModule.forRoot() (Nest module), or set \`driftGuard: false\` on either config to opt out of this check.`;
+  // Older manifests carry no per-key hashes, so the differing keys can be
+  // unknown — name them when we can, and never guess when we can't.
+  const differ =
+    differingKeys.length > 0
+      ? `their resolved configs differ at: ${differingKeys.map((key) => `\`${key}\``).join(', ')}`
+      : 'their resolved configs differ (re-run after this generate records per-key hashes to see which keys)';
+  return `[nestjs-codegen] Config drift detected in "${outDir}": the last generate ran from the "${previousEntryPoint}" entry point, this run is from the "${currentEntryPoint}" entry point, and ${differ}. Both entry points must read the SAME config — export a shared config object (e.g. codegen.config.ts) and import it from BOTH nestjs-codegen.config.ts (CLI) and NestjsCodegenModule.forRoot() (Nest module), or set \`driftGuard: false\` on either config to opt out of this check.`;
 }
 
 /**
@@ -84,6 +93,7 @@ export async function generate(
   // written at the end of this run always updates `entryPoint`/`configHash` to
   // the current run's values.
   const configHash = computeConfigHash(config);
+  const configKeyHashes = computeConfigKeyHashes(config);
   if (
     config.driftGuard &&
     manifest?.entryPoint &&
@@ -92,7 +102,16 @@ export async function generate(
     manifest.configHash !== configHash
   ) {
     throw new DriftGuardError(
-      driftGuardMessage(config.codegen.outDir, manifest.entryPoint, entryPoint),
+      driftGuardMessage(
+        config.codegen.outDir,
+        manifest.entryPoint,
+        entryPoint,
+        // A pre-key-hash manifest can't tell us WHICH keys differ — pass none
+        // rather than diffing against {} (which would name every key).
+        manifest.configKeyHashes
+          ? diffConfigKeyHashes(manifest.configKeyHashes, configKeyHashes)
+          : [],
+      ),
     );
   }
 
@@ -184,6 +203,7 @@ export async function generate(
     hash: inputsHash,
     entryPoint,
     configHash,
+    configKeyHashes,
     files: outputFiles,
   });
 }

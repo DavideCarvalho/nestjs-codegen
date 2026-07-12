@@ -155,4 +155,89 @@ describe('generate() drift guard', () => {
     const manifest = await readManifest(outDir);
     expect(manifest?.entryPoint).toBe('cli');
   });
+
+  it('same-named functions with different source text do NOT trip the guard (compiler artifacts)', async () => {
+    // The same shared config object yields different function SOURCE per entry
+    // point: the CLI loads TS via Node's type stripping, the module runs
+    // tsc/SWC-compiled dist. Only the function's NAME participates in the hash,
+    // so two same-named `inferType` implementations with different bodies must
+    // hash identically.
+    function typeStrippedVariant(): typeof zodAdapter.inferType {
+      return function inferType(schemaConst: string): string {
+        return `z.infer<typeof ${schemaConst}>`;
+      };
+    }
+    function compiledVariant(): typeof zodAdapter.inferType {
+      return function inferType(schemaConst: string): string {
+        return `z.infer<typeof ${schemaConst}> /* compiled */`;
+      };
+    }
+    const cliConfig = makeConfig(tmpBase, outDir, {
+      validation: { ...zodAdapter, inferType: typeStrippedVariant() },
+    });
+    await generate(cliConfig, [], 'cli');
+
+    // Touch a source file so the run isn't skipped as fresh and actually
+    // reaches the guard + manifest write (same trick as the SAME-configHash
+    // test above).
+    await mkdir(join(tmpBase, 'src'), { recursive: true });
+    await writeFile(join(tmpBase, 'src', 'x.controller.ts'), '// noop\n', 'utf8');
+
+    const moduleConfig = makeConfig(tmpBase, outDir, {
+      validation: { ...zodAdapter, inferType: compiledVariant() },
+    });
+    await expect(generate(moduleConfig, [], 'module')).resolves.toBeUndefined();
+
+    const manifest = await readManifest(outDir);
+    expect(manifest?.entryPoint).toBe('module');
+  });
+
+  it('names the top-level keys that differ in the drift error', async () => {
+    const cliConfig = makeConfig(tmpBase, outDir, { serialization: 'json' });
+    await generate(cliConfig, [], 'cli');
+    const moduleConfig = makeConfig(tmpBase, outDir, { serialization: 'superjson' });
+
+    try {
+      await generate(moduleConfig, [], 'module');
+      expect.unreachable('expected generate() to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(DriftGuardError);
+      const message = (err as Error).message;
+      expect(message).toContain('differ at: `serialization`');
+    }
+  });
+
+  it('records per-key config hashes in the manifest', async () => {
+    const config = makeConfig(tmpBase, outDir);
+    await generate(config, [], 'cli');
+    const manifest = await readManifest(outDir);
+    expect(manifest?.configKeyHashes).toBeDefined();
+    expect(manifest?.configKeyHashes?.serialization).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('still throws (without naming keys) against a pre-key-hash manifest', async () => {
+    const cliConfig = makeConfig(tmpBase, outDir, { serialization: 'json' });
+    await generate(cliConfig, [], 'cli');
+    // Strip the per-key hashes, simulating a manifest written by an older lib.
+    const manifest = await readManifest(outDir);
+    expect(manifest).not.toBeNull();
+    if (manifest === null) return;
+    const { configKeyHashes: _dropped, ...legacy } = manifest;
+    await writeFile(
+      join(outDir, '.codegen-manifest.json'),
+      `${JSON.stringify(legacy, null, 2)}\n`,
+      'utf8',
+    );
+
+    const moduleConfig = makeConfig(tmpBase, outDir, { serialization: 'superjson' });
+    try {
+      await generate(moduleConfig, [], 'module');
+      expect.unreachable('expected generate() to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(DriftGuardError);
+      const message = (err as Error).message;
+      expect(message).toMatch(/config drift/i);
+      expect(message).not.toContain('differ at:');
+    }
+  });
 });

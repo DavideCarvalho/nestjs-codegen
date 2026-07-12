@@ -58,6 +58,12 @@ export interface CodegenManifest {
    * unrelated source-file changes. Absent on pre-drift-guard manifests.
    */
   configHash?: string;
+  /**
+   * Per-top-level-key hashes of the serialized resolved config, so a drift-guard
+   * failure can NAME the keys that differ instead of asking the consumer to
+   * eyeball two whole configs. Absent on manifests written before this field.
+   */
+  configKeyHashes?: Record<string, string>;
   /** Generated output files, relative to `outDir`, recorded after the last run. */
   files: string[];
 }
@@ -67,6 +73,7 @@ interface ManifestShape {
   hash: string;
   entryPoint?: EntryPoint;
   configHash?: string;
+  configKeyHashes?: Record<string, string>;
   files: string[];
 }
 
@@ -81,28 +88,75 @@ function isManifestShape(value: unknown): value is ManifestShape {
   if (typeof candidate.hash !== 'string') return false;
   if (candidate.entryPoint !== undefined && !isEntryPoint(candidate.entryPoint)) return false;
   if (candidate.configHash !== undefined && typeof candidate.configHash !== 'string') return false;
+  if (candidate.configKeyHashes !== undefined && !isStringRecord(candidate.configKeyHashes)) {
+    return false;
+  }
   if (!Array.isArray(candidate.files)) return false;
   return candidate.files.every((entry) => typeof entry === 'string');
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return Object.values(value).every((entry) => typeof entry === 'string');
 }
 
 /**
  * Stable JSON serialization of the resolved config for hashing. Functions
  * (extensions, validation adapter methods, component-name strategies) are folded
- * in via `toString()` so a change to their source invalidates the hash; anything
- * non-serializable degrades to a marker rather than throwing.
+ * in by NAME ONLY — never `toString()`: the same shared config object yields
+ * different function source text per entry point (the CLI loads TS via Node's
+ * type stripping, the Nest module runs tsc/SWC-compiled dist), so hashing bodies
+ * made the drift guard flag a genuinely-shared config as drifted. The trade-off
+ * (an edited function body with an unchanged name doesn't invalidate by itself)
+ * is acceptable: every setting that can actually diverge between entry points is
+ * plain data, which is hashed in full. Anything non-serializable degrades to a
+ * marker rather than throwing.
  */
 function serializeConfig(config: ResolvedConfig): string {
+  return serializeConfigValue(config, `unserializable:${config.codegen.outDir}`);
+}
+
+function serializeConfigValue(value: unknown, unserializableMarker: string): string {
   try {
-    return JSON.stringify(config, (_key, value) => {
-      if (typeof value === 'function') return `[fn:${value.name}]${value.toString()}`;
-      return value;
+    return JSON.stringify(value, (_key, entry) => {
+      if (typeof entry === 'function') return `[fn:${entry.name}]`;
+      return entry;
     });
   } catch {
-    // Non-serializable config (e.g. a cyclic extension) — fall back to a coarse
+    // Non-serializable value (e.g. a cyclic extension) — fall back to a coarse
     // marker so the hash still varies by a few stable fields. Worst case the
     // skip never triggers and we always regenerate, which is safe.
-    return `unserializable:${config.codegen.outDir}:${config.contracts.glob}`;
+    return unserializableMarker;
   }
+}
+
+/**
+ * Hash each top-level key of the resolved config separately, so a drift-guard
+ * failure can report WHICH keys differ between the two entry points' resolved
+ * configs (see `diffConfigKeyHashes`).
+ */
+export function computeConfigKeyHashes(config: ResolvedConfig): Record<string, string> {
+  const hashes: Record<string, string> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (value === undefined) continue;
+    hashes[key] = createHash('sha256')
+      .update(serializeConfigValue(value, `unserializable:${key}`))
+      .digest('hex');
+  }
+  return hashes;
+}
+
+/**
+ * The keys whose hashes differ (or exist on only one side) between the last
+ * manifest's per-key config hashes and the current run's. Sorted for stable
+ * error output.
+ */
+export function diffConfigKeyHashes(
+  previous: Record<string, string>,
+  current: Record<string, string>,
+): string[] {
+  const keys = new Set([...Object.keys(previous), ...Object.keys(current)]);
+  return [...keys].filter((key) => previous[key] !== current[key]).sort();
 }
 
 /**
@@ -155,6 +209,7 @@ export async function readManifest(outDir: string): Promise<CodegenManifest | nu
       hash: parsed.hash,
       ...(parsed.entryPoint ? { entryPoint: parsed.entryPoint } : {}),
       ...(parsed.configHash ? { configHash: parsed.configHash } : {}),
+      ...(parsed.configKeyHashes ? { configKeyHashes: parsed.configKeyHashes } : {}),
       files: parsed.files,
     };
   } catch {

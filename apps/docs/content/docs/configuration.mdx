@@ -1,6 +1,7 @@
 ---
 title: Configuration
 description: Every option in nestjs-codegen.config.ts.
+icon: Settings
 ---
 
 These are the same options you pass to [`NestjsCodegenModule.forRoot()`](/docs/getting-started#wire-the-module).
@@ -60,9 +61,23 @@ export default defineConfig({
       type: 'string',
       default: "'src/**/*.controller.ts'",
     },
+    scopes: {
+      description: "Multi-scope discovery. A record of named scopes, each { glob, prefix? } — scan several controller sets (e.g. a public API and an internal admin API) in one run, each with its own file glob and optional route-path prefix. Omit for single-scope projects (the default contracts.glob).",
+      type: 'Record<string, ScopeConfig>',
+      default: '{}',
+    },
     'codegen.outDir': {
       description: 'Output directory for generated files.',
       type: 'string',
+    },
+    'fetcher.importPath': {
+      description: "When set, the generated api.ts imports `fetcher` from this module specifier instead of expecting you to inject one — the codegen wires the client to your own preconfigured fetcher (baseUrl, headers, transport, plugins). e.g. '~/lib/api', whose module does `export const fetcher = createFetcher({ baseUrl: '/api' })`.",
+      type: 'string',
+    },
+    debug: {
+      description: "Print schema-translation advisories to the terminal (e.g. \"@X is not translatable to a client validation schema\", \"T is a recursive type\"). These are always preserved in generated output as `// warning:` comments regardless; this only controls the duplicate terminal chatter.",
+      type: 'boolean',
+      default: 'false',
     },
     'forms.enabled': {
       description: 'Emit forms.ts.',
@@ -79,8 +94,24 @@ export default defineConfig({
       type: 'boolean',
       default: 'true',
     },
+    'openapi.enabled': {
+      description: 'Emit an OpenAPI 3.1 openapi.json alongside the client. Opt-in. See the OpenAPI export page for the full block (fileName / title / version / description).',
+      type: 'boolean',
+      default: 'false',
+    },
+    'mocks.enabled': {
+      description: 'Emit deterministic MSW mock handlers (mocks.ts). Opt-in. See the Mock handlers page for the full block (fileName / seed / baseUrl).',
+      type: 'boolean',
+      default: 'false',
+    },
   }}
 />
+
+<Callout type="info">
+  Two more opt-in output blocks — [`openapi`](/docs/openapi) (OpenAPI 3.1 export) and
+  [`mocks`](/docs/mocks) (MSW handler generation) — have their own pages. Each is skipped
+  entirely unless you set `enabled: true`.
+</Callout>
 
 <Callout>
   The **fetcher** is no longer a config concern. The generated `api.ts` is a
@@ -102,3 +133,35 @@ A normal config edit (same entry point) or two entry points that happen to resol
 config both proceed as usual. The actual fix is a single source of truth — share one config
 object and import it into both `nestjs-codegen.config.ts` and `forRoot()`, as shown above —
 or set `driftGuard: false` on either config to opt out of the check entirely.
+
+## Multi-scope discovery
+
+Most projects scan a single controller set via `contracts.glob`. When you need to generate
+from **several distinct surfaces** — say a public API and an internal admin API that live in
+different directories and mount under different route prefixes — use `scopes`. It's a record
+of named scopes, each a `ScopeConfig` (`{ glob, prefix? }`):
+
+```ts title="nestjs-codegen.config.ts"
+export default defineConfig({
+  validation: zodAdapter,
+  codegen: { outDir: 'src/generated' },
+
+  scopes: {
+    public: { glob: 'src/public/**/*.controller.ts', prefix: '/api' },
+    admin: { glob: 'src/admin/**/*.controller.ts', prefix: '/admin' },
+  },
+});
+```
+
+<TypeTable
+  type={{
+    'ScopeConfig.glob': {
+      description: 'Glob (relative to codegen.cwd) for the controllers in this scope.',
+      type: 'string',
+    },
+    'ScopeConfig.prefix': {
+      description: 'Route-path prefix applied to every route discovered in this scope.',
+      type: 'string',
+    },
+  }}
+/>

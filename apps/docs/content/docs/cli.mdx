@@ -1,6 +1,7 @@
 ---
 title: CLI
 description: The codegen, init, and doctor commands.
+icon: Terminal
 ---
 
 ```bash
@@ -43,6 +44,31 @@ and print suggested fixes.
 ```bash
 npx nestjs-codegen doctor
 ```
+
+Each check prints `✓` (pass) or `✗` (fail) with a one-line fix hint. Checks that can be
+repaired automatically are marked `(fixable with --fix)`.
+
+### `doctor --fix`
+
+Re-run with `--fix` and `doctor` applies every auto-fixable repair in place instead of only
+suggesting it — scaffolding a missing config, patching `nest-cli.json` assets, adding
+`tsconfig` path aliases / excludes, creating the dedicated `tsconfig.inertia.json`,
+appending `.gitignore` entries, installing missing packages with your detected package
+manager, adding `build:client` / `typecheck:inertia` scripts, and more:
+
+```bash
+npx nestjs-codegen doctor --fix
+```
+
+Fixed checks print `⚡ … (fixed)`; anything still not repairable prints `✗` with its manual
+hint. The summary reports how many issues were auto-fixed and how many remain. `doctor`
+exits non-zero while any check is still failing, so it's safe to gate CI on it.
+
+<Callout type="info">
+  A handful of checks are intentionally **not** auto-fixable — e.g. `vite.config.ts` edits,
+  which are too project-specific to patch safely. Those always print a manual hint, with or
+  without `--fix`.
+</Callout>
 
 <Callout type="info">
   The TypeScript config (`nestjs-codegen.config.ts`) is loaded **natively** on modern Node

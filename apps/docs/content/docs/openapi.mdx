@@ -1,0 +1,231 @@
+---
+title: OpenAPI Export
+description: Emit a valid OpenAPI 3.1 openapi.json from your discovered routes + validation IR.
+icon: FileJson
+---
+
+Alongside the TypeScript client, the codegen can export an **OpenAPI 3.1** document
+(`openapi.json`) describing every contracted route. This is opt-in: nothing is emitted
+until you turn it on. The spec is lowered from the exact same discovered routes and
+neutral validation IR that produce `api.ts` and `forms.ts`, so it never drifts from the
+client — and it never boots Nest, reading only the static IR + route descriptors.
+
+<Callout type="info">
+  Why 3.1 (not 3.0)? OpenAPI 3.1 aligns its schema object with **JSON Schema 2020-12**, so
+  the internal IR maps cleanly — `type` arrays for nullability, `const`, `$ref` recursion,
+  and `oneOf` + `discriminator` for discriminated unions all work without the 3.0
+  `nullable` / `x-` workarounds. This is what `openapi-typescript` / Hey&nbsp;API consume and
+  what Orval / Kubb publish.
+</Callout>
+
+## Enable it
+
+Add an `openapi` block to your config. The moment `enabled: true`, an `openapi.json` is
+written into `codegen.outDir` on every run (and every watch rebuild).
+
+```ts title="nestjs-codegen.config.ts"
+import { defineConfig } from '@dudousxd/nestjs-codegen';
+import { zodAdapter } from '@dudousxd/nestjs-codegen-zod';
+
+export default defineConfig({
+  validation: zodAdapter,
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: 'src/generated' },
+
+  openapi: {
+    enabled: true,
+    fileName: 'openapi.json',        // default
+    title: 'Billing API',            // → info.title
+    version: '2.4.0',                // → info.version
+    description: 'Public billing + invoicing surface.',
+  },
+});
+```
+
+## Config
+
+<TypeTable
+  type={{
+    'openapi.enabled': {
+      description: 'Emit openapi.json. Opt-in — omit the block (or set false) to skip the export entirely.',
+      type: 'boolean',
+      default: 'false',
+    },
+    'openapi.fileName': {
+      description: 'Output file name, written inside codegen.outDir.',
+      type: 'string',
+      default: "'openapi.json'",
+    },
+    'openapi.title': {
+      description: 'The document info.title.',
+      type: 'string',
+      default: "'NestJS API'",
+    },
+    'openapi.version': {
+      description: 'The document info.version.',
+      type: 'string',
+      default: "'1.0.0'",
+    },
+    'openapi.description': {
+      description: 'The document info.description. Omitted from output when unset.',
+      type: 'string',
+    },
+  }}
+/>
+
+## What it covers
+
+Every route that carries a contract becomes one operation, keyed by HTTP method under its
+OpenAPI path:
+
+- **Paths** — one entry per route. NestJS `:param` segments are rewritten to OpenAPI
+  `{param}` (`/users/:id` → `/users/{id}`), and `operationId` is the route name
+  (`controller.method`).
+- **Parameters** — path params (`required: true`), query params, and header params, each
+  typed `string`.
+- **Request body** — for non-`GET`/`HEAD`/`DELETE` routes with a body, lowered from the
+  body IR into `requestBody.content['application/json'].schema`.
+- **Responses** — the success response under `200` (or a `text/event-stream` body for
+  `@Sse()` streaming routes), plus the typed error response under `400` **and** `default`
+  so any error status resolves.
+- **components/schemas** — every named schema reachable from a route's body/query/response
+  IR is hoisted into the shared `components/schemas` map and referenced by `$ref`, including
+  discriminated unions (`oneOf` + `discriminator`), arrays, enums, and recursive types.
+
+<Callout type="info">
+  Positions that are **TS-type-only** (no rich validation IR — e.g. a raw return type with
+  no DTO/contract behind it) degrade to a permissive schema annotated with the original TS
+  type string in its `description`, so the document always stays valid.
+</Callout>
+
+## What the output looks like
+
+Given a controller like:
+
+```ts title="src/users/users.controller.ts"
+@Controller('users')
+export class UsersController {
+  @Get(':id')
+  show(@Param('id') id: string): Promise<User> { /* … */ }
+
+  @Post()
+  create(@Body() body: CreateUserDto): Promise<User> { /* … */ }
+}
+```
+
+the emitted `openapi.json` looks like:
+
+```json title="src/generated/openapi.json"
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Billing API", "version": "2.4.0", "description": "Public billing + invoicing surface." },
+  "paths": {
+    "/users/{id}": {
+      "get": {
+        "operationId": "users.show",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          },
+          "default": {
+            "description": "Error response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/users": {
+      "post": {
+        "operationId": "users.create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateUserDto" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          },
+          "default": { "description": "Error response", "content": { "application/json": { "schema": {} } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": { "id": { "type": "string" }, "email": { "type": "string" } },
+        "required": ["id", "email"]
+      },
+      "CreateUserDto": {
+        "type": "object",
+        "properties": { "email": { "type": "string" }, "password": { "type": "string" } },
+        "required": ["email", "password"]
+      }
+    }
+  }
+}
+```
+
+## Consuming the spec
+
+Because it's a standard OpenAPI 3.1 document, any tool in the ecosystem can read it — mock
+servers, SDK generators in other languages, API gateways, or a docs UI:
+
+```bash
+# Serve interactive docs
+npx @redocly/cli preview-docs src/generated/openapi.json
+
+# Generate a client in another language
+npx openapi-typescript src/generated/openapi.json -o types/api.d.ts
+```
+
+## Programmatic API
+
+Both the pure builder and the file emitter are exported from
+[`@dudousxd/nestjs-codegen`](/docs/reference), for callers that already hold the discovered
+route set (e.g. a custom pipeline or test):
+
+```ts
+import { buildOpenApiSpec, emitOpenApi } from '@dudousxd/nestjs-codegen';
+import type {
+  OpenApiDocument,
+  OpenApiEmitOptions,
+  OpenApiInfo,
+} from '@dudousxd/nestjs-codegen';
+
+// Pure — build the document object, no I/O:
+const doc: OpenApiDocument = buildOpenApiSpec(routes, {
+  info: { title: 'Billing API', version: '2.4.0' },
+});
+
+// Or write it to disk (creates outDir if needed):
+await emitOpenApi(routes, 'src/generated', {
+  fileName: 'openapi.json',
+  info: { title: 'Billing API', version: '2.4.0' },
+});
+```
+
+<TypeTable
+  type={{
+    'OpenApiInfo.title': { type: 'string', description: 'info.title (default "NestJS API").' },
+    'OpenApiInfo.version': { type: 'string', description: 'info.version (default "1.0.0").' },
+    'OpenApiInfo.description': { type: 'string', description: 'info.description (omitted when unset).' },
+    'OpenApiEmitOptions.info': { type: 'OpenApiInfo', description: 'Document info block.' },
+    'OpenApiEmitOptions.fileName': { type: 'string', description: 'Output file name within outDir.', default: "'openapi.json'" },
+  }}
+/>
+
+The `OpenApiDocument` return type is fully typed: `{ openapi: '3.1.0'; info; paths; components: { schemas } }`.
+
+<Callout type="info">
+  Prefer the config block for the normal codegen flow — `emitOpenApi` / `buildOpenApiSpec`
+  are the escape hatch when you're driving discovery yourself. See the
+  [Mock handlers](/docs/mocks) page for the matching MSW output built from the same IR.
+</Callout>

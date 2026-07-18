@@ -1,4 +1,9 @@
 {
   "title": "Integrations",
-  "pages": ["extensions", "inertia", "filters"]
+  "icon": "Puzzle",
+  "pages": [
+    "extensions",
+    "inertia",
+    "filters"
+  ]
 }

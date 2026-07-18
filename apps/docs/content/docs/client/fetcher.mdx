@@ -1,6 +1,7 @@
 ---
 title: Fetcher & Transports
 description: createFetcher, custom transports (axios), and serializers (superjson).
+icon: Cable
 ---
 
 import { Steps, Step } from 'fumadocs-ui/components/steps';
@@ -58,6 +59,83 @@ const transport: Transport = async (req) => {
 
 createFetcher({ transport });
 ```
+
+## Global headers
+
+`setGlobalHeaders` registers a function that supplies headers merged into **every** request
+from **every** fetcher — before each fetcher's own `headers()` and the per-request headers.
+Use it for cross-cutting values you don't want to thread through each `createFetcher` call,
+such as a CSRF token, a tenant id, or a trace header set once at app boot:
+
+```ts
+import { setGlobalHeaders } from '@dudousxd/nestjs-client';
+
+setGlobalHeaders(() => ({
+  'x-csrf-token': readCsrfCookie(),
+  'x-tenant-id': currentTenant(),
+}));
+```
+
+The function is called **once per request**, so returning values that change over time
+(a rotating token, the active tenant) just works. Precedence is: global headers first, then
+the fetcher's `headers()`, then request-level headers — so a fetcher can override a global
+value if it needs to.
+
+<Callout type="info">
+  Global headers apply to SSE (`sse` / `consumeSse`) and the binary escape hatches
+  (`fetchBlob` / `fetchRaw`) too, not just the verb methods.
+</Callout>
+
+## Server-sent events (SSE)
+
+A NestJS `@Sse()` endpoint is discovered as a **streaming route**. On the client its handle
+resolves to a typed async iterable — each yielded value is the JSON-parsed `data:` payload
+of one SSE event, typed as the streamed element type the codegen carried through:
+
+```ts
+for await (const chunk of api.notifications.stream()) {
+  // chunk is typed from the controller's streamed element type
+  console.log(chunk);
+}
+```
+
+Under the hood the generated call uses `fetcher.sse(path, opts)`, which builds the URL,
+attaches `accept: text/event-stream` plus your [global](#global-headers) and fetcher headers,
+and delegates to `consumeSse`. Pass an `AbortSignal` to stop the stream early:
+
+```ts
+const controller = new AbortController();
+const stream = api.notifications.stream({ signal: controller.signal });
+// later:
+controller.abort();
+```
+
+### `consumeSse` directly
+
+`consumeSse` is the standalone parser behind `fetcher.sse` — exported for when you want to
+read an event stream without going through a fetcher (a URL your generated client doesn't
+cover, a worker, a test). It's **bring-your-own-`fetch`** so it runs in any runtime:
+
+```ts
+import { consumeSse } from '@dudousxd/nestjs-client';
+
+const events = consumeSse<{ id: string; body: string }>(
+  globalThis.fetch,          // fetch implementation
+  'https://api.test/events', // absolute URL
+  { accept: 'text/event-stream' },
+  undefined,                 // optional PayloadTransformer (e.g. superjson) — else JSON.parse
+  signal,                    // optional AbortSignal
+);
+
+for await (const event of events) {
+  console.log(event.id, event.body);
+}
+```
+
+It parses the SSE wire format (events separated by a blank line, `data:` lines
+concatenated), JSON-parses each event's data via the transformer when supplied (otherwise
+`JSON.parse`), and yields the typed values. A non-2xx response throws `ApiHttpError`; the
+stream ends when the connection closes or the signal aborts.
 
 ## superjson & transformer pipelines
 

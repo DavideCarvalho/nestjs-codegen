@@ -5,6 +5,8 @@
     "getting-started",
     "configuration",
     "cli",
+    "openapi",
+    "mocks",
     "validation",
     "client",
     "integrations",

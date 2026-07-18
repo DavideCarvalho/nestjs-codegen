@@ -1,4 +1,7 @@
 {
   "title": "Reference",
-  "pages": ["index"]
+  "icon": "Braces",
+  "pages": [
+    "index"
+  ]
 }

@@ -1,4 +1,10 @@
 {
   "title": "Client",
-  "pages": ["api-client", "fetcher", "tanstack-query", "routes"]
+  "icon": "Boxes",
+  "pages": [
+    "api-client",
+    "fetcher",
+    "tanstack-query",
+    "routes"
+  ]
 }

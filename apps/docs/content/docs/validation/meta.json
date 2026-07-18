@@ -1,4 +1,8 @@
 {
   "title": "Validation",
-  "pages": ["index", "forms"]
+  "icon": "ShieldCheck",
+  "pages": [
+    "index",
+    "forms"
+  ]
 }

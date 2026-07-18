@@ -4,6 +4,8 @@ description: Every option in nestjs-codegen.config.ts.
 icon: Settings
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
 These are the same options you pass to [`NestjsCodegenModule.forRoot()`](/docs/getting-started#wire-the-module).
 The module is the primary way to run the codegen in dev; this config file is what the
 **CLI** loads for CI runs. Author it with `defineConfig` (the legacy
@@ -135,6 +137,14 @@ object and import it into both `nestjs-codegen.config.ts` and `forRoot()`, as sh
 or set `driftGuard: false` on either config to opt out of the check entirely.
 
 ## Multi-scope discovery
+
+<Callout type="warn">
+**Experimental — not yet wired.** `scopes` is currently parsed and validated into the resolved
+config, but the discovery/generate pipeline does not consume it yet (no code reads `.scopes`), so
+setting it has **no effect** today. It's documented here as the intended shape; until it's wired,
+generate each surface with a separate run/config (distinct `contracts.glob` + `outDir`). Track this
+before relying on it in CI.
+</Callout>
 
 Most projects scan a single controller set via `contracts.glob`. When you need to generate
 from **several distinct surfaces** — say a public API and an internal admin API that live in

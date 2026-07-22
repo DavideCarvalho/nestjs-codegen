@@ -1,5 +1,0 @@
----
-'@dudousxd/nestjs-client': minor
----
-
-Add an `arrayFormat` option so array-valued query params can serialize as repeated params (`?ids=a&ids=b`) instead of a single comma-joined value (`?ids=a,b`). Previously `buildUrl` always ran `String(value)` on the query value, which for an array joins with commas — silently degrading the codegen's `Array<string>` query contract into one comma-joined string on the wire, so a Nest `@Query()` handler received one bogus value instead of the array. `arrayFormat` is threaded through `createFetcher` (instance default) and each request/SSE call (per-request override), and is also accepted directly by `buildUrl`. `'repeat'` appends one param per element — the form Express's default `qs` parser revives as a `string[]`, matching what the generated type claims. The default stays `'comma'` (byte-identical to the previous behavior), so upgrading is non-breaking; opt into `'repeat'` when your server relies on Nest's native array-query parsing. Exports a new `ArrayQueryFormat` type.

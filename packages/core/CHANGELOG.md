@@ -1,5 +1,12 @@
 # @dudousxd/nestjs-codegen
 
+## 0.15.0
+
+### Minor Changes
+
+- 20db5c0: Emit `filterFields` as a runtime `as const` array on each filter leaf, alongside the existing type-level union, plus an `isFilterField` type guard exported from the generated `api.ts`. Previously the filterable field set existed only as a type, so a field name arriving as a plain `string` from runtime state (a saved view, a user-picked column) could not be passed to `filterQuery().where()` without a cast. Now `api.route.leaf().filterFields` is a `readonly [...] as const` value and `isFilterField(leaf.filterFields, value)` narrows an arbitrary string to the field union, so dynamic field names validate at runtime instead of being asserted with `as`. The runtime array is generated from the same discovered field list as the type-level union (single source in the emitter), so the value can never drift from the type. Purely additive — the guard is emitted only when a route carries filter fields, and leaves without a filter gain no new member.
+- 9b5298b: Add a `@QueryList()` param decorator and a `toStringList` normalizer to the `/nest` subpath for receiving array query params safely. Express (and Nest's default query parser) returns a bare `string` for a single-value query param (`?ids=a`) and a `string[]` only for two or more (`?ids=a&ids=b`), so `ParseArrayPipe` 400s the common single-select case. `@QueryList('ids')` normalizes `string | string[] | comma-joined string | undefined` into a clean `string[]` (`['a']`, `['a','b']`, `[]`), and `toStringList` is exported for the equivalent `class-transformer` `@Transform` on a DTO field. Pairs with the client's `arrayFormat` option: once the client sends `arrayFormat: 'repeat'`, the comma-split becomes a no-op fallback that still covers hand-rolled and `curl` callers. Documented under a new "Receiving array query params" docs page.
+
 ## 0.14.2
 
 ### Patch Changes

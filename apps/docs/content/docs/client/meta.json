@@ -4,6 +4,7 @@
   "pages": [
     "api-client",
     "fetcher",
+    "array-query-params",
     "tanstack-query",
     "routes"
   ]

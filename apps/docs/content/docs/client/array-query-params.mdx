@@ -1,0 +1,82 @@
+---
+title: Receiving array query params
+description: Why ParseArrayPipe 400s the single-value case, and the safe string | string[] pattern (with @QueryList).
+icon: List
+---
+
+Array query params have an inverted footgun on the receiving end. This page covers why the
+obvious tool breaks, and the pattern (plus a decorator) that handles every shape.
+
+## The footgun
+
+Express — and therefore NestJS's default query parser — hands back a **bare `string`** when
+a querystring key carries exactly one value, and a **`string[]`** only when it carries two
+or more:
+
+```
+?ids=a          → req.query.ids === 'a'          (string)
+?ids=a&ids=b    → req.query.ids === ['a', 'b']    (string[])
+```
+
+`ParseArrayPipe` (`@nestjs/common`) — the obvious tool for "validate this query param is an
+array" — rejects the single-value form: it expects array-shaped input and 400s on a bare
+string. So the **common** case (a user selects exactly one item from a multiselect) is the
+one that breaks, while the multi-value case passes. Happy-path testing with 2+ values hides
+the bug; it only surfaces with exactly one value.
+
+<Callout type="info">
+  This pairs with the client's [`arrayFormat`](/docs/client/fetcher#array-query-params).
+  Even with `arrayFormat: 'repeat'` (`?ids=a&ids=b`), the single-value case is still a bare
+  string on the wire — so the receiving side always needs to accept `string | string[]`.
+</Callout>
+
+## The pattern: `string | string[]` + normalize
+
+Accept both shapes and normalize to a clean `string[]`. A bare string becomes a
+one-element array; a comma-joined string (the client's `arrayFormat: 'comma'` default) is
+split; an absent param becomes `[]`:
+
+```ts
+function toStringList(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  const arr = Array.isArray(raw) ? raw : String(raw).split(',');
+  return arr.map((s) => String(s).trim()).filter(Boolean);
+}
+```
+
+## `@QueryList()` decorator
+
+`@dudousxd/nestjs-codegen/nest` ships this as a param decorator so you don't hand-roll it:
+
+```ts
+import { QueryList } from '@dudousxd/nestjs-codegen/nest';
+
+@Controller('things')
+export class ThingsController {
+  @Get()
+  list(@QueryList('baseIds') baseIds: string[]) {
+    // baseIds is always a clean string[]:
+    //   ?baseIds=a           → ['a']
+    //   ?baseIds=a&baseIds=b → ['a', 'b']
+    //   ?baseIds=a,b         → ['a', 'b']
+    //   (absent)             → []
+  }
+}
+```
+
+For a DTO field instead of a param, reuse the same normalization in a `class-transformer`
+`@Transform` — `toStringList` is exported for exactly this:
+
+```ts
+import { Transform } from 'class-transformer';
+import { toStringList } from '@dudousxd/nestjs-codegen/nest';
+
+class GetThingsQueryDto {
+  @Transform(({ value }) => toStringList(value))
+  baseIds: string[] = [];
+}
+```
+
+Both accept every wire shape, so they work regardless of the client's `arrayFormat`. Once
+the client sends `arrayFormat: 'repeat'`, the comma-split degrades to a no-op fallback that
+still covers hand-rolled callers and `curl`.

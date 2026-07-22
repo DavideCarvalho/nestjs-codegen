@@ -309,6 +309,17 @@ function buildErrorType(c: LeafEntry): string {
   return c.contractSource.error ?? 'unknown';
 }
 
+/**
+ * The route's filterable fields (from `@dudousxd/nestjs-filter`) rendered as JSON
+ * string literals — e.g. `['"id"', '"name"']` — or `[]` when the route carries no
+ * filter. This is the SINGLE source both the type-level `filterFields` union and the
+ * runtime `filterFields` const array derive from, so the value can never drift from
+ * the type.
+ */
+function filterFieldLiterals(fields: readonly string[] | null | undefined): string[] {
+  return fields?.length ? fields.map((f) => JSON.stringify(f)) : [];
+}
+
 function emitRouterTypeBlock(
   tree: Map<string, TreeNode>,
   indent: number,
@@ -365,10 +376,11 @@ function emitRouterTypeBlock(
       const safeUrl = JSON.stringify(c.path);
       // Filterable fields (from @dudousxd/nestjs-filter) as a string-literal
       // union, or `never` for routes without a filter. Purely type-level — no
-      // runtime dependency on nestjs-filter is introduced by this member.
-      const filterFields = c.contractSource.filterFields?.length
-        ? c.contractSource.filterFields.map((f) => JSON.stringify(f)).join(' | ')
-        : 'never';
+      // runtime dependency on nestjs-filter is introduced by this member. The
+      // SAME literal list feeds the runtime `filterFields` const array on the
+      // leaf (see buildRequestModel), so the two can never drift.
+      const filterLiterals = filterFieldLiterals(c.contractSource.filterFields);
+      const filterFields = filterLiterals.length ? filterLiterals.join(' | ') : 'never';
       // SSE/streaming routes carry `stream: true` so `Route.Stream<K>` and the
       // leaf's `stream()` surface can be derived purely from the ApiRouter type.
       const stream = c.contractSource.stream ? 'true' : 'false';
@@ -435,6 +447,8 @@ function buildRequestModel(c: LeafEntry): RequestModel {
   const withParams = hasPathParams(c.params);
   // Request-shape flags ("filter-search POST counts as a read") computed in one place.
   const { isGet, isQuery, hasBody, hasQuery } = requestShape(c.route);
+  // Same discovered field list the type-level union uses (see emitRouterTypeBlock).
+  const filterLiterals = filterFieldLiterals(c.contractSource.filterFields);
 
   const fields: string[] = [];
   if (withParams) fields.push(`params: ${TA}['params']`);
@@ -474,6 +488,13 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     // clean prefix that partial-matches every parametrized variant — making it
     // directly usable for `invalidateQueries`.
     queryKeyExpr: `(input === undefined ? [${flat}] as const : [${flat}, input] as const)`,
+    // Runtime counterpart to the type-level `filterFields` union: the same
+    // discovered field list, emitted as a literal `[...] as const` so apps can
+    // validate a dynamic/user-supplied field string with `isFilterField(...)`
+    // instead of casting. Omitted for routes with no filter.
+    ...(filterLiterals.length
+      ? { filterFieldsExpr: `[${filterLiterals.join(', ')}] as const` }
+      : {}),
   };
 }
 
@@ -528,6 +549,25 @@ function emitReqHelper(): string[] {
 }
 
 /**
+ * The `isFilterField` runtime type guard, emitted once per `api.ts` when at least one
+ * route carries `filterFields`. It narrows an arbitrary `string` (a dynamic/user-supplied
+ * column name) to the leaf's `filterFields` element type, so `.where(field, …)` accepts it
+ * without a cast: `if (isFilterField(leaf.filterFields, s)) { leaf.filterQuery().where(s, …) }`.
+ */
+function emitFilterFieldGuard(): string[] {
+  return [
+    "/** Runtime guard: narrows `value` to one of the leaf's `filterFields` (a `readonly K[] as const`), so a dynamic field string can be passed to `.where()` without a cast. */",
+    'export function isFilterField<const K extends string>(',
+    '  fields: readonly K[],',
+    '  value: string,',
+    '): value is K {',
+    '  return (fields as readonly string[]).includes(value);',
+    '}',
+    '',
+  ];
+}
+
+/**
  * Render one leaf. Every leaf is an **awaitable handle**: the `__req(...)` base makes
  * `await api.x.y({...})` perform the request; any client-layer/member contributions
  * (TanStack options, filterQuery, …) are spread on alongside it.
@@ -542,6 +582,12 @@ function renderLeaf(
 ): string[] {
   const lines = [`${pad}${objKey}: (input?: ${req.inputType}) => ({`];
   lines.push(`${pad}  ...__req<${req.responseType}>(() => ${requestExpr}),`);
+  // Runtime filterable-field names (kept in lockstep with the type-level
+  // `filterFields` union) so apps can validate a dynamic field string via
+  // `isFilterField(...)` rather than casting. Present only on filter routes.
+  if (req.filterFieldsExpr) {
+    lines.push(`${pad}  filterFields: ${req.filterFieldsExpr},`);
+  }
   // SSE/streaming routes expose a typed `stream()` returning an AsyncIterable of
   // the streamed element type (alongside the awaitable base, which is rarely used
   // for a stream but kept for shape uniformity).
@@ -934,6 +980,11 @@ function buildApiFile(
 
   // --- awaitable request handle helper ---
   lines.push(...emitReqHelper());
+
+  // --- filter-field runtime guard (only when some route carries filterFields) ---
+  if (contracted.some((r) => r.contract?.contractSource.filterFields?.length)) {
+    lines.push(...emitFilterFieldGuard());
+  }
 
   // --- api factory (inject your fetcher at runtime) ---
   lines.push('export function createApi(fetcher: Fetcher) {');

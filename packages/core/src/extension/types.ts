@@ -116,6 +116,13 @@ export interface RequestModel {
   responseType: string;
   /** Stable query-key expression, e.g. `["users.show", input] as const`. */
   queryKeyExpr: string;
+  /**
+   * Runtime filter-fields literal-array expression, e.g. `["id", "name"] as const`,
+   * or `undefined` for a route with no filter. Derived from the same discovered
+   * field list as the type-level `filterFields` union, so the emitted value stays
+   * in lockstep with the type.
+   */
+  filterFieldsExpr?: string | undefined;
 }
 
 /**

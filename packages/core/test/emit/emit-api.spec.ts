@@ -270,6 +270,49 @@ describe('emitApi', () => {
     });
   });
 
+  describe('filterFields runtime const array + isFilterField guard (issue #34)', () => {
+    it('emits a runtime `filterFields: [...] as const` member on a filter route (no tanstack)', async () => {
+      const c = await gen();
+      expect(c).toContain('filterFields: ["status", "name"] as const,');
+    });
+
+    it('emits the runtime member alongside the tanstack helpers too', async () => {
+      const c = await gen(true);
+      expect(c).toContain('filterFields: ["status", "name"] as const,');
+    });
+
+    it('the runtime array matches the type-level union (single source of truth)', async () => {
+      const c = await gen();
+      // Type-level union member on ApiRouter.
+      expect(c).toContain('filterFields: "status" | "name"');
+      // Runtime const array — same field list, same order.
+      expect(c).toContain('filterFields: ["status", "name"] as const,');
+    });
+
+    it('emits the isFilterField type guard exactly once when a filter route exists', async () => {
+      const c = await gen();
+      expect(c).toContain('export function isFilterField<const K extends string>(');
+      expect(c.match(/export function isFilterField/g)?.length).toBe(1);
+    });
+
+    it('routes without a filter get no runtime filterFields member', async () => {
+      const noFilterRoutes: RouteDescriptor[] = [
+        {
+          method: 'GET',
+          path: '/api/things',
+          name: 'things.list',
+          params: [],
+          contract: { contractSource: { query: null, body: null, response: 'Thing[]' } },
+        },
+      ];
+      await emitApi(noFilterRoutes, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).not.toContain('filterFields: [');
+      // The guard is only emitted when at least one route carries filterFields.
+      expect(c).not.toContain('isFilterField');
+    });
+  });
+
   it('empty routes → empty createApi', async () => {
     await emitApi([], outDir, {});
     const c = await readFile(join(outDir, 'api.ts'), 'utf8');

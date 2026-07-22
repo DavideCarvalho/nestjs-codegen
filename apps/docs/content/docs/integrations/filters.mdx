@@ -51,3 +51,27 @@ pre-typed to the route's fields so you don't repeat the field union by hand.
 
 Field types come from the filter class / `@FilterFor` parameter — named enums and type
 aliases are referenced by name in the generated types.
+
+## Validating a field name at runtime
+
+`filterQuery().where()` is typed to the route's field union, so a field arriving as a plain
+`string` from runtime state (a saved view, a user-picked column, a search box) can't be
+passed without a cast. To close that gap, every filter leaf also carries its field list as a
+**runtime `as const` array**, and `api.ts` exports an `isFilterField` type guard:
+
+```ts
+const leaf = api.tasks.list();
+
+for (const filter of userColumnFilters) {
+  // Narrow the dynamic string to the leaf's field union — no cast.
+  if (isFilterField(leaf.filterFields, filter.field)) {
+    leaf.filterQuery().where(filter.field, 'eq', filter.value);
+  }
+}
+```
+
+`leaf.filterFields` is `readonly ['status', 'name', ...] as const`, generated from the same
+discovered field list as the type-level union, so the runtime value can never drift from the
+type. `isFilterField` (`import { isFilterField } from '.../api'`) narrows legitimately instead
+of asserting with `as`, so a mistyped or server-renamed field is caught at the guard rather
+than silently accepted.

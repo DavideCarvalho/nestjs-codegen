@@ -18,5 +18,5 @@ export type { AxiosLike } from './transports/axios.js';
 export { setGlobalHeaders } from './fetcher/global-headers.js';
 export { ApiHttpError } from './fetcher/errors.js';
 export { buildUrl } from './fetcher/url-builder.js';
-export type { BuildUrlOptions } from './fetcher/url-builder.js';
+export type { ArrayQueryFormat, BuildUrlOptions } from './fetcher/url-builder.js';
 export type { Jsonify } from './shared/jsonify.js';

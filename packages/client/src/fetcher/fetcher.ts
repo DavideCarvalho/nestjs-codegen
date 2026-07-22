@@ -1,7 +1,7 @@
 /* v8 ignore next 3 -- import resolution is not a branch */
 import { ApiHttpError } from './errors.js';
 import { getGlobalHeaders } from './global-headers.js';
-import { buildUrl } from './url-builder.js';
+import { type ArrayQueryFormat, buildUrl } from './url-builder.js';
 
 /**
  * Payload transformer (the superjson integration point). Pass `superjson` (its
@@ -151,6 +151,13 @@ export interface FetcherOptions {
    * identity, so plain-JSON consumers are unaffected.
    */
   deserialize?: (raw: unknown) => unknown;
+  /**
+   * How array-valued query params are serialized for every request. `'comma'`
+   * (default) → `?ids=a,b`; `'repeat'` → `?ids=a&ids=b` (the form Nest's default
+   * query parser revives as a `string[]`). A per-request `arrayFormat` overrides
+   * this default. See {@link ArrayQueryFormat}.
+   */
+  arrayFormat?: ArrayQueryFormat;
 }
 
 /**
@@ -205,6 +212,8 @@ export interface SseOpts {
   query?: Record<string, unknown> | undefined;
   /** Abort the stream early. */
   signal?: AbortSignal;
+  /** Override the fetcher's array query-param serialization for this stream. */
+  arrayFormat?: ArrayQueryFormat | undefined;
 }
 
 interface RequestOpts {
@@ -214,6 +223,8 @@ interface RequestOpts {
   params?: Record<string, unknown> | undefined;
   query?: Record<string, unknown> | undefined;
   body?: unknown;
+  /** Override the fetcher's array query-param serialization for this request. */
+  arrayFormat?: ArrayQueryFormat | undefined;
   /**
    * Serialize `body` as `multipart/form-data` instead of JSON. The generated
    * client sets this for routes whose handler takes an `@UploadedFile()`. Each
@@ -328,7 +339,8 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
     path: string,
     ro: RawRequestOpts,
   ): Promise<TransportResponse> {
-    const url = buildUrl(path, ro, baseUrl);
+    // Per-request `arrayFormat` wins over the fetcher-level default.
+    const url = buildUrl(path, { ...ro, arrayFormat: ro.arrayFormat ?? opts.arrayFormat }, baseUrl);
     const headers: Record<string, string> = { ...getGlobalHeaders(), ...opts.headers?.() };
     let body: string | FormData | undefined;
 
@@ -440,9 +452,14 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
   const fetchImpl = opts.fetch ?? globalThis.fetch;
 
   function sse<T>(path: string, so: SseOpts = {}): AsyncIterable<T> {
+    const arrayFormat = so.arrayFormat ?? opts.arrayFormat;
     const url = buildUrl(
       path,
-      { ...(so.params ? { params: so.params } : {}), ...(so.query ? { query: so.query } : {}) },
+      {
+        ...(so.params ? { params: so.params } : {}),
+        ...(so.query ? { query: so.query } : {}),
+        ...(arrayFormat ? { arrayFormat } : {}),
+      },
       baseUrl,
     );
     const headers: Record<string, string> = {

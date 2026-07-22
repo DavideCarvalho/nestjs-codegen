@@ -19,6 +19,48 @@ describe('buildUrl', () => {
   });
 });
 
+describe('buildUrl array query params', () => {
+  it('comma-joins array params by default (?k=a,b, URL-encoded), preserving legacy behavior', () => {
+    // Default is 'comma' — byte-identical to the historical String(array) behavior.
+    expect(buildUrl('/x', { query: { baseIds: ['a', 'b'] } })).toBe('/x?baseIds=a%2Cb');
+  });
+
+  it("repeats array params when arrayFormat: 'repeat' (?k=a&k=b)", () => {
+    expect(buildUrl('/x', { query: { baseIds: ['a', 'b'] }, arrayFormat: 'repeat' })).toBe(
+      '/x?baseIds=a&baseIds=b',
+    );
+  });
+
+  it('comma-joins a single-element array into one param (?k=a) — matches legacy', () => {
+    expect(buildUrl('/x', { query: { baseIds: ['a'] } })).toBe('/x?baseIds=a');
+  });
+
+  it('repeats a single-element array as exactly one param (?k=a)', () => {
+    expect(buildUrl('/x', { query: { baseIds: ['a'] }, arrayFormat: 'repeat' })).toBe(
+      '/x?baseIds=a',
+    );
+  });
+
+  it('scalar query params are unchanged under either format', () => {
+    expect(buildUrl('/x', { query: { active: true } })).toBe('/x?active=true');
+    expect(buildUrl('/x', { query: { active: true }, arrayFormat: 'repeat' })).toBe(
+      '/x?active=true',
+    );
+  });
+
+  it("'repeat' skips null/undefined array elements; 'comma' stringifies them like Array#join", () => {
+    // repeat: nullish elements are dropped (no empty repeated param).
+    expect(
+      buildUrl('/x', { query: { ids: ['a', null, undefined, 'b'] }, arrayFormat: 'repeat' }),
+    ).toBe('/x?ids=a&ids=b');
+    // comma: String(array) === Array.prototype.join, which renders null/undefined as
+    // empty strings — byte-identical to the pre-arrayFormat legacy behavior.
+    expect(buildUrl('/x', { query: { ids: ['a', null, undefined, 'b'] } })).toBe(
+      '/x?ids=a%2C%2C%2Cb',
+    );
+  });
+});
+
 describe('createFetcher', () => {
   it('GET parses JSON; sends accept header', async () => {
     const fetch = vi.fn(async () => jsonResponse({ ok: true }));
@@ -66,6 +108,33 @@ describe('createFetcher', () => {
     const init = fetch.mock.calls[0]?.[1] as RequestInit;
     const fd = init.body as FormData;
     expect(fd.getAll('files')).toHaveLength(2);
+  });
+
+  it('threads a fetcher-level arrayFormat into the request URL', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      arrayFormat: 'repeat',
+    });
+    await api.get('/x', { query: { baseIds: ['a', 'b'] } });
+    expect(fetch.mock.calls[0]?.[0]).toBe('/x?baseIds=a&baseIds=b');
+  });
+
+  it('a per-request arrayFormat overrides the fetcher-level default', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      arrayFormat: 'comma',
+    });
+    await api.get('/x', { query: { baseIds: ['a', 'b'] }, arrayFormat: 'repeat' });
+    expect(fetch.mock.calls[0]?.[0]).toBe('/x?baseIds=a&baseIds=b');
+  });
+
+  it('defaults to comma-joined array params when no arrayFormat is set', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    await api.get('/x', { query: { baseIds: ['a', 'b'] } });
+    expect(fetch.mock.calls[0]?.[0]).toBe('/x?baseIds=a%2Cb');
   });
 
   it('throws ApiHttpError on non-2xx and calls onError', async () => {

@@ -60,6 +60,37 @@ const transport: Transport = async (req) => {
 createFetcher({ transport });
 ```
 
+## Array query params
+
+When a query value is an array, `arrayFormat` controls how it is serialized:
+
+```ts
+const fetcher = createFetcher({ baseUrl: '/api', arrayFormat: 'repeat' });
+
+// query: { ids: ['a', 'b'] }
+// 'comma'  (default) → ?ids=a,b
+// 'repeat'           → ?ids=a&ids=b
+```
+
+| `arrayFormat` | `{ ids: ['a', 'b'] }` | When to use |
+| ------------- | --------------------- | ----------- |
+| `'comma'` (default) | `?ids=a,b` | Back-compat: the historical behavior. The server must split the joined value itself. |
+| `'repeat'` | `?ids=a&ids=b` | The form NestJS's default (Express `qs`) parser revives as a `string[]` — it matches the codegen's generated `Array<string>` query type without server-side normalization. |
+
+The default is `'comma'` so upgrading is non-breaking. Set `'repeat'` at the fetcher level
+for every request, or per request to override:
+
+```ts
+await api.get('/things', { query: { ids: ['a', 'b'] }, arrayFormat: 'repeat' });
+```
+
+<Callout type="info">
+  Whichever format you send, the **single-value** case is still a bare string on the wire
+  (`?ids=a`), and Express hands the server back a `string`, not a `string[]`. See
+  [Receiving array query params](/docs/client/array-query-params) for how to receive them
+  safely (and why `ParseArrayPipe` is the wrong tool for optional array params).
+</Callout>
+
 ## Global headers
 
 `setGlobalHeaders` registers a function that supplies headers merged into **every** request

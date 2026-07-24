@@ -60,6 +60,10 @@ export async function discoverContractsFast(
   }
 
   bindDiscoveryContext(project, cwd, tsconfigPath);
+  // The mixin type Project is module-level, so a second cold discovery in the
+  // same process (tests, repeated CLI runs) would otherwise reuse types parsed
+  // from whatever the files looked like on the first pass.
+  clearMixinTypeProject();
   return extractAllRoutes(project);
 }
 
@@ -321,7 +325,13 @@ export function joinPaths(prefix: string, suffix: string): string {
   if (!prefix) return suffix.startsWith('/') ? suffix : `/${suffix}`;
   if (!suffix) return prefix.startsWith('/') ? prefix : `/${prefix}`;
 
-  const p = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+  // Leading slash on the prefix too: `@Controller('items')` + `@Post(':id')`
+  // otherwise yielded 'items/:id' while `@Controller('items')` alone yielded
+  // '/items'. The client's buildUrl() normalises this before requesting, so the
+  // inconsistency never broke a URL — but it reached the emitted ROUTES map and
+  // the OpenAPI export, where a path without a leading slash is invalid.
+  const withLeadingSlash = prefix.startsWith('/') ? prefix : `/${prefix}`;
+  const p = withLeadingSlash.endsWith('/') ? withLeadingSlash.slice(0, -1) : withLeadingSlash;
   const s = suffix.startsWith('/') ? suffix : `/${suffix}`;
   const combined = p + s;
   return combined === '' ? '/' : combined;

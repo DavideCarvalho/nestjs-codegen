@@ -81,7 +81,13 @@ describe('joinPaths — edge cases', () => {
   });
 
   it('handles prefix without leading slash and suffix with leading slash', () => {
-    expect(joinPaths('api', '/users')).toBe('api/users');
+    // Previously 'api/users': the prefix+suffix branch was the only one that did
+    // not add a leading slash, so `@Controller('api')` + `@Get('/users')` emitted
+    // a path shaped differently from `@Controller('api')` alone ('/api'). The
+    // client's buildUrl() normalises before requesting, so no URL ever broke, but
+    // the raw value reached the ROUTES map and the OpenAPI export (where a path
+    // without a leading slash is invalid).
+    expect(joinPaths('api', '/users')).toBe('/api/users');
   });
 
   it('handles prefix with trailing slash and suffix with leading slash', () => {

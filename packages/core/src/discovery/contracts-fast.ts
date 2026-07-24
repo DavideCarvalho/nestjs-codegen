@@ -20,7 +20,7 @@ import {
   resolveImportedVariable,
   setDiscoveryContext,
 } from './type-ref-resolution.js';
-import type { ContractSource, RouteDescriptor, TypeRef } from './types.js';
+import type { ContractSource, MixinBinding, RouteDescriptor, TypeRef } from './types.js';
 import { type ParsedContractDef, parseDefineContractCall } from './zod-ast-to-ts.js';
 
 // Re-export so existing test import paths (`../discovery/contracts-fast.js`)
@@ -408,6 +408,7 @@ function buildRoute(args: {
   sourceFile: SourceFile;
   seenNames: Map<string, string>;
   contractSource: ContractSource;
+  mixin?: MixinBinding | undefined;
 }): RouteDescriptor {
   const {
     className,
@@ -419,6 +420,7 @@ function buildRoute(args: {
     sourceFile,
     seenNames,
     contractSource,
+    mixin,
   } = args;
 
   const routeName = resolveRouteName(className, methodName, classAs, methodAs);
@@ -438,7 +440,12 @@ function buildRoute(args: {
     path: combinedPath,
     name: routeName,
     params: extractParams(combinedPath),
-    controllerRef: { className, methodName, filePath: sourceFile.getFilePath() },
+    controllerRef: {
+      className,
+      methodName,
+      filePath: sourceFile.getFilePath(),
+      ...(mixin ? { mixin } : {}),
+    },
     contract: { contractSource },
   };
 }
@@ -457,6 +464,7 @@ function extractContractRoute(args: {
   sourceFile: SourceFile;
   project: Project;
   seenNames: Map<string, string>;
+  mixin?: MixinBinding | undefined;
 }): RouteDescriptor | null {
   const {
     cls,
@@ -468,6 +476,7 @@ function extractContractRoute(args: {
     sourceFile,
     project,
     seenNames,
+    mixin,
   } = args;
 
   const firstDecoratorArg = applyContractDecorator.getArguments()[0];
@@ -538,6 +547,7 @@ function extractContractRoute(args: {
     methodAs,
     sourceFile,
     seenNames,
+    mixin,
     contractSource: {
       query: contractDef.query,
       body: contractDef.body,
@@ -567,8 +577,10 @@ function extractDtoRoute(args: {
   sourceFile: SourceFile;
   project: Project;
   seenNames: Map<string, string>;
+  mixin?: MixinBinding | undefined;
 }): RouteDescriptor | null {
-  const { cls, method, verb, prefix, className, sourceFile, project, seenNames } = args;
+  const { cls, method, verb, prefix, className, sourceFile, project, seenNames, mixin } =
+    args;
 
   if (!verb) return null;
 
@@ -589,6 +601,7 @@ function extractDtoRoute(args: {
     methodAs,
     sourceFile,
     seenNames,
+    mixin,
     contractSource: {
       query: dtoContract?.query ?? null,
       body: dtoContract?.body ?? null,
@@ -633,9 +646,19 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
     // factory (`class X extends createTableController(Entity) {}`). Nest routes
     // those at runtime via the prototype chain; follow the same link statically.
     const inherited = resolveInheritedMethods(cls);
-    const methods = [...cls.getMethods(), ...(inherited?.methods ?? [])];
+    const mixinBinding: MixinBinding | undefined = inherited
+      ? {
+          factoryName: inherited.factoryName,
+          factoryFilePath: inherited.factoryFilePath,
+          classArgs: inherited.classArgs,
+        }
+      : undefined;
+    const methods: Array<{ method: MethodDeclaration; mixin?: MixinBinding }> = [
+      ...cls.getMethods().map((method) => ({ method })),
+      ...(inherited?.methods ?? []).map((method) => ({ method, mixin: mixinBinding })),
+    ];
 
-    for (const method of methods) {
+    for (const { method, mixin } of methods) {
       const verb = resolveVerb(method);
       const applyContractDecorator = method.getDecorator('ApplyContract');
 
@@ -650,6 +673,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
             sourceFile,
             project,
             seenNames,
+            mixin,
           })
         : extractDtoRoute({
             cls,
@@ -660,6 +684,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
             sourceFile,
             project,
             seenNames,
+            mixin,
           });
 
       if (route) routes.push(route);

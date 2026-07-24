@@ -1,4 +1,4 @@
-import { type ClassDeclaration, type MethodDeclaration, Node } from 'ts-morph';
+import { type ClassDeclaration, type MethodDeclaration, Node, Project } from 'ts-morph';
 
 export interface InheritedMethods {
   methods: MethodDeclaration[];
@@ -58,4 +58,73 @@ export function resolveInheritedMethods(
     factoryFilePath: factoryDecl.getSourceFile().getFilePath(),
     classArgs,
   };
+}
+
+/**
+ * A second ts-morph Project used ONLY to instantiate mixin response types.
+ *
+ * The discovery Project sets `skipLoadingLibFiles: true` for cold-start speed,
+ * and without the lib types the checker silently gives up on generic inference:
+ * `createTableController(Widget, { dto })` resolves to `Paginated<D>` (type
+ * parameter unsubstituted) instead of `Paginated<WidgetDto>`. Measured: that one
+ * flag is the cause — `skipFileDependencyResolution` makes no difference.
+ *
+ * Rather than pay lib loading for every discovery run, this Project is built
+ * lazily on the first mixin controller and reused. Cleared alongside the other
+ * per-Project caches so watch mode never serves a stale type.
+ */
+let mixinTypeProject: Project | undefined;
+
+function getMixinTypeProject(): Project {
+  mixinTypeProject ??= new Project({
+    skipAddingFilesFromTsConfig: true,
+    compilerOptions: { strict: true },
+  });
+  return mixinTypeProject;
+}
+
+/** Drop the mixin type Project so the next resolution re-reads from disk. */
+export function clearMixinTypeProject(): void {
+  mixinTypeProject = undefined;
+}
+
+/**
+ * Resolve an inherited method's return type as instantiated for `cls`.
+ *
+ * Every other response type in discovery is read syntactically (via
+ * `getReturnTypeNode()`), which is correct for a method declared on the
+ * controller itself. A factory-produced base annotates its return with the
+ * factory's own type parameters (`Promise<Paginated<D>>`), and those only bind
+ * at the derived class — so this one path asks the type checker for the property
+ * type AT the derived class, which performs the substitution. Promise is
+ * unwrapped to match what the syntactic resolvers hand back.
+ */
+export function resolveInstantiatedReturnType(
+  cls: ClassDeclaration,
+  methodName: string,
+): string | undefined {
+  const filePath = cls.getSourceFile().getFilePath();
+  const className = cls.getName();
+  if (!className) return undefined;
+
+  const project = getMixinTypeProject();
+  // Dependency resolution is ON here, so adding the controller pulls in the
+  // factory module (and the entity/DTO it references) automatically.
+  const sourceFile =
+    project.getSourceFile(filePath) ?? project.addSourceFileAtPathIfExists(filePath);
+  const typedCls = sourceFile?.getClass(className);
+  if (!typedCls) return undefined;
+
+  const prop = typedCls.getType().getProperty(methodName);
+  if (!prop) return undefined;
+
+  const returnType = prop.getTypeAtLocation(typedCls).getCallSignatures()[0]?.getReturnType();
+  if (!returnType) return undefined;
+
+  const unwrapped =
+    returnType.getSymbol()?.getName() === 'Promise'
+      ? (returnType.getTypeArguments()[0] ?? returnType)
+      : returnType;
+
+  return unwrapped.getText(typedCls);
 }

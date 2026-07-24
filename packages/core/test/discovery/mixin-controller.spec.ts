@@ -41,4 +41,33 @@ describe('mixin controller discovery', () => {
     expect(routes.length).toBeGreaterThan(0);
     expect(routes.every((r) => r.controllerRef?.mixin === undefined)).toBe(true);
   });
+
+  it('instantiates the generic response type against the derived class', async () => {
+    const routes = await discoverContractsFast({
+      cwd: FIXTURES,
+      glob: 'mixin.controller.ts',
+    });
+    // Pinned to the EXACT text, not toContain(), so a regression in the type
+    // argument can't hide inside a partial match.
+    //
+    // KNOWN GAP: the text carries an `import("./table-factory")` specifier,
+    // relative to the controller file — the emitted api.ts lives in outDir, so
+    // this is not yet emit-ready. Routing it through type-ref-resolution.ts (to
+    // produce a real named import) is a follow-up; pinning the current text here
+    // makes that change visible rather than silent.
+    const mapped = routes.find((r) => r.path === '/widgets/search');
+    expect(mapped?.contract?.contractSource.response).toBe(
+      'import("./table-factory").Paginated<WidgetDto>',
+    );
+    // no `dto` → D falls back to its default, E = Widget
+    const raw = routes.find((r) => r.path === '/gadgets/search');
+    expect(raw?.contract?.contractSource.response).toBe(
+      'import("./table-factory").Paginated<Widget>',
+    );
+    // the distinct route is not generic at all
+    const distinct = routes.find((r) => r.path === '/widgets/search/distinct');
+    expect(distinct?.contract?.contractSource.response).toBe(
+      'import("./table-factory").Paginated<Record<string, unknown>>',
+    );
+  });
 });

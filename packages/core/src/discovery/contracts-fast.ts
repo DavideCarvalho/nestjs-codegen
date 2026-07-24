@@ -13,7 +13,11 @@ import {
 } from 'ts-morph';
 import { extractDtoContract } from './dto-type-resolver.js';
 import { clearEnumCache } from './enum-resolution.js';
-import { resolveInheritedMethods } from './heritage.js';
+import {
+  clearMixinTypeProject,
+  resolveInheritedMethods,
+  resolveInstantiatedReturnType,
+} from './heritage.js';
 import {
   clearTypeResolutionCaches,
   loadTsconfigPaths,
@@ -241,6 +245,9 @@ export class PersistentDiscovery {
   private runExtraction(): RouteDescriptor[] {
     clearTypeResolutionCaches(this.project);
     clearEnumCache(this.project);
+    // The mixin type Project is module-level (not keyed by this.project), so it
+    // would otherwise serve types parsed from a previous revision of the file.
+    clearMixinTypeProject();
     return extractRoutesFrom(this.project, this.controllerPaths);
   }
 }
@@ -592,6 +599,12 @@ function extractDtoRoute(args: {
 
   const dtoContract = extractDtoContract(method, sourceFile, project);
 
+  // An inherited method annotates its return with the factory's type
+  // parameters, which only bind at the derived class — resolve those through
+  // the checker. Methods declared on the controller itself keep the syntactic
+  // path.
+  const mixinResponse = mixin ? resolveInstantiatedReturnType(cls, methodName) : undefined;
+
   return buildRoute({
     className,
     methodName,
@@ -605,7 +618,7 @@ function extractDtoRoute(args: {
     contractSource: {
       query: dtoContract?.query ?? null,
       body: dtoContract?.body ?? null,
-      response: dtoContract?.response ?? 'unknown',
+      response: mixinResponse ?? dtoContract?.response ?? 'unknown',
       error: dtoContract?.error ?? null,
       queryRef: dtoContract?.queryRef ?? null,
       bodyRef: dtoContract?.bodyRef ?? null,

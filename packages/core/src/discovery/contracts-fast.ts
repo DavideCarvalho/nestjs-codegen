@@ -13,6 +13,7 @@ import {
 } from 'ts-morph';
 import { extractDtoContract } from './dto-type-resolver.js';
 import { clearEnumCache } from './enum-resolution.js';
+import { resolveInheritedMethods } from './heritage.js';
 import {
   clearTypeResolutionCaches,
   loadTsconfigPaths,
@@ -628,7 +629,13 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
 
     const className = cls.getName() ?? 'Unknown';
 
-    for (const method of cls.getMethods()) {
+    // A controller may inherit its routes from a base class produced by a
+    // factory (`class X extends createTableController(Entity) {}`). Nest routes
+    // those at runtime via the prototype chain; follow the same link statically.
+    const inherited = resolveInheritedMethods(cls);
+    const methods = [...cls.getMethods(), ...(inherited?.methods ?? [])];
+
+    for (const method of methods) {
       const verb = resolveVerb(method);
       const applyContractDecorator = method.getDecorator('ApplyContract');
 

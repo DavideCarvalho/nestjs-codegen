@@ -12,10 +12,10 @@ describe('mixin controller discovery', () => {
     });
     const paths = routes.map((r) => `${r.method} ${r.path}`).sort();
     expect(paths).toEqual([
-      'post /gadgets/search',
-      'post /gadgets/search/distinct',
-      'post /widgets/search',
-      'post /widgets/search/distinct',
+      'POST /gadgets/search',
+      'POST /gadgets/search/distinct',
+      'POST /widgets/search',
+      'POST /widgets/search/distinct',
     ]);
   });
 });

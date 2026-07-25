@@ -596,8 +596,7 @@ function extractDtoRoute(args: {
   seenNames: Map<string, string>;
   mixin?: MixinBinding | undefined;
 }): RouteDescriptor | null {
-  const { cls, method, verb, prefix, className, sourceFile, project, seenNames, mixin } =
-    args;
+  const { cls, method, verb, prefix, className, sourceFile, project, seenNames, mixin } = args;
 
   if (!verb) return null;
 

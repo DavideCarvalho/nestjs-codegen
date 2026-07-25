@@ -72,9 +72,7 @@ function resolveReturnedClass(
  * link. Returns undefined when the heritage clause is absent, or is not a call
  * expression whose callee resolves to a function returning a class.
  */
-export function resolveInheritedMethods(
-  cls: ClassDeclaration,
-): InheritedMethods | undefined {
+export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods | undefined {
   const expr = cls.getExtends()?.getExpression();
   if (!expr || !Node.isCallExpression(expr)) return undefined;
 

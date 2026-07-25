@@ -1,5 +1,5 @@
 import { Controller } from '@nestjs/common';
-import { createTableController, Widget, WidgetDto } from './table-factory';
+import { Widget, type WidgetDto, createTableController } from './table-factory';
 
 @Controller('/widgets/search')
 export class SearchWidgetsController extends createTableController(Widget, {

@@ -70,4 +70,20 @@ describe('mixin controller discovery', () => {
       'import("./table-factory").Paginated<Record<string, unknown>>',
     );
   });
+
+  it('derives filterFields from the mixin entity argument', async () => {
+    const routes = await discoverContractsFast({
+      cwd: FIXTURES,
+      glob: 'mixin.controller.ts',
+    });
+    // @ApplyFilter points at a filter generated inside the factory, whose
+    // @Filterable({ entity }) names the factory's PARAMETER — the entity is only
+    // knowable from the call site's mixin binding.
+    const rows = routes.find((r) => r.path === '/widgets/search');
+    expect(rows?.contract?.contractSource.filterFields).toEqual(['id', 'name']);
+    expect(rows?.contract?.contractSource.filterSource).toBe('body');
+
+    const distinct = routes.find((r) => r.path === '/widgets/search/distinct');
+    expect(distinct?.contract?.contractSource.filterFields).toEqual(['id', 'name']);
+  });
 });

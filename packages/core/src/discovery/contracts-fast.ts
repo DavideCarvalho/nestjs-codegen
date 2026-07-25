@@ -607,7 +607,7 @@ function extractDtoRoute(args: {
   const classAs = readAsDecorator(cls, `class ${className}`);
   const methodAs = readAsDecorator(method, `${className}.${methodName}`);
 
-  const dtoContract = extractDtoContract(method, sourceFile, project);
+  const dtoContract = extractDtoContract(method, sourceFile, project, mixin);
 
   // An inherited method annotates its return with the factory's type
   // parameters, which only bind at the derived class — resolve those through

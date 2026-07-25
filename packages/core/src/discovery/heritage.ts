@@ -7,6 +7,62 @@ export interface InheritedMethods {
   classArgs: Array<{ name: string; filePath: string }>;
 }
 
+/** Strip `as`/`satisfies`/parenthesised wrappers to the underlying expression. */
+function unwrapExpression(node: Node): Node {
+  let current = node;
+  while (
+    Node.isAsExpression(current) ||
+    Node.isSatisfiesExpression(current) ||
+    Node.isParenthesizedExpression(current) ||
+    Node.isTypeAssertion(current)
+  ) {
+    current = current.getExpression();
+  }
+  return current;
+}
+
+/**
+ * Find the class a factory actually RETURNS.
+ *
+ * Not simply "the first class declared in the body": a controller factory
+ * commonly declares helper classes first (e.g. a generated filter), and picking
+ * the first one silently yields a class with no routes. Real factories also cast
+ * on the way out (`return C as unknown as Type<...>`), so the return expression
+ * is unwrapped before resolving.
+ */
+function resolveReturnedClass(
+  factoryDecl: import('ts-morph').FunctionDeclaration,
+): ClassDeclaration | undefined {
+  const body = factoryDecl.getBody();
+  if (!body) return undefined;
+
+  const returns = body
+    .getDescendants()
+    .filter((n): n is import('ts-morph').ReturnStatement => Node.isReturnStatement(n));
+
+  for (const ret of returns) {
+    const expr = ret.getExpression();
+    if (!expr) continue;
+    const inner = unwrapExpression(expr);
+
+    // `return class { ... }` — the class expression itself.
+    if (Node.isClassExpression(inner)) {
+      return inner as unknown as ClassDeclaration;
+    }
+
+    // `return GeneratedTableController;` — resolve the local declaration.
+    if (Node.isIdentifier(inner)) {
+      const name = inner.getText();
+      const decl = body
+        .getDescendants()
+        .find((n): n is ClassDeclaration => Node.isClassDeclaration(n) && n.getName() === name);
+      if (decl) return decl;
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * Resolve a `class X extends someFactory(Entity) {}` heritage clause to the
  * decorated methods of the class expression the factory returns.
@@ -31,10 +87,7 @@ export function resolveInheritedMethods(
     .find((n): n is import('ts-morph').FunctionDeclaration => Node.isFunctionDeclaration(n));
   if (!factoryDecl) return undefined;
 
-  // The factory body declares the controller as a local class, then returns it.
-  const returnedClass = factoryDecl
-    .getDescendants()
-    .find((n): n is ClassDeclaration => Node.isClassDeclaration(n));
+  const returnedClass = resolveReturnedClass(factoryDecl);
   if (!returnedClass) return undefined;
 
   const classArgs: Array<{ name: string; filePath: string }> = [];

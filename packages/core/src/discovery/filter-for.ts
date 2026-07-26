@@ -13,7 +13,28 @@ import {
   toFilterFieldType,
 } from './filter-field-types.js';
 import { findType, resolveTypeRef } from './type-ref-resolution.js';
-import type { FilterFieldType } from './types.js';
+import type { FilterFieldType, MixinBinding } from './types.js';
+
+/**
+ * Resolve the entity class a controller factory was called with.
+ *
+ * A factory-generated filter carries `@Filterable({ entity })` where `entity` is
+ * the factory's own parameter — it names nothing resolvable in that file. The
+ * concrete class only exists at the call site, which the route's mixin binding
+ * recorded by name + file.
+ */
+function resolveMixinEntityClass(
+  mixin: MixinBinding | undefined,
+  project: Project,
+): ClassDeclaration | undefined {
+  const entityArg = mixin?.classArgs[0];
+  if (!entityArg) return undefined;
+
+  const file =
+    project.getSourceFile(entityArg.filePath) ??
+    project.addSourceFileAtPathIfExists(entityArg.filePath);
+  return file?.getClass(entityArg.name);
+}
 
 /**
  * `@FilterFor` / `@ApplyFilter` discovery: resolve the virtual + entity-derived
@@ -162,11 +183,20 @@ export function extractApplyFilterInfo(
   method: MethodDeclaration,
   sourceFile: SourceFile,
   project: Project,
+  mixin?: MixinBinding | undefined,
 ): {
   fieldNames: string[];
   fieldTypes: FilterFieldType[];
   source: 'body' | 'query';
 } | null {
+  // For a mixin route the method is declared in the factory's file, not in the
+  // controller's — so the `@ApplyFilter(X)` target must be resolved from there.
+  // For an ordinary route these are the same file.
+  const declFile = method.getSourceFile();
+  // The generated filter's `@Filterable({ entity })` names the factory's own
+  // parameter, which resolves to nothing. The real entity is the call-site
+  // argument, carried on the mixin binding.
+  const mixinEntity = resolveMixinEntityClass(mixin, project);
   for (const param of method.getParameters()) {
     const filterDecorator = param.getDecorators().find((d) => d.getName() === 'ApplyFilter');
     if (!filterDecorator) continue;
@@ -189,15 +219,22 @@ export function extractApplyFilterInfo(
     }
 
     const filterClassName = filterClassArg.getText();
-    const resolved = findType(filterClassName, sourceFile, project);
-    if (resolved && resolved.kind === 'class') {
-      const classDecl = resolved.decl as ClassDeclaration;
+    const resolved = findType(filterClassName, declFile, project);
+    // `findType` looks up module-level declarations and imports. A factory's
+    // generated filter is declared INSIDE the factory function, so it is
+    // invisible there — but the decorator's identifier still points straight at
+    // it lexically.
+    const classDecl =
+      resolved?.kind === 'class'
+        ? (resolved.decl as ClassDeclaration)
+        : resolveLocalClassDeclaration(filterClassArg);
+    if (classDecl) {
       let fieldTypes = extractClassPropertyTypes(classDecl, project);
 
       // autoFields: if the filter class has no properties, resolve fields
       // from the entity referenced in @Filterable({ entity: X })
       if (fieldTypes.length === 0) {
-        fieldTypes = extractFilterableEntityFields(classDecl, project);
+        fieldTypes = extractFilterableEntityFields(classDecl, project, mixinEntity);
       }
 
       // Merge in explicit @FilterFor('key', { type }) hints. An explicit hint
@@ -328,9 +365,41 @@ function extractClassPropertyTypes(
  * resolve entity X and extract its property names (fields decorated with
  * `@Property`, `@PrimaryKey`, `@Enum`, etc. — skipping relations).
  */
+/**
+ * Resolve an identifier to a class declared in an enclosing local scope (e.g. a
+ * filter class generated inside a controller factory), which module-level
+ * lookups can't see.
+ */
+function resolveLocalClassDeclaration(identifier: Node): ClassDeclaration | undefined {
+  if (!Node.isIdentifier(identifier)) return undefined;
+  return identifier
+    .getDefinitions()
+    .map((d) => d.getDeclarationNode())
+    .find((n): n is ClassDeclaration => n !== undefined && Node.isClassDeclaration(n));
+}
+
+/** Resolve `@Filterable({ entity: X })` where `X` is a real class identifier. */
+function resolveDeclaredEntity(
+  optionsArg: Node,
+  filterClass: ClassDeclaration,
+  project: Project,
+): ClassDeclaration | undefined {
+  if (!Node.isObjectLiteralExpression(optionsArg)) return undefined;
+  const entityProp = optionsArg.getProperty('entity');
+  if (!entityProp || !Node.isPropertyAssignment(entityProp)) return undefined;
+
+  const entityInit = entityProp.getInitializer();
+  if (!entityInit || !Node.isIdentifier(entityInit)) return undefined;
+
+  const resolved = findType(entityInit.getText(), filterClass.getSourceFile(), project);
+  if (!resolved || resolved.kind !== 'class') return undefined;
+  return resolved.decl as ClassDeclaration;
+}
+
 function extractFilterableEntityFields(
   filterClass: ClassDeclaration,
   project: Project,
+  entityOverride?: ClassDeclaration | undefined,
 ): FilterFieldType[] {
   const filterableDecorator = filterClass.getDecorators().find((d) => d.getName() === 'Filterable');
   if (!filterableDecorator) return [];
@@ -340,18 +409,8 @@ function extractFilterableEntityFields(
   const optionsArg = args[0];
   if (!Node.isObjectLiteralExpression(optionsArg)) return [];
 
-  const entityProp = optionsArg.getProperty('entity');
-  if (!entityProp || !Node.isPropertyAssignment(entityProp)) return [];
-
-  const entityInit = entityProp.getInitializer();
-  if (!entityInit || !Node.isIdentifier(entityInit)) return [];
-
-  const entityName = entityInit.getText();
-  const filterSourceFile = filterClass.getSourceFile();
-  const resolvedEntity = findType(entityName, filterSourceFile, project);
-  if (!resolvedEntity || resolvedEntity.kind !== 'class') return [];
-
-  const entityDecl = resolvedEntity.decl as ClassDeclaration;
+  const entityDecl = entityOverride ?? resolveDeclaredEntity(optionsArg, filterClass, project);
+  if (!entityDecl) return [];
   const fields = collectEntityFields(
     entityDecl,
     entityDecl.getSourceFile(),

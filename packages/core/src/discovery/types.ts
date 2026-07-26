@@ -137,10 +137,31 @@ export interface ContractDescriptor {
   contractSource: ContractSource;
 }
 
+/**
+ * Set when a route was contributed by a base class produced by a factory call
+ * (`class X extends createTableController(Entity) {}`). Carries the call-site
+ * arguments so downstream consumers (e.g. `@dudousxd/nestjs-filter-codegen`) can
+ * resolve what the factory was parameterised with — the decorator arguments
+ * inside the factory reference its own parameters, not literal identifiers.
+ */
+export interface MixinBinding {
+  factoryName: string;
+  factoryFilePath: string;
+  /** Call-site arguments that resolve to a class declaration, in argument order. */
+  classArgs: Array<{ name: string; filePath: string }>;
+}
+
 export interface ControllerRef {
   className: string;
   methodName: string;
   filePath: string;
+  /**
+   * Present only for routes inherited from a factory-produced base class.
+   * `className`/`filePath` still point at the DERIVED class (the call site);
+   * `methodName` names a method that exists only on the base, so consumers must
+   * branch on this before attempting `controllerClass.getMethod(methodName)`.
+   */
+  mixin?: MixinBinding;
 }
 
 export interface RouteDescriptor {

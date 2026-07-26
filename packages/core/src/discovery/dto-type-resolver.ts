@@ -17,7 +17,7 @@ import {
   resolveImportedType,
   resolveTypeRef,
 } from './type-ref-resolution.js';
-import type { FilterFieldType, TypeRef } from './types.js';
+import type { FilterFieldType, MixinBinding, TypeRef } from './types.js';
 
 // ---------------------------------------------------------------------------
 // DTO-based contract extraction (standard NestJS patterns — no defineContract)
@@ -768,6 +768,7 @@ export function extractDtoContract(
   method: MethodDeclaration,
   sourceFile: SourceFile,
   project: Project,
+  mixin?: MixinBinding | undefined,
 ): {
   query: string | null;
   body: string | null;
@@ -791,7 +792,7 @@ export function extractDtoContract(
   asQuery?: boolean;
 } | null {
   let body = extractBodyType(method, sourceFile, project);
-  const filterInfo = extractApplyFilterInfo(method, sourceFile, project);
+  const filterInfo = extractApplyFilterInfo(method, sourceFile, project, mixin);
   const query = extractQueryType(method, sourceFile, project);
 
   // ── Multipart uploads: carry the uploaded-file field(s) separately. The

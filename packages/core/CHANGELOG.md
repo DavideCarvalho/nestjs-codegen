@@ -1,5 +1,47 @@
 # @dudousxd/nestjs-codegen
 
+## 0.16.0
+
+### Minor Changes
+
+- Discover routes on mixin (factory-produced) controllers.
+
+  A `@Controller` class whose heritage clause is a factory call now contributes the
+  decorated methods of the class that factory returns:
+
+  ```ts
+  @Controller("base/util/search")
+  export class SearchUtilController extends createTableController(Util, {
+    dto: UtilDTO,
+  }) {}
+  ```
+
+  NestJS already routes inherited methods at runtime via the prototype chain; the
+  static discovery pass now follows the same link. Each such route carries a new
+  `controllerRef.mixin` binding recording the factory and its call-site class
+  arguments — the decorator arguments _inside_ a factory reference its own
+  parameters, so the concrete entity is only knowable from the call site.
+
+  That binding drives two things:
+
+  - **`filterFields`** are derived from the call-site entity, so
+    `@ApplyFilter(GeneratedFilter)` works even though the filter class is declared
+    inside the factory and its `@Filterable({ entity })` names a parameter. This is
+    also what flips these routes from mutation to query in the emitted client.
+  - **Response types** are instantiated against the derived class, so
+    `Paginated<D>` resolves to the concrete `D`. This needs the type checker, which
+    needs lib files — the discovery Project sets `skipLoadingLibFiles` for
+    cold-start speed, so mixin response types resolve through a second Project
+    built lazily on the first mixin controller.
+
+  **Behaviour change:** `joinPaths` now always emits a leading slash.
+  `@Controller('items')` + `@Post(':id')` previously produced `items/:id` while
+  `@Controller('items')` alone produced `/items` — the prefix+suffix branch was the
+  only one that did not add it. The client's `buildUrl()` normalises before
+  requesting, so no URL was ever broken by this, but the raw value reaches the
+  emitted `ROUTES` map and the OpenAPI export, where a path without a leading slash
+  is invalid.
+
 ## 0.15.0
 
 ### Minor Changes

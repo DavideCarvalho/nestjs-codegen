@@ -14,12 +14,17 @@ import {
 import { extractDtoContract } from './dto-type-resolver.js';
 import { clearEnumCache } from './enum-resolution.js';
 import {
+  clearMixinTypeProject,
+  resolveInheritedMethods,
+  resolveInstantiatedReturnType,
+} from './heritage.js';
+import {
   clearTypeResolutionCaches,
   loadTsconfigPaths,
   resolveImportedVariable,
   setDiscoveryContext,
 } from './type-ref-resolution.js';
-import type { ContractSource, RouteDescriptor, TypeRef } from './types.js';
+import type { ContractSource, MixinBinding, RouteDescriptor, TypeRef } from './types.js';
 import { type ParsedContractDef, parseDefineContractCall } from './zod-ast-to-ts.js';
 
 // Re-export so existing test import paths (`../discovery/contracts-fast.js`)
@@ -55,6 +60,10 @@ export async function discoverContractsFast(
   }
 
   bindDiscoveryContext(project, cwd, tsconfigPath);
+  // The mixin type Project is module-level, so a second cold discovery in the
+  // same process (tests, repeated CLI runs) would otherwise reuse types parsed
+  // from whatever the files looked like on the first pass.
+  clearMixinTypeProject();
   return extractAllRoutes(project);
 }
 
@@ -240,6 +249,9 @@ export class PersistentDiscovery {
   private runExtraction(): RouteDescriptor[] {
     clearTypeResolutionCaches(this.project);
     clearEnumCache(this.project);
+    // The mixin type Project is module-level (not keyed by this.project), so it
+    // would otherwise serve types parsed from a previous revision of the file.
+    clearMixinTypeProject();
     return extractRoutesFrom(this.project, this.controllerPaths);
   }
 }
@@ -313,7 +325,13 @@ export function joinPaths(prefix: string, suffix: string): string {
   if (!prefix) return suffix.startsWith('/') ? suffix : `/${suffix}`;
   if (!suffix) return prefix.startsWith('/') ? prefix : `/${prefix}`;
 
-  const p = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+  // Leading slash on the prefix too: `@Controller('items')` + `@Post(':id')`
+  // otherwise yielded 'items/:id' while `@Controller('items')` alone yielded
+  // '/items'. The client's buildUrl() normalises this before requesting, so the
+  // inconsistency never broke a URL — but it reached the emitted ROUTES map and
+  // the OpenAPI export, where a path without a leading slash is invalid.
+  const withLeadingSlash = prefix.startsWith('/') ? prefix : `/${prefix}`;
+  const p = withLeadingSlash.endsWith('/') ? withLeadingSlash.slice(0, -1) : withLeadingSlash;
   const s = suffix.startsWith('/') ? suffix : `/${suffix}`;
   const combined = p + s;
   return combined === '' ? '/' : combined;
@@ -407,6 +425,7 @@ function buildRoute(args: {
   sourceFile: SourceFile;
   seenNames: Map<string, string>;
   contractSource: ContractSource;
+  mixin?: MixinBinding | undefined;
 }): RouteDescriptor {
   const {
     className,
@@ -418,6 +437,7 @@ function buildRoute(args: {
     sourceFile,
     seenNames,
     contractSource,
+    mixin,
   } = args;
 
   const routeName = resolveRouteName(className, methodName, classAs, methodAs);
@@ -437,7 +457,12 @@ function buildRoute(args: {
     path: combinedPath,
     name: routeName,
     params: extractParams(combinedPath),
-    controllerRef: { className, methodName, filePath: sourceFile.getFilePath() },
+    controllerRef: {
+      className,
+      methodName,
+      filePath: sourceFile.getFilePath(),
+      ...(mixin ? { mixin } : {}),
+    },
     contract: { contractSource },
   };
 }
@@ -456,6 +481,7 @@ function extractContractRoute(args: {
   sourceFile: SourceFile;
   project: Project;
   seenNames: Map<string, string>;
+  mixin?: MixinBinding | undefined;
 }): RouteDescriptor | null {
   const {
     cls,
@@ -467,6 +493,7 @@ function extractContractRoute(args: {
     sourceFile,
     project,
     seenNames,
+    mixin,
   } = args;
 
   const firstDecoratorArg = applyContractDecorator.getArguments()[0];
@@ -537,6 +564,7 @@ function extractContractRoute(args: {
     methodAs,
     sourceFile,
     seenNames,
+    mixin,
     contractSource: {
       query: contractDef.query,
       body: contractDef.body,
@@ -566,8 +594,9 @@ function extractDtoRoute(args: {
   sourceFile: SourceFile;
   project: Project;
   seenNames: Map<string, string>;
+  mixin?: MixinBinding | undefined;
 }): RouteDescriptor | null {
-  const { cls, method, verb, prefix, className, sourceFile, project, seenNames } = args;
+  const { cls, method, verb, prefix, className, sourceFile, project, seenNames, mixin } = args;
 
   if (!verb) return null;
 
@@ -577,7 +606,13 @@ function extractDtoRoute(args: {
   const classAs = readAsDecorator(cls, `class ${className}`);
   const methodAs = readAsDecorator(method, `${className}.${methodName}`);
 
-  const dtoContract = extractDtoContract(method, sourceFile, project);
+  const dtoContract = extractDtoContract(method, sourceFile, project, mixin);
+
+  // An inherited method annotates its return with the factory's type
+  // parameters, which only bind at the derived class — resolve those through
+  // the checker. Methods declared on the controller itself keep the syntactic
+  // path.
+  const mixinResponse = mixin ? resolveInstantiatedReturnType(cls, methodName) : undefined;
 
   return buildRoute({
     className,
@@ -588,10 +623,11 @@ function extractDtoRoute(args: {
     methodAs,
     sourceFile,
     seenNames,
+    mixin,
     contractSource: {
       query: dtoContract?.query ?? null,
       body: dtoContract?.body ?? null,
-      response: dtoContract?.response ?? 'unknown',
+      response: mixinResponse ?? dtoContract?.response ?? 'unknown',
       error: dtoContract?.error ?? null,
       queryRef: dtoContract?.queryRef ?? null,
       bodyRef: dtoContract?.bodyRef ?? null,
@@ -628,7 +664,23 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
 
     const className = cls.getName() ?? 'Unknown';
 
-    for (const method of cls.getMethods()) {
+    // A controller may inherit its routes from a base class produced by a
+    // factory (`class X extends createTableController(Entity) {}`). Nest routes
+    // those at runtime via the prototype chain; follow the same link statically.
+    const inherited = resolveInheritedMethods(cls);
+    const mixinBinding: MixinBinding | undefined = inherited
+      ? {
+          factoryName: inherited.factoryName,
+          factoryFilePath: inherited.factoryFilePath,
+          classArgs: inherited.classArgs,
+        }
+      : undefined;
+    const methods: Array<{ method: MethodDeclaration; mixin?: MixinBinding }> = [
+      ...cls.getMethods().map((method) => ({ method })),
+      ...(inherited?.methods ?? []).map((method) => ({ method, mixin: mixinBinding })),
+    ];
+
+    for (const { method, mixin } of methods) {
       const verb = resolveVerb(method);
       const applyContractDecorator = method.getDecorator('ApplyContract');
 
@@ -643,6 +695,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
             sourceFile,
             project,
             seenNames,
+            mixin,
           })
         : extractDtoRoute({
             cls,
@@ -653,6 +706,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
             sourceFile,
             project,
             seenNames,
+            mixin,
           });
 
       if (route) routes.push(route);

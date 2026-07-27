@@ -1,5 +1,28 @@
 # @dudousxd/nestjs-codegen
 
+## 0.17.1
+
+### Patch Changes
+
+- Support mixin controllers that OVERRIDE an inherited route.
+
+  Two gaps made the override pattern undiscoverable, so a subclass that customised
+  one route silently lost every route it did not override:
+
+  - **Heritage by identifier.** Discovery required a literal call expression
+    (`extends factory(Entity)`). But an override has to name the factory's products
+    in its own decorators (e.g. `@ApplyFilter(SomeTable.filter)`) and cannot
+    reference itself at decoration time, so the factory call must be bound to a
+    const first — `extends SomeTable`. That form now resolves through the const's
+    initialiser.
+  - **Override deduplication.** The derived class's own method now shadows the
+    inherited one of the same name. Emitting both produced two routes with the same
+    name (tripping the collision check); dropping the inherited siblings would have
+    lost the routes the subclass left alone.
+
+  An overriding method also keeps the route's mixin binding, so its `filterFields`
+  still resolve from the call-site entity.
+
 ## 0.17.0
 
 ### Minor Changes

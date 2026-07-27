@@ -7,6 +7,36 @@ export interface InheritedMethods {
   classArgs: Array<{ name: string; filePath: string }>;
 }
 
+/**
+ * Resolve a heritage expression to the factory CALL that produced the base.
+ *
+ * Handles `extends factory(Entity)` directly, and `extends SomeConst` where the
+ * const is initialised with such a call. The indirection is not academic: a
+ * subclass that overrides a route needs to name the factory's products in its
+ * own decorators (e.g. `@ApplyFilter(SomeConst.filter)`), and it cannot
+ * reference itself at decoration time — so binding the factory call to a const
+ * is the only way to write an override. Requiring a literal call expression here
+ * made exactly the pattern the escape hatch depends on undiscoverable.
+ */
+function resolveHeritageCall(node: Node | undefined) {
+  if (!node) return undefined;
+  const expr = unwrapExpression(node);
+  if (Node.isCallExpression(expr)) return expr;
+  if (!Node.isIdentifier(expr)) return undefined;
+
+  const decl = expr
+    .getDefinitions()
+    .map((d) => d.getDeclarationNode())
+    .find(
+      (n): n is import('ts-morph').VariableDeclaration =>
+        n !== undefined && Node.isVariableDeclaration(n),
+    );
+  const init = decl?.getInitializer();
+  if (!init) return undefined;
+  const unwrapped = unwrapExpression(init);
+  return Node.isCallExpression(unwrapped) ? unwrapped : undefined;
+}
+
 /** Strip `as`/`satisfies`/parenthesised wrappers to the underlying expression. */
 function unwrapExpression(node: Node): Node {
   let current = node;
@@ -73,8 +103,8 @@ function resolveReturnedClass(
  * expression whose callee resolves to a function returning a class.
  */
 export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods | undefined {
-  const expr = cls.getExtends()?.getExpression();
-  if (!expr || !Node.isCallExpression(expr)) return undefined;
+  const expr = resolveHeritageCall(cls.getExtends()?.getExpression());
+  if (!expr) return undefined;
 
   const callee = expr.getExpression();
   if (!Node.isIdentifier(callee)) return undefined;

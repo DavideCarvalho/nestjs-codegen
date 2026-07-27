@@ -87,3 +87,26 @@ describe('mixin controller discovery', () => {
     expect(distinct?.contract?.contractSource.filterFields).toEqual(['id', 'name']);
   });
 });
+
+describe('mixin controller with an overridden route', () => {
+  it('follows an identifier heritage clause to the factory call', async () => {
+    const routes = await discoverContractsFast({
+      cwd: FIXTURES,
+      glob: 'mixin-override.controller.ts',
+    });
+    const paths = routes.map((r) => r.path).sort();
+    // `distinct` is inherited and must survive; `search` is overridden.
+    expect(paths).toEqual(['/overridden/search', '/overridden/search/distinct']);
+  });
+
+  it('keeps the derived class own method, not the inherited one', async () => {
+    const routes = await discoverContractsFast({
+      cwd: FIXTURES,
+      glob: 'mixin-override.controller.ts',
+    });
+    const search = routes.filter((r) => r.path === '/overridden/search');
+    // Exactly one route — emitting both would trip the name-collision check.
+    expect(search).toHaveLength(1);
+    expect(search[0]?.controllerRef?.className).toBe('SearchOverriddenController');
+  });
+});

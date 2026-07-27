@@ -10,7 +10,7 @@ function PrimaryKey(_opts?: unknown): PropertyDecorator {
 function Filterable(_opts?: unknown): ClassDecorator {
   return () => {};
 }
-function ApplyFilter(
+export function ApplyFilter(
   _filterClass: new (...args: unknown[]) => unknown,
   _opts?: { source?: 'body' | 'query' },
 ): ParameterDecorator {
@@ -57,6 +57,10 @@ export function createTableController<E extends object, D = E>(
   class GeneratedFilter {}
 
   class GeneratedTableController {
+    // Handed back so a subclass overriding a route can name the generated
+    // filter in its own `@ApplyFilter` — it has no importable declaration.
+    static readonly filter = GeneratedFilter;
+
     @Post()
     @HttpCode(200)
     async search(

@@ -66,6 +66,15 @@ export interface CodegenManifest {
   configKeyHashes?: Record<string, string>;
   /** Generated output files, relative to `outDir`, recorded after the last run. */
   files: string[];
+  /**
+   * Extra input files an extension read that the host's globs don't cover
+   * (`ExtensionContext.trackInput`), relative to `codegen.cwd`. Recorded like a
+   * compiler depfile: this run's dependencies become the next run's hash
+   * inputs, so editing one of them invalidates the manifest. Absent on
+   * manifests written before this field existed — treated as "none", which is
+   * the pre-existing (under-invalidating) behavior.
+   */
+  extraInputs?: string[];
 }
 
 interface ManifestShape {
@@ -75,6 +84,7 @@ interface ManifestShape {
   configHash?: string;
   configKeyHashes?: Record<string, string>;
   files: string[];
+  extraInputs?: string[];
 }
 
 function isEntryPoint(value: unknown): value is EntryPoint {
@@ -89,6 +99,13 @@ function isManifestShape(value: unknown): value is ManifestShape {
   if (candidate.entryPoint !== undefined && !isEntryPoint(candidate.entryPoint)) return false;
   if (candidate.configHash !== undefined && typeof candidate.configHash !== 'string') return false;
   if (candidate.configKeyHashes !== undefined && !isStringRecord(candidate.configKeyHashes)) {
+    return false;
+  }
+  if (
+    candidate.extraInputs !== undefined &&
+    (!Array.isArray(candidate.extraInputs) ||
+      !candidate.extraInputs.every((entry) => typeof entry === 'string'))
+  ) {
     return false;
   }
   if (!Array.isArray(candidate.files)) return false;
@@ -179,19 +196,41 @@ async function discoverInputFiles(config: ResolvedConfig): Promise<string[]> {
  * contents of all discovered input source files, the serialized resolved config,
  * and the lib version. A change to any input — a controller edit, a config tweak,
  * or a lib upgrade — produces a different hash.
+ *
+ * `extraInputs` are cwd-relative paths an extension reported through
+ * `ExtensionContext.trackInput` on the previous run (see
+ * {@link CodegenManifest.extraInputs}). They are hashed exactly like globbed
+ * inputs, so editing a file an extension depends on — a filter class, say —
+ * invalidates the manifest even though no glob matches it. A tracked file that
+ * has since been deleted hashes as a `missing` marker rather than throwing, so
+ * its removal also invalidates.
  */
-export async function computeInputsHash(config: ResolvedConfig): Promise<string> {
+export async function computeInputsHash(
+  config: ResolvedConfig,
+  extraInputs: readonly string[] = [],
+): Promise<string> {
   const hash = createHash('sha256');
   hash.update(`version:${VERSION}\n`);
   hash.update(`config:${serializeConfig(config)}\n`);
 
-  const inputFiles = await discoverInputFiles(config);
   const cwd = config.codegen.cwd;
-  for (const file of inputFiles) {
+  const globbed = await discoverInputFiles(config);
+  const globbedRelative = new Set(globbed.map((file) => relative(cwd, file)));
+  // A tracked file that a glob already covers must not be hashed twice.
+  const extra = [...new Set(extraInputs)].filter((file) => !globbedRelative.has(file)).sort();
+
+  for (const file of globbed) {
     const contents = await readFile(file, 'utf8');
     // Hash the relative path too, so a rename (same contents) still invalidates.
     hash.update(`file:${relative(cwd, file)}\n`);
     hash.update(contents);
+    hash.update('\n');
+  }
+
+  for (const file of extra) {
+    const contents = await readFile(join(cwd, file), 'utf8').catch(() => null);
+    hash.update(`extra:${file}\n`);
+    hash.update(contents ?? ' missing');
     hash.update('\n');
   }
 
@@ -210,6 +249,7 @@ export async function readManifest(outDir: string): Promise<CodegenManifest | nu
       ...(parsed.entryPoint ? { entryPoint: parsed.entryPoint } : {}),
       ...(parsed.configHash ? { configHash: parsed.configHash } : {}),
       ...(parsed.configKeyHashes ? { configKeyHashes: parsed.configKeyHashes } : {}),
+      ...(parsed.extraInputs ? { extraInputs: parsed.extraInputs } : {}),
       files: parsed.files,
     };
   } catch {

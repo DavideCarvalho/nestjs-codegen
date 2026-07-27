@@ -74,6 +74,30 @@ export interface ExtensionContext {
   config: ResolvedConfig;
   /** Lazily-created shared ts-morph Project for AST work (pages, custom decorators). */
   project(): Project;
+  /**
+   * Declare source files this extension read that the host's own input globs
+   * (`contracts.glob`, `forms.watch`, `pages.glob`) do NOT cover, so they take
+   * part in the skip-when-unchanged check.
+   *
+   * The freshness hash is computed from the globbed inputs alone. An extension
+   * that reaches outside them — the filter extension resolves each route's
+   * `@ApplyFilter(FilterClass)` target and reads its `@Filterable`/`@Computed`
+   * declarations — otherwise produces output that nothing invalidates: editing
+   * that filter class leaves the hash untouched and the next run reports "up
+   * to date, skipped" while serving stale types.
+   *
+   * Declaring them up front is not possible for such an extension (it needs
+   * the discovered routes to know which files to read), so this works like a
+   * compiler depfile instead: paths tracked during a run are recorded in the
+   * manifest, and the NEXT run folds their contents into the hash. A file that
+   * becomes a dependency for the first time is therefore picked up on the run
+   * after it is first read — in practice not a gap, since wiring a new filter
+   * class also edits a controller, which the globs already cover.
+   *
+   * Absolute or cwd-relative paths; both are normalized. Safe to call
+   * repeatedly with the same path.
+   */
+  trackInput(...paths: string[]): void;
 }
 
 /** A file contributed by an extension's `emitFiles` hook. */

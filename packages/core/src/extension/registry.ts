@@ -1,3 +1,4 @@
+import { relative, resolve } from 'node:path';
 import { Project } from 'ts-morph';
 import type { ResolvedConfig } from '../config/types.js';
 import type { RouteDescriptor } from '../discovery/types.js';
@@ -75,6 +76,7 @@ export function mergeExclusive<V>(
 export function createExtensionContext(
   config: ResolvedConfig,
   getRoutes: () => readonly RouteDescriptor[],
+  trackedInputs?: Set<string>,
 ): ExtensionContext {
   let project: Project | undefined;
   return {
@@ -83,6 +85,15 @@ export function createExtensionContext(
     config,
     get routes() {
       return getRoutes();
+    },
+    trackInput(...paths: string[]) {
+      if (!trackedInputs) return;
+      for (const path of paths) {
+        if (!path) continue;
+        // Normalize to cwd-relative so the manifest stays portable across
+        // machines and checkout locations.
+        trackedInputs.add(relative(config.codegen.cwd, resolve(config.codegen.cwd, path)));
+      }
     },
     project() {
       if (!project) {

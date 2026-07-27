@@ -126,3 +126,114 @@ describe('generate skip-when-unchanged', () => {
     expect(await readFile(join(outDir, 'pages.d.ts'), 'utf8')).not.toBe('SENTINEL');
   });
 });
+
+/**
+ * Extension-declared inputs (`ExtensionContext.trackInput`).
+ *
+ * The freshness hash is built from the host's own globs. An extension that
+ * reads outside them — the filter extension resolves each route's
+ * `@ApplyFilter(FilterClass)` target and reads its `@Filterable`/`@Computed`
+ * declarations — used to produce output nothing could invalidate: editing that
+ * file left the hash untouched and the next run reported "up to date, skipped"
+ * while serving stale types.
+ */
+describe('generate skip-when-unchanged with extension-tracked inputs', () => {
+  let tmpBase: string;
+  let pagesDir: string;
+  let outDir: string;
+  let sidecar: string;
+  let config: ResolvedConfig;
+
+  /** An extension that depends on a file no host glob matches. */
+  function trackingExtension(path: string) {
+    return {
+      name: 'tracking-test-extension',
+      transformRoutes(routes: unknown, ctx: { trackInput: (...p: string[]) => void }) {
+        ctx.trackInput(path);
+        return routes as never;
+      },
+    };
+  }
+
+  beforeEach(async () => {
+    tmpBase = await mkdtemp(join(tmpdir(), 'gen-manifest-tracked-'));
+    pagesDir = join(tmpBase, 'pages');
+    outDir = join(tmpBase, '.out');
+    await mkdir(pagesDir, { recursive: true });
+    await writeFile(
+      join(pagesDir, 'Home.tsx'),
+      'export type ComponentProps = { title: string };\nexport default function Home() { return null; }\n',
+      'utf8',
+    );
+    // `.filter.ts` matches neither the pages glob (**/*.tsx), the contracts
+    // glob (src/**/*.controller.ts) nor the forms glob (src/**/*.dto.ts).
+    sidecar = join(pagesDir, 'mvr.filter.ts');
+    await writeFile(sidecar, 'export const computed = { firstVisit: 1 };\n', 'utf8');
+
+    config = makeConfig(pagesDir, outDir);
+    config.extensions = [trackingExtension(sidecar) as never];
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(tmpBase, { recursive: true, force: true });
+  });
+
+  it('records tracked paths in the manifest, relative to cwd', async () => {
+    await generate(config);
+
+    expect((await readManifest(outDir))?.extraInputs).toEqual(['mvr.filter.ts']);
+  });
+
+  it('still skips when neither the globbed inputs nor the tracked file changed', async () => {
+    await generate(config);
+    await writeFile(join(outDir, 'pages.d.ts'), 'SENTINEL', 'utf8');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await generate(config);
+
+    // The re-hash on write must be reproducible, or this would regenerate on
+    // every run once an extension tracks anything.
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('up to date, skipped'));
+    expect(await readFile(join(outDir, 'pages.d.ts'), 'utf8')).toBe('SENTINEL');
+  });
+
+  it('regenerates when a tracked file changes', async () => {
+    await generate(config);
+    await writeFile(join(outDir, 'pages.d.ts'), 'SENTINEL', 'utf8');
+
+    // The whole point: no glob matches this file, so before the fix the hash
+    // was unchanged and the run skipped.
+    await writeFile(sidecar, 'export const computed = { firstVisit: 1, lastVisit: 2 };\n', 'utf8');
+
+    await generate(config);
+
+    expect(await readFile(join(outDir, 'pages.d.ts'), 'utf8')).not.toBe('SENTINEL');
+  });
+
+  it('regenerates when a tracked file is deleted', async () => {
+    await generate(config);
+    await writeFile(join(outDir, 'pages.d.ts'), 'SENTINEL', 'utf8');
+
+    await unlink(sidecar);
+
+    // A vanished dependency hashes as a `missing` marker rather than throwing.
+    await generate(config);
+
+    expect(await readFile(join(outDir, 'pages.d.ts'), 'utf8')).not.toBe('SENTINEL');
+  });
+
+  it('ignores tracking of a file the globs already cover', async () => {
+    config.extensions = [trackingExtension(join(pagesDir, 'Home.tsx')) as never];
+    await generate(config);
+    await writeFile(join(outDir, 'pages.d.ts'), 'SENTINEL', 'utf8');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await generate(config);
+
+    // Hashed once, not twice — double-hashing would still be deterministic, so
+    // what this really pins is that the dedup does not break the skip path.
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('up to date, skipped'));
+    expect(await readFile(join(outDir, 'pages.d.ts'), 'utf8')).toBe('SENTINEL');
+  });
+});

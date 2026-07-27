@@ -820,6 +820,10 @@ function buildApiFile(
       project: () => {
         throw new Error('ExtensionContext.project() is unavailable in standalone emitApi.');
       },
+      // No manifest is written on the standalone path, so there is nothing for
+      // tracked dependencies to be recorded into — accept and discard them
+      // rather than making every caller supply a sink.
+      trackInput: () => {},
     } satisfies ExtensionContext);
 
   // Collect all type refs for import generation

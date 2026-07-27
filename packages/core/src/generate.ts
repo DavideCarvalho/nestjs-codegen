@@ -76,8 +76,13 @@ export async function generate(
   // pass is a no-op. This stops watch/HMR from rewriting api.ts when nothing
   // changed, which would otherwise churn downstream tsbuildinfo. Computed per
   // call so an actual file change still regenerates.
-  const inputsHash = await computeInputsHash(config);
+  // The manifest is read FIRST: it carries the extra input files extensions
+  // reported last run (`ExtensionContext.trackInput`), and those take part in
+  // the hash. Without them an extension that reads outside the host's globs —
+  // the filter extension reads each route's `@ApplyFilter` target — produces
+  // output that nothing invalidates.
   const manifest = await readManifest(config.codegen.outDir);
+  const inputsHash = await computeInputsHash(config, manifest?.extraInputs ?? []);
   if (await isManifestFresh(config.codegen.outDir, manifest, inputsHash)) {
     console.log(`[nestjs-codegen] ${config.codegen.outDir} up to date, skipped`);
     return;
@@ -119,7 +124,8 @@ export async function generate(
   // forms.ts all see the augmented IR. ctx.routes is a live getter over the active set.
   const extensions = config.extensions ?? [];
   let routes = inputRoutes;
-  const ctx = createExtensionContext(config, () => routes);
+  const trackedInputs = new Set<string>();
+  const ctx = createExtensionContext(config, () => routes, trackedInputs);
   if (extensions.length > 0) {
     routes = await applyTransformRoutes(routes, extensions, ctx);
   }
@@ -198,12 +204,20 @@ export async function generate(
   // nothing changed. Recorded after a successful pass; a throw above leaves the
   // old manifest (or none) in place, so the next run regenerates.
   const outputFiles = await listOutputFiles(config.codegen.outDir);
+  const extraInputs = [...trackedInputs].sort();
+  // Re-hash with the dependencies THIS run actually reported, not the ones the
+  // previous manifest carried. Otherwise the first run after an extension's
+  // dependency set changes would store a hash the next run cannot reproduce,
+  // costing one spurious regeneration before it settles.
+  const recordedHash =
+    extraInputs.length > 0 ? await computeInputsHash(config, extraInputs) : inputsHash;
   await writeManifest(config.codegen.outDir, {
     version: VERSION,
-    hash: inputsHash,
+    hash: recordedHash,
     entryPoint,
     configHash,
     configKeyHashes,
     files: outputFiles,
+    ...(extraInputs.length > 0 ? { extraInputs } : {}),
   });
 }

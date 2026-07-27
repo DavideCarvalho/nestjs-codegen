@@ -675,9 +675,18 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
           classArgs: inherited.classArgs,
         }
       : undefined;
-    const methods: Array<{ method: MethodDeclaration; mixin?: MixinBinding }> = [
-      ...cls.getMethods().map((method) => ({ method })),
-      ...(inherited?.methods ?? []).map((method) => ({ method, mixin: mixinBinding })),
+    // A derived class may OVERRIDE an inherited route (to add route-param
+    // scoping, a richer populate, a custom mapper). Its own declaration wins:
+    // including both would emit two routes with the same name and trip the
+    // collision check, while dropping the inherited siblings would silently lose
+    // every route the subclass did not override.
+    const ownMethods = cls.getMethods();
+    const ownNames = new Set(ownMethods.map((m) => m.getName()));
+    const methods: Array<{ method: MethodDeclaration; mixin?: MixinBinding | undefined }> = [
+      ...ownMethods.map((method) => ({ method, mixin: mixinBinding })),
+      ...(inherited?.methods ?? [])
+        .filter((method) => !ownNames.has(method.getName()))
+        .map((method) => ({ method, mixin: mixinBinding })),
     ];
 
     for (const { method, mixin } of methods) {

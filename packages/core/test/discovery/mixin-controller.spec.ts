@@ -109,4 +109,23 @@ describe('mixin controller with an overridden route', () => {
     expect(search).toHaveLength(1);
     expect(search[0]?.controllerRef?.className).toBe('SearchOverriddenController');
   });
+
+  it('resolves @ApplyFilter(<Table>.filter) through the factory static', async () => {
+    const routes = await discoverContractsFast({
+      cwd: FIXTURES,
+      glob: 'mixin-override.controller.ts',
+    });
+    // The override can only name the generated filter as a property access on
+    // the factory result. Skipping it is not a partial result — the route emits
+    // `body: never` / `filterFields: never`, silently dropping the typed filter
+    // builder from exactly the routes that took the escape hatch.
+    const search = routes.find((r) => r.path === '/overridden/search');
+    expect(search?.contract?.contractSource.filterFields).toEqual(['id', 'name']);
+    expect(search?.contract?.contractSource.filterSource).toBe('body');
+
+    // The inherited sibling keeps working, so the two routes of one table can't
+    // disagree about what is filterable.
+    const distinct = routes.find((r) => r.path === '/overridden/search/distinct');
+    expect(distinct?.contract?.contractSource.filterFields).toEqual(['id', 'name']);
+  });
 });

@@ -93,6 +93,65 @@ function resolveReturnedClass(
   return undefined;
 }
 
+/** Resolve the function declaration a factory call expression targets. */
+function resolveFactoryDeclaration(
+  call: import('ts-morph').CallExpression,
+): import('ts-morph').FunctionDeclaration | undefined {
+  const callee = call.getExpression();
+  if (!Node.isIdentifier(callee)) return undefined;
+  return callee
+    .getDefinitions()
+    .map((d) => d.getDeclarationNode())
+    .find((n): n is import('ts-morph').FunctionDeclaration => Node.isFunctionDeclaration(n));
+}
+
+/**
+ * Resolve `SomeTable.filter` — a static property on a factory-produced class —
+ * to the class declaration the factory assigned to it.
+ *
+ * A subclass that overrides a route has to re-declare the decorators the base
+ * carried, and `@ApplyFilter` needs the very filter class the factory generated
+ * internally. It cannot be imported (it is declared inside the function body),
+ * so the factory hands it back as a static and the override writes
+ * `@ApplyFilter(SomeTable.filter)`. That expression is a property access, not an
+ * identifier, so every identifier-only resolver silently skipped it — and a
+ * skipped `@ApplyFilter` is not a partial result: the route emits with
+ * `body: never` and `filterFields: never`, losing the typed filter builder on
+ * exactly the routes that took the escape hatch. Green tsc and green codegen
+ * both survive that, so it only shows up as an untypable client call.
+ */
+export function resolveFactoryStaticClass(node: Node): ClassDeclaration | undefined {
+  if (!Node.isPropertyAccessExpression(node)) return undefined;
+
+  const call = resolveHeritageCall(node.getExpression());
+  if (!call) return undefined;
+
+  const factoryDecl = resolveFactoryDeclaration(call);
+  if (!factoryDecl) return undefined;
+
+  const returnedClass = resolveReturnedClass(factoryDecl);
+  if (!returnedClass) return undefined;
+
+  const staticProp = returnedClass
+    .getStaticProperties()
+    .find((p) => p.getName() === node.getName());
+  if (!staticProp || !Node.isPropertyDeclaration(staticProp)) return undefined;
+
+  const init = staticProp.getInitializer();
+  if (!init) return undefined;
+  const inner = unwrapExpression(init);
+
+  if (Node.isClassExpression(inner)) return inner as unknown as ClassDeclaration;
+  if (!Node.isIdentifier(inner)) return undefined;
+
+  // The assigned class is declared in the factory body, invisible to any
+  // module-level lookup — resolve it lexically from the identifier itself.
+  return inner
+    .getDefinitions()
+    .map((d) => d.getDeclarationNode())
+    .find((n): n is ClassDeclaration => n !== undefined && Node.isClassDeclaration(n));
+}
+
 /**
  * Resolve a `class X extends someFactory(Entity) {}` heritage clause to the
  * decorated methods of the class expression the factory returns.
@@ -109,10 +168,7 @@ export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods
   const callee = expr.getExpression();
   if (!Node.isIdentifier(callee)) return undefined;
 
-  const factoryDecl = callee
-    .getDefinitions()
-    .map((d) => d.getDeclarationNode())
-    .find((n): n is import('ts-morph').FunctionDeclaration => Node.isFunctionDeclaration(n));
+  const factoryDecl = resolveFactoryDeclaration(expr);
   if (!factoryDecl) return undefined;
 
   const returnedClass = resolveReturnedClass(factoryDecl);

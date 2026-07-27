@@ -12,6 +12,7 @@ import {
   classifyTypeNode,
   toFilterFieldType,
 } from './filter-field-types.js';
+import { resolveFactoryStaticClass } from './heritage.js';
 import { findType, resolveTypeRef } from './type-ref-resolution.js';
 import type { FilterFieldType, MixinBinding } from './types.js';
 
@@ -203,7 +204,12 @@ export function extractApplyFilterInfo(
     const args = filterDecorator.getArguments();
     if (args.length === 0) continue;
     const filterClassArg = args[0];
-    if (!filterClassArg || !Node.isIdentifier(filterClassArg)) continue;
+    if (!filterClassArg) continue;
+    // `@ApplyFilter(SomeTable.filter)` — the override escape hatch. Resolved
+    // through the factory rather than by name, since the filter class it names
+    // has no module-level declaration to look up.
+    const factoryStaticClass = resolveFactoryStaticClass(filterClassArg);
+    if (!factoryStaticClass && !Node.isIdentifier(filterClassArg)) continue;
 
     // Read { source: "body" | "query" } from second argument
     let source: 'body' | 'query' = 'query';
@@ -219,15 +225,16 @@ export function extractApplyFilterInfo(
     }
 
     const filterClassName = filterClassArg.getText();
-    const resolved = findType(filterClassName, declFile, project);
+    const resolved = factoryStaticClass ? undefined : findType(filterClassName, declFile, project);
     // `findType` looks up module-level declarations and imports. A factory's
     // generated filter is declared INSIDE the factory function, so it is
     // invisible there — but the decorator's identifier still points straight at
     // it lexically.
     const classDecl =
-      resolved?.kind === 'class'
+      factoryStaticClass ??
+      (resolved?.kind === 'class'
         ? (resolved.decl as ClassDeclaration)
-        : resolveLocalClassDeclaration(filterClassArg);
+        : resolveLocalClassDeclaration(filterClassArg));
     if (classDecl) {
       let fieldTypes = extractClassPropertyTypes(classDecl, project);
 

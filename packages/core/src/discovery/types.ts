@@ -147,8 +147,28 @@ export interface ContractDescriptor {
 export interface MixinBinding {
   factoryName: string;
   factoryFilePath: string;
-  /** Call-site arguments that resolve to a class declaration, in argument order. */
+  /**
+   * POSITIONAL call-site arguments that resolve to a class declaration, in
+   * argument order — `createTableController(Entity, { dto })` yields one entry.
+   */
   classArgs: Array<{ name: string; filePath: string }>;
+  /**
+   * Class-valued properties of an OPTIONS-OBJECT call-site argument, keyed by
+   * property name — `createTableController({ entity: Entity, filter: Filter })`
+   * yields `entity` and `filter`.
+   *
+   * Keyed by name rather than flattened into {@link classArgs} because the key
+   * is what identifies the argument's role: with a single object argument there
+   * is no positional order to read a role out of, and consumers want different
+   * properties. This package resolves `entity` (to derive the filter fields of a
+   * factory-generated `@Filterable({ entity })`, whose `entity` names the
+   * factory's own parameter and resolves to nothing on its own);
+   * `@dudousxd/nestjs-filter-codegen` reads `filter` off this same binding to
+   * resolve a call-site-supplied filter class. Empty for a purely positional
+   * call; both maps are populated independently, so a factory may be called
+   * either way.
+   */
+  namedClassArgs: Record<string, { name: string; filePath: string }>;
 }
 
 export interface ControllerRef {

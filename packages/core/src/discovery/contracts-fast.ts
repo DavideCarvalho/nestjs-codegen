@@ -673,6 +673,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RouteD
           factoryName: inherited.factoryName,
           factoryFilePath: inherited.factoryFilePath,
           classArgs: inherited.classArgs,
+          namedClassArgs: inherited.namedClassArgs,
         }
       : undefined;
     // A derived class may OVERRIDE an inherited route (to add route-param

@@ -53,6 +53,15 @@ function unwrapExpression(node: Node): Node {
 }
 
 /**
+ * A declaration a factory call can resolve to.
+ *
+ * A `MethodDeclaration` belongs here because `Factory.create(Entity)` — a static
+ * method — is an ordinary way to publish a controller factory, and everything
+ * downstream only ever reads the body and the name, both of which a method has.
+ */
+type FactoryDeclaration = import('ts-morph').FunctionDeclaration | MethodDeclaration;
+
+/**
  * Find the class a factory actually RETURNS.
  *
  * Not simply "the first class declared in the body": a controller factory
@@ -61,9 +70,7 @@ function unwrapExpression(node: Node): Node {
  * on the way out (`return C as unknown as Type<...>`), so the return expression
  * is unwrapped before resolving.
  */
-function resolveReturnedClass(
-  factoryDecl: import('ts-morph').FunctionDeclaration,
-): ClassDeclaration | undefined {
+function resolveReturnedClass(factoryDecl: FactoryDeclaration): ClassDeclaration | undefined {
   const body = factoryDecl.getBody();
   if (!body) return undefined;
 
@@ -94,16 +101,107 @@ function resolveReturnedClass(
   return undefined;
 }
 
-/** Resolve the function declaration a factory call expression targets. */
+/**
+ * The name node a factory call is dispatched through, or undefined when the
+ * callee is not a name at all.
+ *
+ * `factory(...)` names it directly; `<expr>.factory(...)` names it in the
+ * property-access' name node — which is the SAME kind of node, resolved the same
+ * way, so a namespace import (`tables.createTableController`), a static method
+ * (`TableFactory.create`) and a re-export object (`factories.table`) all reduce
+ * to one identifier lookup. An `<expr>[...]` element access or a callee that is
+ * itself a call (`makeFactory()(Entity)`) has no such node: naming the function
+ * would mean evaluating the program, so those stay unresolved (and, at a
+ * `@Controller`, loudly so — see {@link warnUnresolvedFactory}).
+ */
+function factoryCalleeName(
+  call: import('ts-morph').CallExpression,
+): import('ts-morph').Identifier | undefined {
+  const callee = unwrapExpression(call.getExpression());
+  if (Node.isIdentifier(callee)) return callee;
+  if (Node.isPropertyAccessExpression(callee)) {
+    const name = callee.getNameNode();
+    return Node.isIdentifier(name) ? name : undefined;
+  }
+  return undefined;
+}
+
+/** Resolve the function or method declaration a factory call expression targets. */
 function resolveFactoryDeclaration(
   call: import('ts-morph').CallExpression,
-): import('ts-morph').FunctionDeclaration | undefined {
-  const callee = call.getExpression();
-  if (!Node.isIdentifier(callee)) return undefined;
-  return callee
+): FactoryDeclaration | undefined {
+  const name = factoryCalleeName(call);
+  return name ? resolveFactoryFromName(name, new Set()) : undefined;
+}
+
+/**
+ * Walk a name to the function/method declaration behind it.
+ *
+ * The first hop is go-to-definition, which already crosses imports, namespace
+ * imports and re-export barrels. One further hop is needed for the object-literal
+ * form (`export const factories = { table: createTableController }`): there the
+ * definition of `table` is the property assignment, and the function is one
+ * identifier further on. `seen` guards the self-referential case a shorthand
+ * property (`{ createTableController }`) produces, whose name node lists itself
+ * among its own definitions.
+ */
+function resolveFactoryFromName(
+  name: import('ts-morph').Identifier,
+  seen: Set<Node>,
+): FactoryDeclaration | undefined {
+  if (seen.has(name)) return undefined;
+  seen.add(name);
+
+  const decls = name
     .getDefinitions()
     .map((d) => d.getDeclarationNode())
-    .find((n): n is import('ts-morph').FunctionDeclaration => Node.isFunctionDeclaration(n));
+    .filter((n): n is Node => n !== undefined);
+
+  for (const decl of decls) {
+    if (Node.isFunctionDeclaration(decl) || Node.isMethodDeclaration(decl)) return decl;
+
+    if (Node.isPropertyAssignment(decl)) {
+      const init = decl.getInitializer();
+      const inner = init ? unwrapExpression(init) : undefined;
+      if (inner && Node.isIdentifier(inner)) {
+        const resolved = resolveFactoryFromName(inner, seen);
+        if (resolved) return resolved;
+      }
+      continue;
+    }
+
+    if (Node.isShorthandPropertyAssignment(decl)) {
+      const nameNode = decl.getNameNode();
+      const resolved = Node.isIdentifier(nameNode)
+        ? resolveFactoryFromName(nameNode, seen)
+        : undefined;
+      if (resolved) return resolved;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Report a `@Controller` whose factory heritage discovery could not follow.
+ *
+ * A controller that inherits its routes contributes them ONLY through this
+ * resolution: when it fails the class is not partially generated, it is absent
+ * from the client entirely — no route, no type, no error. Both `tsc` and codegen
+ * stay green, so the first sign is a missing client call, which is a debugging
+ * session rather than a fix. A line on stderr turns the next unsupported callee
+ * shape into a five-second read.
+ *
+ * Deliberately a warning and not a throw: the callee may be perfectly valid code
+ * this pass simply cannot name statically, and codegen must not refuse to run
+ * over a shape it merely does not model.
+ */
+function warnUnresolvedFactory(cls: ClassDeclaration, calleeText: string, reason: string): void {
+  console.warn(
+    `[nestjs-codegen/fast] ${cls.getName() ?? '<anonymous class>'} in ${cls
+      .getSourceFile()
+      .getFilePath()} extends ${calleeText}(...) but ${reason} — it contributes NO routes to the generated client. Resolvable factory callees: a name (\`factory(...)\`), a namespace or object property (\`ns.factory(...)\`), or a static method (\`Factory.create(...)\`), each resolving to a function or method declaration that returns a class.`,
+  );
 }
 
 /**
@@ -161,19 +259,42 @@ export function resolveFactoryStaticClass(node: Node): ClassDeclaration | undefi
  * prototype chain); this teaches the static discovery pass to follow the same
  * link. Returns undefined when the heritage clause is absent, or is not a call
  * expression whose callee resolves to a function returning a class.
+ *
+ * A failure to resolve is reported (see {@link warnUnresolvedFactory}) — but
+ * only for a `@Controller`-decorated class, and only once the heritage clause is
+ * known to be a factory-shaped CALL. `extends SomeBaseClass` and every call-
+ * extending class that is not a controller stay silent: they are ordinary code
+ * this pass has no expectation of, and warning on them would bury the one line
+ * that matters.
  */
 export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods | undefined {
   const expr = resolveHeritageCall(cls.getExtends()?.getExpression());
   if (!expr) return undefined;
 
-  const callee = expr.getExpression();
-  if (!Node.isIdentifier(callee)) return undefined;
+  const isController = cls.getDecorator('Controller') !== undefined;
+  const calleeText = expr.getExpression().getText();
 
   const factoryDecl = resolveFactoryDeclaration(expr);
-  if (!factoryDecl) return undefined;
+  if (!factoryDecl) {
+    if (isController) {
+      warnUnresolvedFactory(
+        cls,
+        calleeText,
+        factoryCalleeName(expr)
+          ? 'its callee does not resolve to a function or method declaration'
+          : 'its callee is not a name that can be resolved statically',
+      );
+    }
+    return undefined;
+  }
 
   const returnedClass = resolveReturnedClass(factoryDecl);
-  if (!returnedClass) return undefined;
+  if (!returnedClass) {
+    if (isController) {
+      warnUnresolvedFactory(cls, calleeText, 'that factory does not return a class declaration');
+    }
+    return undefined;
+  }
 
   const classArgs: Array<{ name: string; filePath: string }> = [];
   const namedClassArgs: Record<string, { name: string; filePath: string }> = {};
@@ -199,7 +320,12 @@ export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods
 
   return {
     methods: returnedClass.getMethods(),
-    factoryName: callee.getText(),
+    // The DECLARATION's name, not the call-site text: consumers look the factory
+    // back up by name inside `factoryFilePath`, which a qualified
+    // `tables.createTableController` would never match. For a bare identifier
+    // the two coincide (bar an import alias, where the declaration name is the
+    // one that resolves anyway).
+    factoryName: factoryDecl.getName() ?? calleeText,
     factoryFilePath: factoryDecl.getSourceFile().getFilePath(),
     classArgs,
     namedClassArgs,

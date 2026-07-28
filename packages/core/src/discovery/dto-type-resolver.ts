@@ -769,6 +769,13 @@ export function extractDtoContract(
   sourceFile: SourceFile,
   project: Project,
   mixin?: MixinBinding | undefined,
+  /**
+   * The `@Controller` class this route was discovered on. Lets the filter pass
+   * tell an OVERRIDE (method declared here) from a route inherited from a
+   * factory-produced base, without guessing from file paths. Optional: omitting
+   * it degrades to the pre-0.21 file comparison.
+   */
+  controllerClass?: ClassDeclaration | undefined,
 ): {
   query: string | null;
   body: string | null;
@@ -792,7 +799,7 @@ export function extractDtoContract(
   asQuery?: boolean;
 } | null {
   let body = extractBodyType(method, sourceFile, project);
-  const filterInfo = extractApplyFilterInfo(method, sourceFile, project, mixin);
+  const filterInfo = extractApplyFilterInfo(method, sourceFile, project, mixin, controllerClass);
   const query = extractQueryType(method, sourceFile, project);
 
   // ── Multipart uploads: carry the uploaded-file field(s) separately. The

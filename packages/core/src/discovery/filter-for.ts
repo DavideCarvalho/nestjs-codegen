@@ -34,13 +34,42 @@ function resolveMixinEntityClass(
   mixin: MixinBinding | undefined,
   project: Project,
 ): ClassDeclaration | undefined {
-  const entityArg = mixin?.namedClassArgs?.entity ?? mixin?.classArgs[0];
-  if (!entityArg) return undefined;
+  return resolveClassRef(mixin?.namedClassArgs?.entity ?? mixin?.classArgs[0], project);
+}
 
+/**
+ * Resolve the filter class a controller factory was called with
+ * (`createTableController({ entity, filter })`).
+ *
+ * A table factory that accepts a `filter` option uses THAT class at runtime for
+ * every route it produces, and generates its internal filter only as a fallback.
+ * The decorators inside the factory body still read `@ApplyFilter(GeneratedFilter)`
+ * — they cannot name a class that only exists at the call site — so resolving the
+ * decorator argument alone always describes the fallback. What is emitted then is
+ * not merely incomplete: a hand-written filter's `@FilterFor` virtuals go missing
+ * from the client, and a hand-written filter that NARROWS with `allowed` is typed
+ * with the fallback's wider entity-derived set — telling the client it may filter
+ * by fields the server will reject.
+ *
+ * Only the NAMED property is read: `filter` is a role, and a positional argument
+ * carries no role to read it out of.
+ */
+function resolveMixinFilterClass(
+  mixin: MixinBinding | undefined,
+  project: Project,
+): ClassDeclaration | undefined {
+  return resolveClassRef(mixin?.namedClassArgs?.filter, project);
+}
+
+/** Look a `{ name, filePath }` mixin class reference back up as a declaration. */
+function resolveClassRef(
+  ref: { name: string; filePath: string } | undefined,
+  project: Project,
+): ClassDeclaration | undefined {
+  if (!ref) return undefined;
   const file =
-    project.getSourceFile(entityArg.filePath) ??
-    project.addSourceFileAtPathIfExists(entityArg.filePath);
-  return file?.getClass(entityArg.name);
+    project.getSourceFile(ref.filePath) ?? project.addSourceFileAtPathIfExists(ref.filePath);
+  return file?.getClass(ref.name);
 }
 
 /**
@@ -185,6 +214,29 @@ export function extractFilterForHints(
  * parameter. Resolves the filter class and reads its properties (excluding
  * inherited base class members). Returns the field names + classified types +
  * filter source, or null when no resolvable filter is present.
+ *
+ * FILTER-CLASS PRECEDENCE (first candidate that yields a readable field set
+ * wins):
+ *
+ *  1. A filter named BY IDENTIFIER in the route's OWN `@ApplyFilter(SomeFilter)`.
+ *     An overriding method is the only place a per-route statement about the
+ *     filter can be made at all, so it is the most specific thing available.
+ *  2. The factory's `filter` option, from the mixin binding — what the factory
+ *     actually applies to every route it produced.
+ *  3. The existing walk: `@ApplyFilter(<Const>.filter)` through the factory
+ *     static, then a lexically-scoped local class, then a module-level lookup.
+ *
+ * `@ApplyFilter(<Const>.filter)` sits BELOW (2) deliberately, matching
+ * `@dudousxd/nestjs-filter-codegen`: that expression forwards the factory's
+ * product rather than naming a filter of its own, and statically it always lands
+ * on the generated fallback — precisely the wrong class when a filter was
+ * supplied. The two packages must agree, or one route ends up described twice,
+ * differently.
+ *
+ * Candidates that resolve but read as EMPTY are skipped rather than returned:
+ * a call-site filter this pass cannot read statically (no properties, no
+ * `@Filterable`, no `@FilterFor`) must not turn a working `filterFields` into
+ * `never`. Preferring a better source may never produce a worse result.
  */
 export function extractApplyFilterInfo(
   method: MethodDeclaration,
@@ -236,43 +288,93 @@ export function extractApplyFilterInfo(
     // generated filter is declared INSIDE the factory function, so it is
     // invisible there — but the decorator's identifier still points straight at
     // it lexically.
-    const classDecl =
+    const declaredClass =
       factoryStaticClass ??
       (resolved?.kind === 'class'
         ? (resolved.decl as ClassDeclaration)
         : resolveLocalClassDeclaration(filterClassArg));
-    if (classDecl) {
-      let fieldTypes = extractClassPropertyTypes(classDecl, project);
 
-      // autoFields: if the filter class has no properties, resolve fields
-      // from the entity referenced in @Filterable({ entity: X })
-      if (fieldTypes.length === 0) {
-        fieldTypes = extractFilterableEntityFields(classDecl, project, mixinEntity);
-      }
+    // An INHERITED route's method is declared in the factory's file, so its
+    // `@ApplyFilter(GeneratedFilter)` is the factory talking about itself, not a
+    // statement about this table. Only a method declared at the call site is the
+    // route's own.
+    const ownRoute = !mixin || declFile.getFilePath() !== mixin.factoryFilePath;
+    const namedByRoute = ownRoute && Node.isIdentifier(filterClassArg) ? declaredClass : undefined;
 
-      // Merge in explicit @FilterFor('key', { type }) hints. An explicit hint
-      // WINS over entity-column / class-property inference for the same key;
-      // genuinely-virtual keys (no property, no column) are appended so they
-      // appear in the Fields union and the type map M.
-      const filterForHints = extractFilterForHints(classDecl, project);
-      if (filterForHints.size > 0) {
-        const byName = new Map(fieldTypes.map((f) => [f.name, f] as const));
-        for (const [key, classified] of filterForHints) {
-          byName.set(key, toFilterFieldType(key, classified));
-        }
-        fieldTypes = [...byName.values()];
-      }
-
-      if (fieldTypes.length === 0) return null;
-      const fieldNames = fieldTypes.map((f) => f.name);
+    for (const candidate of orderFilterCandidates({
+      namedByRoute,
+      supplied: resolveMixinFilterClass(mixin, project),
+      declared: declaredClass,
+    })) {
+      const fieldTypes = collectFilterFields(candidate, project, mixinEntity);
+      if (fieldTypes.length === 0) continue;
       return {
-        fieldNames,
+        fieldNames: fieldTypes.map((f) => f.name),
         fieldTypes,
         source,
       };
     }
+    if (declaredClass) return null;
   }
   return null;
+}
+
+/**
+ * The filter classes to try, in precedence order, de-duplicated.
+ *
+ * `preferDeclaredEntity` records WHY the class was picked, which decides whose
+ * entity wins in {@link collectFilterFields}.
+ */
+function orderFilterCandidates(sources: {
+  namedByRoute: ClassDeclaration | undefined;
+  supplied: ClassDeclaration | undefined;
+  declared: ClassDeclaration | undefined;
+}): Array<{ decl: ClassDeclaration; preferDeclaredEntity: boolean }> {
+  const ordered: Array<{ decl: ClassDeclaration; preferDeclaredEntity: boolean }> = [];
+  const seen = new Set<ClassDeclaration>();
+  const push = (decl: ClassDeclaration | undefined, preferDeclaredEntity: boolean) => {
+    if (!decl || seen.has(decl)) return;
+    seen.add(decl);
+    ordered.push({ decl, preferDeclaredEntity });
+  };
+  push(sources.namedByRoute, true);
+  push(sources.supplied, true);
+  push(sources.declared, false);
+  return ordered;
+}
+
+/** Read one filter class into its full field set (properties / entity / virtuals). */
+function collectFilterFields(
+  candidate: { decl: ClassDeclaration; preferDeclaredEntity: boolean },
+  project: Project,
+  mixinEntity: ClassDeclaration | undefined,
+): FilterFieldType[] {
+  const { decl, preferDeclaredEntity } = candidate;
+  let fieldTypes = extractClassPropertyTypes(decl, project);
+
+  // autoFields: if the filter class has no properties, resolve fields
+  // from the entity referenced in @Filterable({ entity: X })
+  if (fieldTypes.length === 0) {
+    fieldTypes = extractFilterableEntityFields(decl, project, mixinEntity, preferDeclaredEntity);
+  }
+
+  // Merge in explicit @FilterFor('key', { type }) hints. An explicit hint
+  // WINS over entity-column / class-property inference for the same key;
+  // genuinely-virtual keys (no property, no column) are appended so they
+  // appear in the Fields union and the type map M.
+  //
+  // Appended AFTER the allowlist narrowing on purpose: a `@FilterFor` key is an
+  // explicit handler, and the runtime resolves it without consulting `allowed`.
+  const filterForHints = extractFilterForHints(decl, project);
+  if (filterForHints.size > 0) {
+    const byName = new Map(fieldTypes.map((f) => [f.name, f] as const));
+    for (const [key, classified] of filterForHints) {
+      byName.set(key, toFilterFieldType(key, classified));
+    }
+    fieldTypes = [...byName.values()];
+  }
+
+  return fieldTypes;
 }
 
 const RELATION_DECORATORS = new Set(['OneToMany', 'ManyToOne', 'ManyToMany', 'OneToOne']);
@@ -409,10 +511,69 @@ function resolveDeclaredEntity(
   return resolved.decl as ClassDeclaration;
 }
 
+/**
+ * Read a `@Filterable` option that holds a list of field names.
+ *
+ * Handles both `allowed` entry forms — a bare `'field'` and the operator-
+ * restricted `{ field, operators }` — because only the field name matters for
+ * membership. Returns undefined when the option is absent OR when any entry is
+ * not statically readable: a half-read allowlist would narrow the emitted set to
+ * a subset of what the server accepts, which costs the client real fields.
+ * Not narrowing at all is the safe direction for that case.
+ */
+function readFieldNameList(optionsArg: Node, key: string): Set<string> | undefined {
+  if (!Node.isObjectLiteralExpression(optionsArg)) return undefined;
+  const prop = optionsArg.getProperty(key);
+  if (!prop || !Node.isPropertyAssignment(prop)) return undefined;
+  const init = prop.getInitializer();
+  if (!init || !Node.isArrayLiteralExpression(init)) return undefined;
+
+  const names = new Set<string>();
+  for (const el of init.getElements()) {
+    if (Node.isStringLiteral(el)) {
+      names.add(el.getLiteralValue());
+      continue;
+    }
+    // `{ field: 'name', operators: [...] }` — the operator-restricted form.
+    if (Node.isObjectLiteralExpression(el)) {
+      const fieldProp = el.getProperty('field');
+      if (fieldProp && Node.isPropertyAssignment(fieldProp)) {
+        const fieldInit = fieldProp.getInitializer();
+        if (fieldInit && Node.isStringLiteral(fieldInit)) {
+          names.add(fieldInit.getLiteralValue());
+          continue;
+        }
+      }
+    }
+    return undefined;
+  }
+  return names;
+}
+
+/**
+ * Apply a filter class's own `allowed` / `blocked` narrowing to the fields
+ * derived from its entity.
+ *
+ * These options gate exactly the AUTO-FIELD set (the entity columns a filter
+ * accepts without an explicit handler), so this is the one place they belong.
+ * Skipping them is the damaging direction: the client is handed a field union
+ * wider than the server's, and every field outside the allowlist type-checks at
+ * the call site and is rejected at runtime.
+ */
+function narrowToDeclaredFields(fields: FilterFieldType[], optionsArg: Node): FilterFieldType[] {
+  const allowed = readFieldNameList(optionsArg, 'allowed');
+  const blocked = readFieldNameList(optionsArg, 'blocked');
+  if (!allowed && !blocked) return fields;
+  return fields.filter(
+    (f) => (!allowed || allowed.has(f.name)) && !(blocked?.has(f.name) ?? false),
+  );
+}
+
 function extractFilterableEntityFields(
   filterClass: ClassDeclaration,
   project: Project,
   entityOverride?: ClassDeclaration | undefined,
+  preferDeclaredEntity = false,
 ): FilterFieldType[] {
   const filterableDecorator = filterClass.getDecorators().find((d) => d.getName() === 'Filterable');
   if (!filterableDecorator) return [];
@@ -422,14 +583,21 @@ function extractFilterableEntityFields(
   const optionsArg = args[0];
   if (!Node.isObjectLiteralExpression(optionsArg)) return [];
 
-  const entityDecl = entityOverride ?? resolveDeclaredEntity(optionsArg, filterClass, project);
+  // Whose entity wins depends on WHY this class was picked. A factory-GENERATED
+  // filter names the factory's own parameter, which resolves to nothing, so the
+  // call-site entity has to override it. A HAND-WRITTEN filter reached through
+  // the factory's `filter` option names a real class — and that is the class the
+  // runtime builds the query against, so overriding it with the call-site entity
+  // would describe a filter that does not exist. It stays a fallback there, for
+  // the case where the declared entity does not resolve.
+  const declaredEntity = resolveDeclaredEntity(optionsArg, filterClass, project);
+  const entityDecl = preferDeclaredEntity
+    ? (declaredEntity ?? entityOverride)
+    : (entityOverride ?? declaredEntity);
   if (!entityDecl) return [];
-  const fields = collectEntityFields(
-    entityDecl,
-    entityDecl.getSourceFile(),
-    project,
-    '',
-    new Set(),
+  const fields = narrowToDeclaredFields(
+    collectEntityFields(entityDecl, entityDecl.getSourceFile(), project, '', new Set()),
+    optionsArg,
   );
 
   // Also include keys declared via @Relations({ rel: { keys: [...] } }).

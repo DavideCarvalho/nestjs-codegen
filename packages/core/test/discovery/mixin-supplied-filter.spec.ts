@@ -12,7 +12,7 @@ let discovered: ReturnType<typeof discoverContractsFast> | undefined;
 const discover = () => {
   discovered ??= discoverContractsFast({
     cwd: FIXTURES,
-    glob: '{mixin-supplied-filter,mixin-options,filter}.controller.ts',
+    glob: '{mixin-supplied-filter,mixin-options,mixin-colocated-factory,filter}.controller.ts',
   });
   return discovered;
 };
@@ -103,5 +103,22 @@ describe('precedence guards', () => {
 
   it('leaves a plain @ApplyFilter route (no factory at all) alone', async () => {
     expect(await fieldsAt('/api/users')).toEqual(['name', 'minAge', 'status']);
+  });
+});
+
+describe('a factory colocated with the controller that calls it', () => {
+  // "Is this route an override?" was answered by comparing the method's file to
+  // the factory's. Those differ in every other fixture, so the comparison looked
+  // right; colocate the two and a genuine override reads as inherited, silently
+  // losing to the factory's `filter` option. The question is about the CLASS the
+  // method is declared on, which is also how @dudousxd/nestjs-filter-codegen
+  // asks it — the packages have to agree on what an override IS.
+
+  it('still lets the override’s own filter win', async () => {
+    expect(await fieldsAt('/colocated')).toEqual(['id', 'internalNote']);
+  });
+
+  it('still describes the inherited sibling with the supplied filter', async () => {
+    expect(await fieldsAt('/colocated/distinct')).toEqual(['id', 'auditedBy', 'assignedTo']);
   });
 });

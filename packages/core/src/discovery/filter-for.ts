@@ -243,6 +243,7 @@ export function extractApplyFilterInfo(
   sourceFile: SourceFile,
   project: Project,
   mixin?: MixinBinding | undefined,
+  controllerClass?: ClassDeclaration | undefined,
 ): {
   fieldNames: string[];
   fieldTypes: FilterFieldType[];
@@ -294,11 +295,26 @@ export function extractApplyFilterInfo(
         ? (resolved.decl as ClassDeclaration)
         : resolveLocalClassDeclaration(filterClassArg));
 
-    // An INHERITED route's method is declared in the factory's file, so its
-    // `@ApplyFilter(GeneratedFilter)` is the factory talking about itself, not a
-    // statement about this table. Only a method declared at the call site is the
-    // route's own.
-    const ownRoute = !mixin || declFile.getFilePath() !== mixin.factoryFilePath;
+    // An INHERITED route's method is declared on the class the factory returns,
+    // so its `@ApplyFilter(GeneratedFilter)` is the factory talking about itself,
+    // not a statement about this table. Only a method declared on the CONTROLLER
+    // is the route's own.
+    //
+    // Ask the class, not the file: a factory may be declared in the same file as
+    // a controller that calls it, and then a file comparison reads a genuine
+    // override as inherited — silently ranking the factory's option above the
+    // filter the override names. `@dudousxd/nestjs-filter-codegen` asks the same
+    // question the same way (`controllerClass.getMethod(name)`); the two packages
+    // have to agree on what an override IS, not just on how to rank one.
+    //
+    // `controllerClass` is optional so an external caller of the exported
+    // `extractDtoContract` keeps working; without it, fall back to the file
+    // comparison rather than treating every route as inherited.
+    const ownRoute =
+      !mixin ||
+      (controllerClass
+        ? method.getParent() === controllerClass
+        : declFile.getFilePath() !== mixin.factoryFilePath);
     const namedByRoute = ownRoute && Node.isIdentifier(filterClassArg) ? declaredClass : undefined;
 
     for (const candidate of orderFilterCandidates({

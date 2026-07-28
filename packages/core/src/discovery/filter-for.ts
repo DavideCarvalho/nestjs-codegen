@@ -23,12 +23,18 @@ import type { FilterFieldType, MixinBinding } from './types.js';
  * the factory's own parameter — it names nothing resolvable in that file. The
  * concrete class only exists at the call site, which the route's mixin binding
  * recorded by name + file.
+ *
+ * A named `entity` property wins over the first positional argument: a factory
+ * taking a single options object (`createTableController({ entity, dto })`) has
+ * NO positional class argument at all, and reading `classArgs[0]` there yields
+ * undefined — which is not a partial result, it is the whole typed filter
+ * builder gone (`filterFields: never`) while tsc and codegen both stay green.
  */
 function resolveMixinEntityClass(
   mixin: MixinBinding | undefined,
   project: Project,
 ): ClassDeclaration | undefined {
-  const entityArg = mixin?.classArgs[0];
+  const entityArg = mixin?.namedClassArgs?.entity ?? mixin?.classArgs[0];
   if (!entityArg) return undefined;
 
   const file =

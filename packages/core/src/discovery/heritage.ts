@@ -5,6 +5,7 @@ export interface InheritedMethods {
   factoryName: string;
   factoryFilePath: string;
   classArgs: Array<{ name: string; filePath: string }>;
+  namedClassArgs: Record<string, { name: string; filePath: string }>;
 }
 
 /**
@@ -175,17 +176,24 @@ export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods
   if (!returnedClass) return undefined;
 
   const classArgs: Array<{ name: string; filePath: string }> = [];
+  const namedClassArgs: Record<string, { name: string; filePath: string }> = {};
   for (const arg of expr.getArguments()) {
-    if (!Node.isIdentifier(arg)) continue;
-    const decl = arg
-      .getDefinitions()
-      .map((d) => d.getDeclarationNode())
-      .find((n): n is ClassDeclaration => Node.isClassDeclaration(n));
-    if (decl) {
-      classArgs.push({
-        name: decl.getName() ?? arg.getText(),
-        filePath: decl.getSourceFile().getFilePath(),
-      });
+    const positional = resolveClassReference(arg);
+    if (positional) {
+      classArgs.push(positional);
+      continue;
+    }
+    // `createTableController({ entity: Widget, filter: WidgetFilter })` — the
+    // single-options-object call form. The object literal is not an identifier,
+    // so the positional pass above sees nothing at all; its class-valued
+    // properties are the ONLY record of what the factory was parameterised with.
+    if (!Node.isObjectLiteralExpression(arg)) continue;
+    for (const prop of arg.getProperties()) {
+      const named = resolvePropertyClassReference(prop);
+      if (!named) continue;
+      // First occurrence wins, mirroring the positional pass — a duplicate key
+      // is a type error at the call site anyway.
+      namedClassArgs[named.key] ??= named.ref;
     }
   }
 
@@ -194,7 +202,53 @@ export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods
     factoryName: callee.getText(),
     factoryFilePath: factoryDecl.getSourceFile().getFilePath(),
     classArgs,
+    namedClassArgs,
   };
+}
+
+/** Resolve an expression to the class declaration it names, if it names one. */
+function resolveClassReference(node: Node): { name: string; filePath: string } | undefined {
+  const expr = unwrapExpression(node);
+  if (!Node.isIdentifier(expr)) return undefined;
+  const decl = expr
+    .getDefinitions()
+    .map((d) => d.getDeclarationNode())
+    .find((n): n is ClassDeclaration => n !== undefined && Node.isClassDeclaration(n));
+  if (!decl) return undefined;
+  return {
+    name: decl.getName() ?? expr.getText(),
+    filePath: decl.getSourceFile().getFilePath(),
+  };
+}
+
+/**
+ * Resolve one property of an options-object argument to the class it names,
+ * keyed by the property name (`entity: Widget` → `entity`).
+ *
+ * Handles the shorthand form (`{ entity }`) too: its name node is also the value
+ * expression, so the same identifier resolution applies. The class is normally
+ * imported from another module — resolution goes through the identifier's
+ * definitions rather than any module-level lookup, so a re-export or an aliased
+ * import resolves the same way the positional pass resolves it.
+ */
+function resolvePropertyClassReference(
+  prop: Node,
+): { key: string; ref: { name: string; filePath: string } } | undefined {
+  if (Node.isShorthandPropertyAssignment(prop)) {
+    const ref = resolveClassReference(prop.getNameNode());
+    return ref ? { key: prop.getName(), ref } : undefined;
+  }
+  if (!Node.isPropertyAssignment(prop)) return undefined;
+  const init = prop.getInitializer();
+  if (!init) return undefined;
+  const ref = resolveClassReference(init);
+  if (!ref) return undefined;
+  // `getName()` hands back the raw name text, quotes included for a
+  // string-literal key (`{ 'entity': X }`) — unquote so consumers can look the
+  // key up by the property name they know.
+  const nameNode = prop.getNameNode();
+  const key = Node.isStringLiteral(nameNode) ? nameNode.getLiteralValue() : prop.getName();
+  return { key, ref };
 }
 
 /**

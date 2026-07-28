@@ -17,9 +17,7 @@ function Filterable(_opts?: unknown): ClassDecorator {
  */
 export function createColocatedTableController<E extends object>(options: {
   entity: new () => E;
-  filter?: new (
-    ...args: unknown[]
-  ) => unknown;
+  filter?: new (...args: unknown[]) => unknown;
 }) {
   @Filterable({ entity: options.entity, autoFields: true })
   class GeneratedFilter {}

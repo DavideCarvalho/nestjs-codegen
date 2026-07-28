@@ -1,4 +1,4 @@
-export const VERSION = '0.19.0';
+export const VERSION = '0.20.0';
 
 // Codegen pipeline (migrated from nestjs-inertia)
 export { defineConfig } from './config/define-config.js';

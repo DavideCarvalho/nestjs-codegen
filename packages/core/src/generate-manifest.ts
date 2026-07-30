@@ -3,6 +3,7 @@ import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import fg from 'fast-glob';
 import type { ResolvedConfig } from './config/types.js';
+import { loadDiscoveryTsconfig, resolveTsconfigPath } from './discovery/contracts-fast.js';
 import { VERSION } from './index.js';
 
 /** File name of the manifest persisted alongside generated output in `outDir`. */
@@ -204,6 +205,16 @@ async function discoverInputFiles(config: ResolvedConfig): Promise<string[]> {
  * invalidates the manifest even though no glob matches it. A tracked file that
  * has since been deleted hashes as a `missing` marker rather than throwing, so
  * its removal also invalidates.
+ *
+ * The tsconfig is hashed for the same reason: discovery resolves controllers
+ * through its `compilerOptions` (see `createDiscoveryProject`), so a tsconfig
+ * that keeps discovery from resolving path aliases produces a WRONG artifact —
+ * and without the tsconfig in the hash, fixing it left that artifact on disk and
+ * every later run reported "up to date, skipped". Raw contents are hashed rather
+ * than the resolved options, because `include`/`exclude` are not compiler options
+ * and an `exclude` is exactly what such a fix tends to be. The whole `extends`
+ * chain is hashed, not just the entry file, since that is where a shared
+ * `paths` block usually lives.
  */
 export async function computeInputsHash(
   config: ResolvedConfig,
@@ -214,6 +225,18 @@ export async function computeInputsHash(
   hash.update(`config:${serializeConfig(config)}\n`);
 
   const cwd = config.codegen.cwd;
+
+  const tsconfigPath = resolveTsconfigPath(cwd, config.app?.tsconfig ?? undefined);
+  // `files` is the entry tsconfig plus everything it extends; empty when there is
+  // no tsconfig, in which case the entry path still hashes as a `missing` marker
+  // so ADDING one invalidates too.
+  const tsconfigFiles = loadDiscoveryTsconfig(tsconfigPath).files;
+  for (const file of tsconfigFiles.length > 0 ? tsconfigFiles : [tsconfigPath]) {
+    const contents = await readFile(file, 'utf8').catch(() => null);
+    hash.update(`tsconfig:${relative(cwd, file)}\n`);
+    hash.update(contents ?? ' missing');
+    hash.update('\n');
+  }
   const globbed = await discoverInputFiles(config);
   const globbedRelative = new Set(globbed.map((file) => relative(cwd, file)));
   // A tracked file that a glob already covers must not be hashed twice.

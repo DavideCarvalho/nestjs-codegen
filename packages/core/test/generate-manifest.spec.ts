@@ -103,6 +103,51 @@ describe('generate skip-when-unchanged', () => {
     expect(content).toContain('About');
   });
 
+  it('regenerates when the tsconfig changes', async () => {
+    // Discovery resolves controllers through the tsconfig's compilerOptions, so a
+    // tsconfig that breaks path-alias resolution yields a WRONG artifact. With the
+    // tsconfig outside the hash, fixing it changed nothing the manifest could see:
+    // every later run reported "up to date, skipped" over the broken output, and
+    // the only way out was deleting the manifest by hand.
+    const tsconfigPath = join(pagesDir, 'tsconfig.json');
+    await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: {} }), 'utf8');
+    await generate(config);
+    await writeFile(join(outDir, 'pages.d.ts'), 'SENTINEL', 'utf8');
+
+    await writeFile(
+      tsconfigPath,
+      JSON.stringify({ compilerOptions: {}, exclude: ['grafana-data'] }),
+      'utf8',
+    );
+    await generate(config);
+
+    expect(await readFile(join(outDir, 'pages.d.ts'), 'utf8')).not.toBe('SENTINEL');
+  });
+
+  it('regenerates when a tsconfig reached through extends changes', async () => {
+    // A shared `paths` block usually lives in the base tsconfig, so hashing only
+    // the entry file would leave the same stale artifact after fixing the base.
+    await mkdir(join(pagesDir, 'config'), { recursive: true });
+    await writeFile(
+      join(pagesDir, 'tsconfig.json'),
+      JSON.stringify({ extends: './config/base.json' }),
+      'utf8',
+    );
+    const basePath = join(pagesDir, 'config', 'base.json');
+    await writeFile(basePath, JSON.stringify({ compilerOptions: {} }), 'utf8');
+    await generate(config);
+    await writeFile(join(outDir, 'pages.d.ts'), 'SENTINEL', 'utf8');
+
+    await writeFile(
+      basePath,
+      JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } } }),
+      'utf8',
+    );
+    await generate(config);
+
+    expect(await readFile(join(outDir, 'pages.d.ts'), 'utf8')).not.toBe('SENTINEL');
+  });
+
   it('regenerates when a recorded output file is missing', async () => {
     await generate(config);
 

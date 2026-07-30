@@ -40,6 +40,12 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     include: ['packages/*/test/**/*.{spec,test}.ts'],
+    // Discovery specs parse real TypeScript through ts-morph, and the heaviest of
+    // them (the factory/mixin ones) sit near a second each on a warm machine. Under
+    // the full suite's parallelism on a cold cache they crossed the 5s default and
+    // failed as timeouts — a slow test reported as a broken one. The work is slow,
+    // not hung, so the ceiling is what was wrong.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

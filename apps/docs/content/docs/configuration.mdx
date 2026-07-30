@@ -136,6 +136,38 @@ config both proceed as usual. The actual fix is a single source of truth — sha
 object and import it into both `nestjs-codegen.config.ts` and `forRoot()`, as shown above —
 or set `driftGuard: false` on either config to opt out of the check entirely.
 
+## The tsconfig and path aliases
+
+Discovery reads your tsconfig (`app.tsconfig`, else `<cwd>/tsconfig.json`) for its
+`compilerOptions` — nothing else. It never expands `include`/`exclude` into a file list, so a
+directory the codegen process cannot read (a docker bind mount a container chowned to its own
+UID, say) cannot break it.
+
+What it does need is `paths`. A controller that inherits its routes from a factory —
+`class WidgetsController extends createTableController(Widget) {}` — is resolved through
+go-to-definition, so if the factory is imported through an alias (`@/table/create-table-controller`)
+and `paths` is missing, the factory does not resolve and **every route that controller
+contributes is absent from the generated client**. There is no error: `tsc` stays green,
+codegen exits 0, and the only signal is one warning per controller:
+
+```
+[nestjs-codegen/fast] WidgetsController in src/... extends createTableController(...) but
+its callee does not resolve to a function or method declaration — it contributes NO routes
+to the generated client.
+```
+
+A wall of those warnings means the tsconfig did not load, not that the controllers are wrong.
+The line immediately above them names the tsconfig and the underlying error. A consumer with
+no tsconfig at all is fine and stays silent — relative imports need no `paths`.
+
+`extends` is followed, so `paths` may live in a base tsconfig. Mappings resolve the way `tsc`
+resolves them: against `baseUrl` when set, otherwise against the directory of the file that
+declared them.
+
+The tsconfig and everything it extends are part of the freshness hash, so fixing one
+invalidates the artifact it produced and the next run regenerates rather than reporting
+`up to date, skipped`.
+
 ## Multi-scope discovery
 
 <Callout type="warn">

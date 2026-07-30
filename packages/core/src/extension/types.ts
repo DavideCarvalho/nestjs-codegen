@@ -72,8 +72,31 @@ export interface ExtensionContext {
   outDir: string;
   routes: readonly RouteDescriptor[];
   config: ResolvedConfig;
-  /** Lazily-created shared ts-morph Project for AST work (pages, custom decorators). */
+  /**
+   * Lazily-created shared ts-morph Project for AST work (pages, custom decorators).
+   * Built from bare compiler options — it carries NO `paths`, so it cannot follow a
+   * `@/...` import. Use {@link tsconfigProject} for that.
+   */
   project(): Project;
+  /**
+   * Lazily-created shared ts-morph Project built from the consumer's tsconfig
+   * (`app.tsconfig`, else `<cwd>/tsconfig.json`), so `paths` aliases resolve —
+   * which is what an extension needs to follow `@/api/...` from a controller to a
+   * decorator target it must read.
+   *
+   * Exists because every extension that needed this was building its own, and
+   * `new Project({ tsConfigFilePath })` has a trap: parsing a tsconfig also
+   * resolves its FILE LIST, so a tsconfig with no `include` walks the whole project
+   * root and one unreadable directory (a docker bind mount a container chowned to
+   * its own UID) throws `EACCES ... scandir`. Every copy of that code then fell back
+   * to a paths-less Project in silence, and aliased targets resolved to nothing with
+   * no error anywhere. The host loads it correctly, once, and hands it out.
+   *
+   * Optional at the type level ON PURPOSE: an extension may run against an older
+   * host that does not provide it, so call it as `ctx.tsconfigProject?.()` and keep
+   * a fallback.
+   */
+  tsconfigProject?(): Project;
   /**
    * Declare source files this extension read that the host's own input globs
    * (`contracts.glob`, `forms.watch`, `pages.glob`) do NOT cover, so they take

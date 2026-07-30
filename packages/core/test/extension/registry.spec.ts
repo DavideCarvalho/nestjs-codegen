@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ResolvedConfig } from '../../src/config/types.js';
 import type { RouteDescriptor } from '../../src/discovery/types.js';
 import { CodegenError } from '../../src/exceptions.js';
@@ -101,4 +104,69 @@ describe('createExtensionContext', () => {
     expect(ctx.routes).toEqual([route]);
     expect(ctx.project()).toBe(ctx.project()); // same instance, created once
   });
+});
+
+/**
+ * `tsconfigProject()` exists so an extension that must follow a `@/...` import can
+ * stop building its own tsconfig-seeded Project — the shape that carried a silent
+ * EACCES fallback in every lib that hand-rolled it.
+ */
+describe('createExtensionContext tsconfigProject', () => {
+  const roots: string[] = [];
+
+  afterEach(async () => {
+    for (const root of roots.splice(0)) {
+      await chmod(join(root, 'unreadable', 'sub'), 0o755).catch(() => {});
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  async function scaffold(): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), 'codegen-ext-ctx-'));
+    roots.push(root);
+    await writeFile(
+      join(root, 'tsconfig.json'),
+      // No `include`, so loading this enumerates the whole root — see below.
+      JSON.stringify({ compilerOptions: { baseUrl: './', paths: { '@/*': ['./src/*'] } } }),
+      'utf8',
+    );
+    return root;
+  }
+
+  function ctxFor(cwd: string) {
+    const config = fakeConfig([]);
+    return createExtensionContext({ ...config, codegen: { ...config.codegen, cwd } }, () => []);
+  }
+
+  it('carries the consumer tsconfig paths, and the bare project does not', async () => {
+    const root = await scaffold();
+    const ctx = ctxFor(root);
+
+    expect(ctx.tsconfigProject?.().getCompilerOptions().paths).toEqual({ '@/*': ['./src/*'] });
+    // The distinction is the whole reason both exist.
+    expect(ctx.project().getCompilerOptions().paths).toBeUndefined();
+  });
+
+  it('creates it once, so N extensions share one parse', async () => {
+    const root = await scaffold();
+    const ctx = ctxFor(root);
+
+    expect(ctx.tsconfigProject?.()).toBe(ctx.tsconfigProject?.());
+  });
+
+  it.skipIf(typeof process.getuid === 'function' && process.getuid() === 0)(
+    'survives an unreadable directory under the project root',
+    async () => {
+      const root = await scaffold();
+      await mkdir(join(root, 'unreadable', 'sub'), { recursive: true });
+      await chmod(join(root, 'unreadable', 'sub'), 0o000);
+
+      // A docker bind mount a container chowned to its own UID. Loading the
+      // tsconfig must not touch it — an extension inheriting this Project inherits
+      // that guarantee instead of reimplementing it.
+      expect(ctxFor(root).tsconfigProject?.().getCompilerOptions().paths).toEqual({
+        '@/*': ['./src/*'],
+      });
+    },
+  );
 });

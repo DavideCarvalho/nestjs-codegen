@@ -986,8 +986,9 @@ describe('discoverContractsFast — plain route with @As', () => {
 
 describe('discoverContractsFast — tsconfig paths resolution', () => {
   it('works when tsconfig has no paths configured (returns null for paths)', async () => {
-    // The fixture directory has a tsconfig.json. This test verifies
-    // normal operation (tsconfig exists but might not have paths).
+    // The fixture directory has NO tsconfig, so discovery runs on bare compiler
+    // options and every import here is relative. See tsconfig-project.spec.ts for
+    // the alias-resolving paths.
     const routes = await discoverContractsFast({
       cwd: fixturesDir,
       glob: 'contract-users.controller.ts',

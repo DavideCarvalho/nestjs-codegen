@@ -1,4 +1,5 @@
-import { join, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import fg from 'fast-glob';
 /**
  * Static AST-based contract discovery using ts-morph.
@@ -10,6 +11,7 @@ import {
   Node,
   Project,
   type SourceFile,
+  ts,
 } from 'ts-morph';
 import { extractDtoContract } from './dto-type-resolver.js';
 import { clearEnumCache } from './enum-resolution.js';
@@ -20,7 +22,6 @@ import {
 } from './heritage.js';
 import {
   clearTypeResolutionCaches,
-  loadTsconfigPaths,
   resolveImportedVariable,
   setDiscoveryContext,
 } from './type-ref-resolution.js';
@@ -51,7 +52,10 @@ export async function discoverContractsFast(
   const { cwd, glob, tsconfig } = opts;
 
   const tsconfigPath = resolveTsconfigPath(cwd, tsconfig);
-  const project = createDiscoveryProject(tsconfigPath);
+  // Loaded once and shared: the Project needs its compiler options and the
+  // discovery context needs its `paths`, and loading twice would warn twice.
+  const loaded = loadDiscoveryTsconfig(tsconfigPath);
+  const project = createDiscoveryProject(tsconfigPath, loaded);
 
   // Resolve controller file paths and add them to the project.
   const files = await fg(glob, { cwd, absolute: true, onlyFiles: true });
@@ -59,7 +63,7 @@ export async function discoverContractsFast(
     project.addSourceFileAtPath(f);
   }
 
-  bindDiscoveryContext(project, cwd, tsconfigPath);
+  bindDiscoveryContext(project, cwd, tsconfigPath, loaded);
   // The mixin type Project is module-level, so a second cold discovery in the
   // same process (tests, repeated CLI runs) would otherwise reuse types parsed
   // from whatever the files looked like on the first pass.
@@ -79,38 +83,166 @@ export function resolveTsconfigPath(cwd: string, tsconfig?: string): string {
   return tsconfig ? resolve(tsconfig) : join(cwd, 'tsconfig.json');
 }
 
+/** Compiler options for a Project that has no tsconfig to go on. */
+const NO_TSCONFIG_OPTIONS = {
+  allowJs: true,
+  resolveJsonModule: false,
+  strict: false,
+} as const;
+
+/** The consumer tsconfig as discovery needs it: compiler options + its own files. */
+export interface DiscoveryTsconfig {
+  /** Parsed `compilerOptions`, or null when the tsconfig is absent or unloadable. */
+  options: ts.CompilerOptions | null;
+  /**
+   * The tsconfig and every file it `extends`, absolute. Empty when no tsconfig
+   * exists; just the entry file when it exists but could not be parsed. These are
+   * generate INPUTS — see `computeInputsHash`.
+   */
+  files: string[];
+  /** Why {@link options} is null, when a tsconfig existed but could not be loaded. */
+  error?: string;
+}
+
+/**
+ * Read ONLY what discovery needs out of a tsconfig — the compiler options and
+ * the `extends` chain — without letting TypeScript enumerate the consumer's
+ * file tree.
+ *
+ * Handing `tsConfigFilePath` to ts-morph looks equivalent and is not: parsing a
+ * tsconfig also resolves its FILE LIST, and a tsconfig with no `include`
+ * defaults to `**\/*` — so TypeScript walks every directory under the project
+ * root. One directory the codegen process cannot read (a docker bind mount a
+ * container chowned to its own UID with mode-700 subdirs — Grafana, Prometheus,
+ * MinIO, a DB data dir) makes that walk throw `EACCES ... scandir`, and the
+ * throw takes the whole tsconfig with it. `skipAddingFilesFromTsConfig` does not
+ * help: it discards the file list AFTER it has been computed.
+ *
+ * Discovery never wanted that list — only `paths`/`baseUrl`/`target`/decorator
+ * flags — so `readDirectory` returns nothing and no directory is ever read. The
+ * parsed options are passed through wholesale rather than copied field by field,
+ * which also carries TypeScript's `pathsBasePath` (see {@link pathsBaseDir}).
+ *
+ * Never warns: the caller decides what a failure means (discovery warns, the
+ * manifest just needs the file list), and a shared loader that warned would warn
+ * once per caller for the same tsconfig.
+ */
+export function loadDiscoveryTsconfig(tsconfigPath: string): DiscoveryTsconfig {
+  if (!existsSync(tsconfigPath)) return { options: null, files: [] };
+
+  // `readConfigFile` is the typed way to tell a malformed or unreadable tsconfig
+  // from a usable one; the source-file parse below reports its diagnostics only
+  // through internals.
+  const read = ts.readConfigFile(tsconfigPath, (path) => ts.sys.readFile(path));
+  if (read.error) {
+    return {
+      options: null,
+      files: [tsconfigPath],
+      error: ts.flattenDiagnosticMessageText(read.error.messageText, ' '),
+    };
+  }
+
+  const host: ts.ParseConfigHost = {
+    useCaseSensitiveFileNames: ts.sys.useCaseSensitiveFileNames,
+    // The one line that keeps a tsconfig from being a filesystem walk.
+    readDirectory: () => [],
+    fileExists: (path) => ts.sys.fileExists(path),
+    // `extends` is resolved through the host, so a consumer whose `paths` live
+    // in a base tsconfig keeps working.
+    readFile: (path) => ts.sys.readFile(path),
+  };
+
+  // The source-file variant of the parse, because it is the one that records the
+  // `extends` chain (`configFile.extendedSourceFiles`) — which the manifest hashes.
+  const sourceFile = ts.readJsonConfigFile(tsconfigPath, (path) => ts.sys.readFile(path));
+  const parsed = ts.parseJsonSourceFileConfigFileContent(
+    sourceFile,
+    host,
+    dirname(tsconfigPath),
+    undefined,
+    tsconfigPath,
+  );
+  // `parsed.errors` is deliberately ignored: with `readDirectory` stubbed the
+  // file list is always empty, so TypeScript reports "No inputs were found" on
+  // every well-formed tsconfig. A genuinely bad option still yields usable
+  // options here, and the consumer's own `tsc` is what reports it.
+  // The parse records the chain on the source file it was handed (`options.configFile`
+  // is this same object, but reaches us through `CompilerOptions`' index signature
+  // as a wide union — the source file is the typed way in).
+  return {
+    options: parsed.options,
+    files: [tsconfigPath, ...(sourceFile.extendedSourceFiles ?? [])],
+  };
+}
+
+/**
+ * The directory a tsconfig's `paths` mappings resolve against, by TypeScript's
+ * own rule: `baseUrl` when set, else the directory of the file that DECLARED the
+ * `paths` (TypeScript's `pathsBasePath`, which is what makes a bare
+ * `paths`-without-`baseUrl` config work).
+ *
+ * Both matter, and neither is the project root in general: a `paths` block
+ * inherited from `config/base.json` resolves against `config/`, and a `baseUrl`
+ * of `./src` means `paths` are relative to `src/`. Resolving against the project
+ * root instead quietly produced candidate files that do not exist, and the
+ * import simply failed to resolve.
+ */
+function pathsBaseDir(options: ts.CompilerOptions, fallback: string): string {
+  if (typeof options.baseUrl === 'string') return options.baseUrl;
+  if (typeof options.pathsBasePath === 'string') return options.pathsBasePath;
+  return fallback;
+}
+
 /**
  * Construct a ts-morph `Project` configured exactly as the cold discovery path:
- * use the tsconfig when present, else fall back to bare compiler options.
+ * use the tsconfig's compiler options when they can be read, else fall back to
+ * bare ones.
+ *
+ * A silent fallback is what made the EACCES above so expensive to diagnose. The
+ * Project it builds has no `paths`, and go-to-definition is how a factory-based
+ * controller (`class X extends createTableController(...)`) is resolved — so an
+ * alias-imported factory stops resolving and EVERY route those controllers
+ * contribute vanishes from the generated client, reported only as a
+ * per-controller warning that blames the controller. Hence the warning below
+ * names the tsconfig and what it costs.
+ *
+ * A MISSING tsconfig stays silent on purpose: relative imports need no `paths`,
+ * so a tsconfig-less consumer is a supported setup, and a warning that fires on
+ * working code is a warning nobody reads.
+ *
+ * `tsconfig` is the already-loaded config, so one discovery pass loads it once
+ * and warns at most once; omit it and it is loaded here.
  */
-export function createDiscoveryProject(tsconfigPath: string): Project {
-  try {
-    return new Project({
-      tsConfigFilePath: tsconfigPath,
-      skipAddingFilesFromTsConfig: true,
-      skipLoadingLibFiles: true,
-      skipFileDependencyResolution: true,
-    });
-  } catch {
-    // tsconfig not found — create a minimal project without it
-    return new Project({
-      skipAddingFilesFromTsConfig: true,
-      skipLoadingLibFiles: true,
-      skipFileDependencyResolution: true,
-      compilerOptions: {
-        allowJs: true,
-        resolveJsonModule: false,
-        strict: false,
-      },
-    });
+export function createDiscoveryProject(
+  tsconfigPath: string,
+  tsconfig: DiscoveryTsconfig = loadDiscoveryTsconfig(tsconfigPath),
+): Project {
+  if (tsconfig.error) {
+    console.warn(
+      `[nestjs-codegen/fast] Could not load ${tsconfigPath}: ${tsconfig.error} — continuing WITHOUT its compiler options, so path alias imports (e.g. '@/...') will not resolve and controllers extending an alias-imported factory will contribute NO routes to the generated client.`,
+    );
   }
+
+  return new Project({
+    compilerOptions: tsconfig.options ?? { ...NO_TSCONFIG_OPTIONS },
+    skipAddingFilesFromTsConfig: true,
+    skipLoadingLibFiles: true,
+    skipFileDependencyResolution: true,
+  });
 }
 
 /** Bind the per-Project discovery context (project root + tsconfig path aliases). */
-export function bindDiscoveryContext(project: Project, cwd: string, tsconfigPath: string): void {
+export function bindDiscoveryContext(
+  project: Project,
+  cwd: string,
+  tsconfigPath: string,
+  tsconfig: DiscoveryTsconfig = loadDiscoveryTsconfig(tsconfigPath),
+): void {
+  const { options } = tsconfig;
   setDiscoveryContext(project, {
     projectRoot: cwd,
-    tsconfigPaths: loadTsconfigPaths(tsconfigPath),
+    tsconfigPaths: options?.paths ?? null,
+    pathsBase: options ? pathsBaseDir(options, cwd) : cwd,
   });
 }
 
@@ -181,8 +313,9 @@ export class PersistentDiscovery {
   static async create(opts: FastDiscoveryOptions): Promise<PersistentDiscovery> {
     const { cwd, glob, tsconfig } = opts;
     const tsconfigPath = resolveTsconfigPath(cwd, tsconfig);
-    const project = createDiscoveryProject(tsconfigPath);
-    bindDiscoveryContext(project, cwd, tsconfigPath);
+    const loaded = loadDiscoveryTsconfig(tsconfigPath);
+    const project = createDiscoveryProject(tsconfigPath, loaded);
+    bindDiscoveryContext(project, cwd, tsconfigPath, loaded);
 
     const instance = new PersistentDiscovery(project, cwd, glob);
     const files = await fg(glob, { cwd, absolute: true, onlyFiles: true });

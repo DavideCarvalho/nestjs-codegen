@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import {
   type ClassDeclaration,
@@ -28,6 +27,13 @@ import type { TypeRef } from './types.js';
 export interface DiscoveryContext {
   projectRoot: string;
   tsconfigPaths: Record<string, string[]> | null;
+  /**
+   * Directory the {@link tsconfigPaths} mappings resolve against — TypeScript's
+   * `baseUrl ?? pathsBasePath`, which is NOT the project root in general (a
+   * `paths` block inherited from `config/base.json` resolves against `config/`).
+   * Defaults to {@link projectRoot} when absent.
+   */
+  pathsBase?: string;
 }
 
 const _EMPTY_CTX: DiscoveryContext = { projectRoot: '', tsconfigPaths: null };
@@ -49,19 +55,11 @@ export function dbg(...args: unknown[]) {
   if (_debug) console.log('[codegen:debug]', ...args);
 }
 
-export function loadTsconfigPaths(tsconfigPath: string): Record<string, string[]> | null {
-  try {
-    const raw = readFileSync(tsconfigPath, 'utf8');
-    // Strip single-line comments (tsconfig allows them)
-    const stripped = raw.replace(/\/\/.*$/gm, '');
-    const parsed = JSON.parse(stripped) as {
-      compilerOptions?: { paths?: Record<string, string[]> };
-    };
-    return parsed.compilerOptions?.paths ?? null;
-  } catch {
-    return null;
-  }
-}
+// `paths` now come from the one tsconfig load in `contracts-fast.ts`
+// (`loadDiscoveryTsconfig`). The reader that used to live here parsed the raw
+// JSON itself, so it saw neither `extends` (a consumer whose `paths` live in a
+// base tsconfig got none) nor block comments, and it silently disagreed with the
+// options the Project was built from.
 
 // ---------------------------------------------------------------------------
 // Type-declaration lookup
@@ -130,9 +128,9 @@ export function resolveModuleSpecifier(
     ];
   }
 
-  // Try to resolve path aliases via tsconfig paths (read directly from JSON)
+  // Try to resolve path aliases via the tsconfig's `paths`.
   const ctx = _ctxFor(project);
-  const baseUrl = ctx.projectRoot;
+  const baseUrl = ctx.pathsBase ?? ctx.projectRoot;
   const tsconfigPaths = ctx.tsconfigPaths;
 
   dbg(

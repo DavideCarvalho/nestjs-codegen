@@ -1,6 +1,7 @@
 import { relative, resolve } from 'node:path';
 import { Project } from 'ts-morph';
 import type { ResolvedConfig } from '../config/types.js';
+import { createDiscoveryProject, resolveTsconfigPath } from '../discovery/contracts-fast.js';
 import type { RouteDescriptor } from '../discovery/types.js';
 import { CodegenError } from '../exceptions.js';
 import type { ApiClientLayer, CodegenExtension, EmittedFile, ExtensionContext } from './types.js';
@@ -70,8 +71,8 @@ export function mergeExclusive<V>(
 /**
  * Build the shared {@link ExtensionContext}. `routes` is exposed as a live getter so an
  * extension reading `ctx.routes` during `emitFiles` sees the post-`transformRoutes` IR.
- * The ts-morph `Project` is created lazily on first `project()` call (extensions that do
- * no AST work never pay for it).
+ * Both ts-morph `Project`s are created lazily on first call (extensions that do no AST
+ * work never pay for either), and each is memoized so N extensions share one parse.
  */
 export function createExtensionContext(
   config: ResolvedConfig,
@@ -79,6 +80,7 @@ export function createExtensionContext(
   trackedInputs?: Set<string>,
 ): ExtensionContext {
   let project: Project | undefined;
+  let tsconfigProject: Project | undefined;
   return {
     cwd: config.codegen.cwd,
     outDir: config.codegen.outDir,
@@ -105,6 +107,17 @@ export function createExtensionContext(
         });
       }
       return project;
+    },
+    tsconfigProject() {
+      if (!tsconfigProject) {
+        // The same loader the discovery pass uses, so an extension following a
+        // `@/...` import resolves it exactly as discovery did — and inherits the
+        // EACCES-proof tsconfig read instead of reimplementing it.
+        tsconfigProject = createDiscoveryProject(
+          resolveTsconfigPath(config.codegen.cwd, config.app?.tsconfig ?? undefined),
+        );
+      }
+      return tsconfigProject;
     },
   };
 }

@@ -71,7 +71,30 @@ most one extension may claim each — two claimers is a hard error):
   callable returning a `Promise`. e.g. TanStack wraps each leaf into a handle.
 
 Every hook receives a read-only `ExtensionContext` (`cwd`, `outDir`, `routes`, `config`,
-and a lazily-created shared ts-morph `project()`).
+and two lazily-created shared ts-morph projects).
+
+### Which project to ask for
+
+- **`ctx.project()`** — bare compiler options, no `paths`. Fine for reading files you
+  already have a path to.
+- **`ctx.tsconfigProject?.()`** — built from the consumer's tsconfig (`app.tsconfig`, else
+  `<cwd>/tsconfig.json`), so `paths` aliases resolve. Use it whenever you follow an import
+  from a file you were given to a declaration you need to read — a controller's
+  `@ApplyFilter(SomeFilter)` target imported as `@/api/…` only resolves through this one.
+
+Do **not** build your own from `tsConfigFilePath`. Parsing a tsconfig also resolves its
+FILE LIST, and a tsconfig with no `include` walks the whole project root — one unreadable
+directory (a docker bind mount a container chowned to its own UID) throws
+`EACCES … scandir`, and the usual `catch` around it falls back to a project with no
+`paths`, so aliased targets silently resolve to nothing. The host already loaded it safely;
+share it.
+
+It is typed optional because your extension may run against an older host, so keep a
+fallback:
+
+```ts
+const project = ctx.tsconfigProject?.() ?? myOwnFallback(ctx);
+```
 
 <Callout type="info">
   The extension contract is semver 0.x — the shape may change until 1.0. Out-of-repo

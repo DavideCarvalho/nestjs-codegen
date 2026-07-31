@@ -261,7 +261,7 @@ export function extractRoutesFrom(
   controllerPaths: Iterable<string>,
 ): RouteDescriptor[] {
   const routes: RouteDescriptor[] = [];
-  for (const path of controllerPaths) {
+  for (const path of byPath([...controllerPaths])) {
     const sourceFile = project.getSourceFile(path);
     if (sourceFile) routes.push(...extractFromSourceFile(sourceFile, project));
   }
@@ -274,10 +274,32 @@ export function extractRoutesFrom(
  */
 export function extractAllRoutes(project: Project): RouteDescriptor[] {
   const routes: RouteDescriptor[] = [];
-  for (const sourceFile of project.getSourceFiles()) {
+  for (const sourceFile of byPath(project.getSourceFiles(), (f) => f.getFilePath())) {
     routes.push(...extractFromSourceFile(sourceFile, project));
   }
   return routes;
+}
+
+/**
+ * Sort extraction roots by path, so route order — and therefore the order of
+ * everything emitted from it — is a function of WHICH files exist, not of how
+ * discovery happened to reach them.
+ *
+ * Neither caller had a defensible order to preserve. The cold path adds
+ * controllers in `fast-glob`'s directory-walk order, which is I/O-completion
+ * order from a concurrent walk: stable while the FS cache is warm, and not
+ * stable across a cold one, so an untouched source tree could regenerate
+ * `api.ts`/`routes.ts` with a controller group in a different position. The
+ * watcher appends each newly-created controller to the end of its set, so its
+ * output drifted from a cold run's for the rest of the session. `discoverPages`
+ * has sorted its glob from the start, which is why only the controller-derived
+ * artifacts ever moved.
+ */
+function byPath<T>(items: readonly T[], path: (item: T) => string = String): T[] {
+  return [...items].sort((a, b) => {
+    const [x, y] = [path(a), path(b)];
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
 }
 
 /**

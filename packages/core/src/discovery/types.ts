@@ -24,7 +24,26 @@ export type FieldTypeKind = 'string' | 'number' | 'boolean' | 'date' | 'json' | 
 export interface FilterFieldType {
   /** Field name, e.g. 'age' or 'tasks.id' (dot-notation for relations). */
   name: string;
+  /**
+   * What the COLUMN is — the semantics an operator set is derived from. A DATE
+   * column is `date` here even when its value arrives as a string.
+   */
   kind: FieldTypeKind;
+  /**
+   * What the VALUE is, when that differs from {@link kind}.
+   *
+   * A mapped column declares two things that can both be true and disagree:
+   * `@Property({ columnType: 'date', type: DateType }) x?: Opt<string>` is a
+   * DATE column whose JS value is `'YYYY-MM-DD'`. Collapsing them loses one or
+   * the other — answer `string` and the field stops accepting the ordering and
+   * range operators the column supports; answer `date` and the emitted type
+   * promises a `Date` the value never holds, which a type-preserving wire
+   * format like superjson then contradicts at runtime.
+   *
+   * So the two travel separately: `kind` gates operators, this types the value.
+   * Absent when they agree, which is the overwhelming majority of columns.
+   */
+  valueKind?: FieldTypeKind;
   /** String/number-literal union members (enums), if any. */
   enumValues?: string[];
   /** Whether the field's TS type includes null/undefined. */

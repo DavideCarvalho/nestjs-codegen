@@ -34,7 +34,10 @@ export function classifyTypeKeyword(raw: string): FieldTypeKind | null {
 }
 
 export interface ClassifyResult {
+  /** What the COLUMN is: the semantics operators are derived from. */
   kind: FieldTypeKind;
+  /** What the VALUE is, when it differs from {@link kind}. See FilterFieldType. */
+  valueKind?: FieldTypeKind;
   enumValues?: string[];
   nullable?: boolean;
   numericEnum?: boolean;
@@ -331,7 +334,11 @@ export function classifyFieldType(
         fromDecorator !== null &&
         fromDecorator.kind !== 'unknown' &&
         fromDecorator.kind !== r.kind;
-      if (conflicts) return markNullable({ kind: 'unknown' }, nullable);
+      if (conflicts) {
+        // Both are true, so both are kept: the column decides what operators
+        // the field accepts, the TS type decides what the value is typed as.
+        return markNullable({ ...fromDecorator, valueKind: r.kind }, nullable);
+      }
       return markNullable(r, nullable);
     }
   }
@@ -353,6 +360,7 @@ export function classifyFieldType(
  */
 export function toFilterFieldType(name: string, r: ClassifyResult): FilterFieldType {
   const ft: FilterFieldType = { name, kind: r.kind };
+  if (r.valueKind && r.valueKind !== r.kind) ft.valueKind = r.valueKind;
   if (r.enumValues && r.enumValues.length > 0) ft.enumValues = r.enumValues;
   if (r.nullable) ft.nullable = true;
   if (r.numericEnum) ft.numericEnum = true;

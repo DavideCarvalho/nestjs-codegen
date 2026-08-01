@@ -36,6 +36,9 @@ describe('transparent type brands', () => {
   it('sees through Opt<T> to the real type', async () => {
     const byName = await classifyBrandedColumns();
     expect(byName.brandedName?.kind).toBe('string');
+    // No disagreement, so nothing to carry separately.
+    expect(byName.interval?.valueKind).toBeUndefined();
+    expect(byName.brandedName?.valueKind).toBeUndefined();
     expect(byName.brandedCount?.kind).toBe('number');
     expect(byName.brandedFlag?.kind).toBe('boolean');
     expect(byName.brandedDate?.kind).toBe('date');
@@ -74,20 +77,23 @@ describe('a branded column whose ORM type disagrees with its TS type', () => {
     expect(Object.keys(byName)).toContain('nextMaintenanceDate');
   });
 
-  it('classifies unknown rather than picking a side', async () => {
+  it('keeps BOTH: the column gates operators, the TS type types the value', async () => {
     const byName = await classifyBrandedColumns();
-    // Neither answer is usable on its own: `string` refuses the ordering and
-    // extent operators a DATE column supports, and `date` types the value as a
-    // `Date` the column never holds. A disagreement is not knowledge — and
-    // `unknown` is the one kind that stays permissive in both directions.
-    expect(byName.serviceEndDate?.kind).toBe('unknown');
-    expect(byName.nextMaintenanceDate?.kind).toBe('unknown');
-    // The same shape with the other classic mapped column: DECIMAL as a string.
-    expect(byName.totalCost?.kind).toBe('unknown');
+    // Collapsing these to one answer loses something either way. `string`
+    // refuses the ordering and range operators the DATE column supports;
+    // `date` promises a `Date` the value never holds, which a type-preserving
+    // wire format (superjson) then contradicts at runtime.
+    expect(byName.serviceEndDate?.kind).toBe('date');
+    expect(byName.serviceEndDate?.valueKind).toBe('string');
+    expect(byName.nextMaintenanceDate?.kind).toBe('date');
+    expect(byName.nextMaintenanceDate?.valueKind).toBe('string');
+    // DECIMAL mapped to a string so no precision is lost through a JS number.
+    expect(byName.totalCost?.kind).toBe('number');
+    expect(byName.totalCost?.valueKind).toBe('string');
     expect(byName.serviceEndDate?.nullable).toBe(true);
   });
 
-  it('keeps the sharper kind when the two agree', async () => {
+  it('records no valueKind when the two agree', async () => {
     const byName = await classifyBrandedColumns();
     // The 0.23.0 improvement, untouched: the column type corroborates the TS
     // type, so the brand still resolves to its argument.
@@ -106,7 +112,7 @@ describe('a branded column whose ORM type disagrees with its TS type', () => {
     try {
       await emitApi(routes, outDir);
       const content = await readFile(join(outDir, 'api.ts'), 'utf8');
-      expect(content).toContain('"serviceEndDate": unknown | null');
+      expect(content).toContain('"serviceEndDate": string | null');
       expect(content).toContain('"interval": number | null');
       expect(content).toContain('"serviceEndDate"');
     } finally {

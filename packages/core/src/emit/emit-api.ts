@@ -230,7 +230,12 @@ function emitFieldTypesLiteral(fts: FilterFieldType[]): string {
     // A named typeRef (enum / type alias / interface inferred from a @FilterFor
     // method parameter) wins — reference it by name; the import is emitted at
     // the top of the file by buildApiFile.
-    let t = f.typeRef ? f.typeRef.name : kindToTs(f.kind, f.enumValues, f.numericEnum);
+    // `valueKind` when the column and the TS type disagree: this map types the
+    // VALUE, while `kind` carries the column semantics an operator set is
+    // derived from. A DATE column read back as 'YYYY-MM-DD' is `string` here.
+    let t = f.typeRef
+      ? f.typeRef.name
+      : kindToTs(f.valueKind ?? f.kind, f.enumValues, f.numericEnum);
     if (f.nullable) t = `${t} | null`;
     return `${JSON.stringify(f.name)}: ${t}`;
   });

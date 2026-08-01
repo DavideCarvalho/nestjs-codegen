@@ -1,7 +1,10 @@
+import { readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { discoverContractsFast } from '../../src/discovery/contracts-fast.js';
 import type { FilterFieldType } from '../../src/discovery/types.js';
+import { emitApi } from '../../src/emit/emit-api.js';
 
 const FIXTURES = join(__dirname, '..', '__fixtures__', 'app');
 
@@ -33,6 +36,9 @@ describe('transparent type brands', () => {
   it('sees through Opt<T> to the real type', async () => {
     const byName = await classifyBrandedColumns();
     expect(byName.brandedName?.kind).toBe('string');
+    // No disagreement, so nothing to carry separately.
+    expect(byName.interval?.valueKind).toBeUndefined();
+    expect(byName.brandedName?.valueKind).toBeUndefined();
     expect(byName.brandedCount?.kind).toBe('number');
     expect(byName.brandedFlag?.kind).toBe('boolean');
     expect(byName.brandedDate?.kind).toBe('date');
@@ -51,5 +57,66 @@ describe('transparent type brands', () => {
     // `Owner`, so unwrapping it would classify a relation as whatever its
     // target's shape happens to be — silently, and only visibly downstream.
     expect(byName.owner?.kind).not.toBe('string');
+  });
+});
+
+/**
+ * Unwrapping the brand made the TS-derived kind sharper, and on a MikroORM
+ * entity the TS type is only one of the two things declared about a column.
+ * `@Property({ columnType: 'date', type: DateType }) x?: Opt<string>` says
+ * BOTH "date column" and "string value" — a DATE read back as 'YYYY-MM-DD' —
+ * and answering `string` there is what dropped these fields out of the
+ * operator-gated unions the client derives from the kind (`OrderableFieldsOf`,
+ * `ExtentFieldsOf`): `.lt('serviceEndDate', …)` stopped compiling on a column
+ * that had been filterable all along.
+ */
+describe('a branded column whose ORM type disagrees with its TS type', () => {
+  it('is still discovered and emitted', async () => {
+    const byName = await classifyBrandedColumns();
+    expect(Object.keys(byName)).toContain('serviceEndDate');
+    expect(Object.keys(byName)).toContain('nextMaintenanceDate');
+  });
+
+  it('keeps BOTH: the column gates operators, the TS type types the value', async () => {
+    const byName = await classifyBrandedColumns();
+    // Collapsing these to one answer loses something either way. `string`
+    // refuses the ordering and range operators the DATE column supports;
+    // `date` promises a `Date` the value never holds, which a type-preserving
+    // wire format (superjson) then contradicts at runtime.
+    expect(byName.serviceEndDate?.kind).toBe('date');
+    expect(byName.serviceEndDate?.valueKind).toBe('string');
+    expect(byName.nextMaintenanceDate?.kind).toBe('date');
+    expect(byName.nextMaintenanceDate?.valueKind).toBe('string');
+    // DECIMAL mapped to a string so no precision is lost through a JS number.
+    expect(byName.totalCost?.kind).toBe('number');
+    expect(byName.totalCost?.valueKind).toBe('string');
+    expect(byName.serviceEndDate?.nullable).toBe(true);
+  });
+
+  it('records no valueKind when the two agree', async () => {
+    const byName = await classifyBrandedColumns();
+    // The 0.23.0 improvement, untouched: the column type corroborates the TS
+    // type, so the brand still resolves to its argument.
+    expect(byName.interval?.kind).toBe('number');
+    expect(byName.assetName?.kind).toBe('string');
+    // …as does a branded column that declares no column type at all.
+    expect(byName.brandedName?.kind).toBe('string');
+  });
+
+  it('emits the field into the route type map', async () => {
+    const routes = await discoverContractsFast({
+      cwd: FIXTURES,
+      glob: 'branded-columns.controller.ts',
+    });
+    const outDir = join(tmpdir(), `codegen-branded-${Date.now()}`);
+    try {
+      await emitApi(routes, outDir);
+      const content = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(content).toContain('"serviceEndDate": string | null');
+      expect(content).toContain('"interval": number | null');
+      expect(content).toContain('"serviceEndDate"');
+    } finally {
+      await rm(outDir, { recursive: true, force: true });
+    }
   });
 });

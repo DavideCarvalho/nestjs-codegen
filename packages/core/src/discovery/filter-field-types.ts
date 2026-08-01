@@ -61,6 +61,15 @@ export interface ClassifyTypeNodeOptions {
   resolveRef?: (refName: string) => TypeRef | null;
 }
 
+/**
+ * Type wrappers that add a compile-time marker and nothing else, so the real
+ * type is the single argument. MikroORM's `Opt<T>` (optional on insert) and
+ * `Hidden<T>` (omitted from serialization) are both of this shape.
+ *
+ * Relation wrappers are deliberately absent — see the note at the use site.
+ */
+const TRANSPARENT_TYPE_BRANDS = new Set(['Opt', 'Hidden']);
+
 /** Classify a TS type node into a field-type kind (+ enum members / nullable). */
 export function classifyTypeNode(
   typeNode: TypeNode,
@@ -129,6 +138,32 @@ export function classifyTypeNode(
     const refName = typeNode.getTypeName().getText();
     if (refName === 'Date') return { kind: 'date' };
     if (refName === 'Record' || refName === 'Object') return { kind: 'json' };
+
+    // A transparent brand: the wrapper carries no runtime shape of its own, so
+    // the property's real type is its single argument. `Opt<string>` IS a
+    // string; MikroORM uses it to mark a column optional on insert, and it is
+    // how nearly every nullable column in a MikroORM entity is written.
+    //
+    // Without this they all classified `unknown`, which is not a cosmetic
+    // gap: `unknown` is indistinguishable from "the classifier could not tell",
+    // so every consumer that reads a kind — operator sets, `.extent()`'s
+    // number/date gate, a UI picking a filter control — has to fall back to
+    // permissive for an entity that in fact declared its types perfectly well.
+    //
+    // Deliberately a short allowlist rather than "unwrap any single-argument
+    // reference". `Ref<T>`, `Rel<T>`, `Collection<T>` and `IdentifiedReference<T>`
+    // are NOT transparent: they are relation wrappers whose runtime value is a
+    // reference or a collection, not a `T`, and unwrapping those would classify
+    // a relation as whatever its target's first column happens to be.
+    const unwrapped = TRANSPARENT_TYPE_BRANDS.has(refName)
+      ? typeNode.getTypeArguments()[0]
+      : undefined;
+    if (unwrapped) {
+      const inner = classifyTypeNode(unwrapped, sourceFile, project, opts);
+      // Branded columns are nullable in practice; keep whatever the argument
+      // itself declared rather than asserting either way here.
+      return inner;
+    }
     // An importable named ref (enum / type alias / interface / class) wins for
     // emit when the caller supplied a resolver and a safe import path exists.
     const typeRef = opts?.resolveRef?.(refName) ?? null;

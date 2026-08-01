@@ -24,6 +24,11 @@ class Owner {
   id!: string;
 }
 
+// MikroORM's mapped-type classes. `DateType` maps a DATE column to a
+// 'YYYY-MM-DD' string, which is why the entity below types those columns
+// `Opt<string>` while the column itself is a date.
+class DateType {}
+
 @Filterable()
 export class BrandedFilter {
   // Bare primitives — the baseline, classified before this fixture existed.
@@ -53,6 +58,32 @@ export class BrandedFilter {
   // Nested brands still resolve to the innermost real type.
   @Property({ nullable: true })
   doubleBranded?: Opt<Hidden<number>>;
+
+  // ── Columns whose ORM type disagrees with the TS type ────────────────────
+  //
+  // A DATE column read back as a 'YYYY-MM-DD' string: the ORM says date, the TS
+  // type says string. Both are true, and the disagreement is the normal shape
+  // of a MikroORM date column — not an authoring mistake.
+  @Property({ fieldName: 'Service End Dt', columnType: 'date', type: DateType, nullable: true })
+  serviceEndDate?: Opt<string> | null;
+
+  // The same conflict declared with only `type: DateType` (no `columnType`).
+  @Property({ type: DateType, nullable: true })
+  nextMaintenanceDate?: Opt<string>;
+
+  // The other classic MikroORM shape: a DECIMAL column mapped to a string so no
+  // precision is lost through the JS number.
+  @Property({ columnType: 'decimal', nullable: true })
+  totalCost?: Opt<string>;
+
+  // The agreeing case, which must keep the sharper classification: TS says
+  // number, the column says int.
+  @Property({ columnType: 'int', nullable: true })
+  interval?: Opt<number>;
+
+  // Agreement through a string column, too.
+  @Property({ columnType: 'varchar', length: 255, nullable: true })
+  assetName?: Opt<string>;
 
   // A relation wrapper. NOT transparent: the value is a reference, not an
   // `Owner`, so unwrapping would classify a relation as its target's shape.

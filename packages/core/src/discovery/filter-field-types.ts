@@ -263,11 +263,25 @@ export function classifyFromColumnDecorator(
             return { kind: 'string' };
           }
         }
-        const typeProp = arg.getProperty('type');
-        if (typeProp && Node.isPropertyAssignment(typeProp)) {
+        // `type` is TypeORM's spelling and MikroORM's mapped-type slot;
+        // `columnType` is MikroORM's raw DDL type and is the more precise of
+        // the two when both are present (`{ columnType: 'date', type: DateType }`).
+        for (const key of ['columnType', 'type'] as const) {
+          const typeProp = arg.getProperty(key);
+          if (!typeProp || !Node.isPropertyAssignment(typeProp)) continue;
           const init = typeProp.getInitializer();
-          if (init && Node.isStringLiteral(init)) {
+          if (!init) continue;
+          if (Node.isStringLiteral(init)) {
             const kind = classifyTypeKeyword(init.getLiteralValue());
+            if (kind) return { kind };
+            continue;
+          }
+          // A mapped-type CLASS rather than a keyword — `type: DateType`,
+          // `type: JsonType`. The name carries the column's real type, and it
+          // is the half that disagrees with the TS type on exactly the columns
+          // this matters for.
+          if (Node.isIdentifier(init)) {
+            const kind = classifyTypeKeyword(init.getText());
             if (kind) return { kind };
           }
         }
@@ -291,13 +305,37 @@ export function classifyFieldType(
   let nullable = prop.hasQuestionToken();
   const typeNode = prop.getTypeNode();
 
+  const fromDecorator = classifyFromColumnDecorator(prop, sourceFile, project);
+
   if (typeNode) {
     const r = classifyTypeNode(typeNode, sourceFile, project);
     if (r.nullable) nullable = true;
-    if (r.kind !== 'unknown') return markNullable(r, nullable);
+    if (r.kind !== 'unknown') {
+      // The TS type resolved. On an ORM entity that is only ONE of the two
+      // things declared about a column, and they can legitimately disagree:
+      //
+      //   @Property({ columnType: 'date', type: DateType }) x?: Opt<string>
+      //
+      // says both "date column" and "string value", because MikroORM reads a
+      // DATE back as 'YYYY-MM-DD'. DECIMAL-as-string is the same shape. Neither
+      // is an authoring mistake, and neither answer is usable alone: `string`
+      // refuses the ordering and range operators the column supports, `date`
+      // types the value as a `Date` it never holds.
+      //
+      // So a disagreement yields `unknown` — the one kind that stays permissive
+      // in both directions. It is what these columns classified as before the
+      // brand unwrapping made the TS side resolve at all, and answering either
+      // side instead is what dropped them out of the operator-gated unions a
+      // client derives from the kind.
+      const conflicts =
+        fromDecorator !== null &&
+        fromDecorator.kind !== 'unknown' &&
+        fromDecorator.kind !== r.kind;
+      if (conflicts) return markNullable({ kind: 'unknown' }, nullable);
+      return markNullable(r, nullable);
+    }
   }
 
-  const fromDecorator = classifyFromColumnDecorator(prop, sourceFile, project);
   if (fromDecorator) {
     return markNullable(fromDecorator, nullable || fromDecorator.nullable === true);
   }

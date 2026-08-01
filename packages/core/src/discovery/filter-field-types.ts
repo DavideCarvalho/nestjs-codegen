@@ -331,9 +331,7 @@ export function classifyFieldType(
       // side instead is what dropped them out of the operator-gated unions a
       // client derives from the kind.
       const conflicts =
-        fromDecorator !== null &&
-        fromDecorator.kind !== 'unknown' &&
-        fromDecorator.kind !== r.kind;
+        fromDecorator !== null && fromDecorator.kind !== 'unknown' && fromDecorator.kind !== r.kind;
       if (conflicts) {
         // Both are true, so both are kept: the column decides what operators
         // the field accepts, the TS type decides what the value is typed as.

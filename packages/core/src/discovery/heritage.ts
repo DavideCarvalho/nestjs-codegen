@@ -1,6 +1,7 @@
 import { type ClassDeclaration, type MethodDeclaration, Node, Project } from 'ts-morph';
 
 export interface InheritedMethods {
+  /** Every method the base contributes, across its whole heritage chain, nearest declaration first. */
   methods: MethodDeclaration[];
   factoryName: string;
   factoryFilePath: string;
@@ -252,8 +253,66 @@ export function resolveFactoryStaticClass(node: Node): ClassDeclaration | undefi
 }
 
 /**
+ * The class a factory-produced class itself extends, when that base is one this
+ * pass can name: another factory call (`class X extends createTableBase(entity)`)
+ * or an ordinary class declaration.
+ */
+function resolveBaseClass(cls: ClassDeclaration): ClassDeclaration | undefined {
+  const heritage = cls.getExtends()?.getExpression();
+  if (!heritage) return undefined;
+
+  const call = resolveHeritageCall(heritage);
+  if (call) {
+    const factoryDecl = resolveFactoryDeclaration(call);
+    return factoryDecl ? resolveReturnedClass(factoryDecl) : undefined;
+  }
+
+  const expr = unwrapExpression(heritage);
+  if (!Node.isIdentifier(expr)) return undefined;
+  return expr
+    .getDefinitions()
+    .map((d) => d.getDeclarationNode())
+    .find((n): n is ClassDeclaration => n !== undefined && Node.isClassDeclaration(n));
+}
+
+/**
+ * Every method a factory-produced base contributes, walking ITS OWN heritage
+ * chain to whatever depth it goes.
+ *
+ * A factory that wraps another factory — `createExportableTable()` returning a
+ * class that extends `createTable()` — is how a controller opts into an extra
+ * route without every controller extending the shared factory inheriting it:
+ * the conditionality is WHICH factory you extend, and the extra route stays an
+ * ordinary decorated method. Nest mounts the whole prototype chain at runtime.
+ * Reading only the returned class's own methods saw the outer factory's routes
+ * and silently dropped every route the inner one declared, which is the failure
+ * mode that leaves a controller half-generated with no error anywhere.
+ *
+ * Nearest declaration wins, so a wrapper overriding an inner route contributes
+ * one method, not two — matching how the caller already resolves a derived
+ * controller's own override against the base.
+ */
+function collectMethodsThroughChain(returnedClass: ClassDeclaration): MethodDeclaration[] {
+  const byName = new Map<string, MethodDeclaration>();
+  const seen = new Set<ClassDeclaration>();
+
+  let current: ClassDeclaration | undefined = returnedClass;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    for (const method of current.getMethods()) {
+      const name = method.getName();
+      if (!byName.has(name)) byName.set(name, method);
+    }
+    current = resolveBaseClass(current);
+  }
+
+  return [...byName.values()];
+}
+
+/**
  * Resolve a `class X extends someFactory(Entity) {}` heritage clause to the
- * decorated methods of the class expression the factory returns.
+ * decorated methods of the class expression the factory returns, and of every
+ * class THAT one extends (see {@link collectMethodsThroughChain}).
  *
  * NestJS routes inherited methods at runtime (its metadata scan walks the
  * prototype chain); this teaches the static discovery pass to follow the same
@@ -319,7 +378,7 @@ export function resolveInheritedMethods(cls: ClassDeclaration): InheritedMethods
   }
 
   return {
-    methods: returnedClass.getMethods(),
+    methods: collectMethodsThroughChain(returnedClass),
     // The DECLARATION's name, not the call-site text: consumers look the factory
     // back up by name inside `factoryFilePath`, which a qualified
     // `tables.createTableController` would never match. For a bare identifier

@@ -766,6 +766,11 @@ function unwrapNamedContainer(
  */
 export function extractDtoContract(
   method: MethodDeclaration,
+  /**
+   * The file the method's type annotations resolve in — i.e. the file that
+   * DECLARES the method, which for a route inherited from a factory-produced
+   * base is the factory's file rather than the controller's.
+   */
   sourceFile: SourceFile,
   project: Project,
   mixin?: MixinBinding | undefined,

@@ -761,7 +761,14 @@ function extractDtoRoute(args: {
   const classAs = readAsDecorator(cls, `class ${className}`);
   const methodAs = readAsDecorator(method, `${className}.${methodName}`);
 
-  const dtoContract = extractDtoContract(method, sourceFile, project, mixin, cls);
+  // Types resolve in the file that DECLARES the handler, which for a route
+  // inherited from a factory-produced base is the factory's file, not the
+  // controller's. Resolving a `@Body() body: ExportDto` against the controller —
+  // where nothing imports `ExportDto` — silently yielded `unknown`, so an
+  // inherited route reached the client with an untyped body. The filter pass
+  // already resolves from `method.getSourceFile()` for this exact reason. For a
+  // route declared on the controller itself the two files are the same.
+  const dtoContract = extractDtoContract(method, method.getSourceFile(), project, mixin, cls);
 
   // An inherited method annotates its return with the factory's type
   // parameters, which only bind at the derived class — resolve those through

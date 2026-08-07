@@ -168,6 +168,48 @@ The tsconfig and everything it extends are part of the freshness hash, so fixing
 invalidates the artifact it produced and the next run regenerates rather than reporting
 `up to date, skipped`.
 
+## Controller factories and inherited routes
+
+`class WidgetsController extends createTableController({ entity: Widget }) {}` contributes the
+routes of the class the factory returns. Discovery follows the **whole prototype chain**, the
+way Nest mounts it: the returned class, whatever *that* class extends — another factory call,
+or an ordinary base class — and so on to any depth. A method declared nearer the controller
+overrides a same-named one further up, so an override contributes one route, not two.
+
+That is what makes an **opt-in route** work without any runtime trickery. Wrap the shared
+factory in a second one and declare the extra route as an ordinary decorated method:
+
+```ts
+export function createExportableTableController<E extends object>(options: TableOptions<E>) {
+  class WithExport extends createTableController(options) {
+    @Post('export')
+    @HttpCode(HttpStatus.OK)
+    async export(@Body() body: ExportRequestDto): Promise<ExportResultDto> { … }
+  }
+  return WithExport;
+}
+
+@Controller('widgets')
+class WidgetsController extends createExportableTableController({ entity: Widget }) {} // has export
+
+@Controller('gadgets')
+class GadgetsController extends createTableController({ entity: Gadget }) {} // does not
+```
+
+Which factory a controller extends decides which routes it gets, and every route stays a
+literal decorator that the static scan can see.
+
+<Callout type="warn">
+The alternative — declaring the handler undecorated and mounting it imperatively
+(`if (options.export) Post('export')(proto, 'export', descriptor)`) — serves fine at runtime and
+is **invisible to codegen**: there is no decorator in the source to find, so the route is simply
+absent from the generated client, with no warning. Reach for the wrapping factory instead.
+</Callout>
+
+Types on an inherited route resolve in the file that **declares the handler** — the factory's
+file — so a `@Body()`/`@Query()` DTO or a return type the factory imports resolves normally
+even though the controller's own file never names it.
+
 ## Multi-scope discovery
 
 <Callout type="warn">

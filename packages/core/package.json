@@ -87,8 +87,8 @@
   },
   "devDependencies": {
     "@dudousxd/nestjs-codegen-zod": "workspace:*",
-    "@nestjs/common": "11.1.26",
-    "@nestjs/core": "11.1.26",
+    "@nestjs/common": "12.0.1",
+    "@nestjs/core": "12.0.1",
     "@tanstack/react-query": "5.101.0",
     "@types/node": "20.19.42",
     "class-validator": "0.14.4",

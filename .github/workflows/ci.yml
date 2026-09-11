@@ -142,10 +142,10 @@ jobs:
           git push origin HEAD:${{ github.ref_name }}
 
       - name: Create Release Pull Request or Publish
-        uses: changesets/action@v2.1.2
+        uses: changesets/action@v1.9.0
         with:
-          version-script: pnpm version-packages
-          publish-script: pnpm release
+          version: pnpm version-packages
+          publish: pnpm release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

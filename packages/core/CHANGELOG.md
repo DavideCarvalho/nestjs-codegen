@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-codegen
 
+## 0.25.2
+
+### Patch Changes
+
+- b32fb5c: Correct the script name referenced in the `sync-version` header comment (`version-packages`, not `changeset:version`).
+
 ## 0.25.1
 
 ### Patch Changes

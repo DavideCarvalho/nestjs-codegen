@@ -1,6 +1,6 @@
 // Keeps each package's exported `VERSION` constant in lock-step with its
 // package.json version. Run automatically as part of `changeset version`
-// (see the root `changeset:version` script and the CI changesets action),
+// (see the root `version-packages` script and the CI changesets action),
 // so a bump never drifts from the hardcoded literal and breaks the smoke test.
 //
 // We can't simply `import pkg from '../package.json'` inside src/ because the

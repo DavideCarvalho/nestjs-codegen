@@ -10,11 +10,7 @@
   "bugs": {
     "url": "https://github.com/DavideCarvalho/nestjs-codegen/issues"
   },
-  "keywords": [
-    "nestjs",
-    "codegen",
-    "zod"
-  ],
+  "keywords": ["nestjs", "codegen", "zod"],
   "description": "Zod validation adapter for @dudousxd/nestjs-codegen — renders the schema IR to zod source.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -35,11 +31,7 @@
     }
   },
   "sideEffects": false,
-  "files": [
-    "dist",
-    "README.md",
-    "CHANGELOG.md"
-  ],
+  "files": ["dist", "README.md", "CHANGELOG.md"],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

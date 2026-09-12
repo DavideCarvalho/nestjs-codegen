@@ -10,9 +10,7 @@
   "bugs": {
     "url": "https://github.com/DavideCarvalho/nestjs-codegen/issues"
   },
-  "keywords": [
-    "tanstack-intent"
-  ],
+  "keywords": ["tanstack-intent"],
   "description": "Extensible codegen core for NestJS: class-validator/contract discovery → neutral schema IR → pluggable validation adapters.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -65,17 +63,8 @@
       }
     }
   },
-  "sideEffects": [
-    "./dist/nest/index.js",
-    "./dist/nest/index.cjs"
-  ],
-  "files": [
-    "dist",
-    "bin",
-    "README.md",
-    "CHANGELOG.md",
-    "skills"
-  ],
+  "sideEffects": ["./dist/nest/index.js", "./dist/nest/index.cjs"],
+  "files": ["dist", "bin", "README.md", "CHANGELOG.md", "skills"],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

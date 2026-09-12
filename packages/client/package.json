@@ -6,6 +6,13 @@
     "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
     "directory": "packages/client"
   },
+  "homepage": "https://davidecarvalho.github.io/aviary/docs/codegen",
+  "bugs": {
+    "url": "https://github.com/DavideCarvalho/nestjs-codegen/issues"
+  },
+  "keywords": [
+    "tanstack-intent"
+  ],
   "description": "Framework-neutral runtime for nestjs-codegen output: typed fetcher with optional superjson transformer. No Inertia dependency.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -36,7 +43,12 @@
     }
   },
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md", "skills"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "skills"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -69,6 +81,5 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "keywords": ["tanstack-intent"]
+  }
 }

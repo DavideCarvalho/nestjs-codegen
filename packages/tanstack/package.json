@@ -6,6 +6,13 @@
     "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
     "directory": "packages/tanstack"
   },
+  "homepage": "https://davidecarvalho.github.io/aviary/docs/codegen",
+  "bugs": {
+    "url": "https://github.com/DavideCarvalho/nestjs-codegen/issues"
+  },
+  "keywords": [
+    "tanstack-intent"
+  ],
   "description": "TanStack Query client layer for @dudousxd/nestjs-codegen — emits queryOptions/mutationOptions handles in the generated api.ts.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -26,7 +33,12 @@
     }
   },
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md", "skills"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "skills"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -44,6 +56,5 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "keywords": ["tanstack-intent"]
+  }
 }

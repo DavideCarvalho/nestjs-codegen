@@ -6,6 +6,15 @@
     "url": "git+https://github.com/DavideCarvalho/nestjs-codegen.git",
     "directory": "packages/valibot"
   },
+  "homepage": "https://davidecarvalho.github.io/aviary/docs/codegen",
+  "bugs": {
+    "url": "https://github.com/DavideCarvalho/nestjs-codegen/issues"
+  },
+  "keywords": [
+    "nestjs",
+    "codegen",
+    "valibot"
+  ],
   "description": "Valibot validation adapter for @dudousxd/nestjs-codegen — renders the schema IR to valibot source.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
@@ -26,7 +35,11 @@
     }
   },
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

@@ -39,11 +39,11 @@ importers:
   apps/docs:
     dependencies:
       fumadocs-core:
-        specifier: 15.6.12
-        version: 15.6.12(@types/react@19.2.18)(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 15.8.5
+        version: 15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       fumadocs-mdx:
         specifier: 11.6.11
-        version: 11.6.11(fumadocs-core@15.6.12(@types/react@19.2.18)(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
+        version: 11.6.11(fumadocs-core@15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
       fumadocs-ui:
         specifier: 15.6.12
         version: 15.6.12(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
@@ -2158,6 +2158,44 @@ packages:
       react-dom:
         optional: true
       react-router:
+        optional: true
+
+  fumadocs-core@15.8.5:
+    resolution: {integrity: sha512-hyJtKGuB2J/5y7tDfI1EnGMKlNbSXM5N5cpwvgCY0DcBJwFMDG/GpSpaVRzh3aWy67pAYDZFIwdtbKXBa/q5bg==}
+    peerDependencies:
+      '@mixedbread/sdk': ^0.19.0
+      '@oramacloud/client': 1.x.x || 2.x.x
+      '@tanstack/react-router': 1.x.x
+      '@types/react': '*'
+      algoliasearch: 5.x.x
+      lucide-react: '*'
+      next: 14.x.x || 15.x.x
+      react: 18.x.x || 19.x.x
+      react-dom: 18.x.x || 19.x.x
+      react-router: 7.x.x
+      waku: ^0.26.0
+    peerDependenciesMeta:
+      '@mixedbread/sdk':
+        optional: true
+      '@oramacloud/client':
+        optional: true
+      '@tanstack/react-router':
+        optional: true
+      '@types/react':
+        optional: true
+      algoliasearch:
+        optional: true
+      lucide-react:
+        optional: true
+      next:
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      react-router:
+        optional: true
+      waku:
         optional: true
 
   fumadocs-mdx@11.6.11:
@@ -5158,14 +5196,43 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fumadocs-mdx@11.6.11(fumadocs-core@15.6.12(@types/react@19.2.18)(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)):
+  fumadocs-core@15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    dependencies:
+      '@formatjs/intl-localematcher': 0.6.2
+      '@orama/orama': 3.1.18
+      '@shikijs/rehype': 3.23.0
+      '@shikijs/transformers': 3.23.0
+      github-slugger: 2.0.0
+      hast-util-to-estree: 3.1.3
+      hast-util-to-jsx-runtime: 2.3.6
+      image-size: 2.0.2
+      negotiator: 1.0.0
+      npm-to-yarn: 3.0.1
+      path-to-regexp: 8.4.2
+      react-remove-scroll: 2.7.2(@types/react@19.2.18)(react@19.2.8)
+      remark: 15.0.1
+      remark-gfm: 4.0.1
+      remark-rehype: 11.1.2
+      scroll-into-view-if-needed: 3.1.0
+      shiki: 3.23.0
+      unist-util-visit: 5.1.0
+    optionalDependencies:
+      '@types/react': 19.2.18
+      lucide-react: 1.17.0(react@19.2.8)
+      next: 15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+    transitivePeerDependencies:
+      - supports-color
+
+  fumadocs-mdx@11.6.11(fumadocs-core@15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)):
     dependencies:
       '@mdx-js/mdx': 3.1.1
       '@standard-schema/spec': 1.1.0
       chokidar: 4.0.3
       esbuild: 0.25.12
       estree-util-value-to-estree: 3.5.0
-      fumadocs-core: 15.6.12(@types/react@19.2.18)(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      fumadocs-core: 15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       js-yaml: 4.2.0
       lru-cache: 11.5.1
       picocolors: 1.1.1

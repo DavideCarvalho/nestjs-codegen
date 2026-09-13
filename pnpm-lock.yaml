@@ -42,8 +42,8 @@ importers:
         specifier: 15.8.5
         version: 15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       fumadocs-mdx:
-        specifier: 11.6.11
-        version: 11.6.11(fumadocs-core@15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
+        specifier: 11.10.1
+        version: 11.10.1(fumadocs-core@15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
       fumadocs-ui:
         specifier: 15.6.12
         version: 15.6.12(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
@@ -2198,18 +2198,21 @@ packages:
       waku:
         optional: true
 
-  fumadocs-mdx@11.6.11:
-    resolution: {integrity: sha512-8KPOMU53ujQtNWvmmBpyGb9BRdFXZKS0m0O6udSlXCoLU/VZlQSJE0ntxX1e5JCDVsxPR63jleCVq1c/WXmEVw==}
+  fumadocs-mdx@11.10.1:
+    resolution: {integrity: sha512-WoEzzzoKncXl7PM++GRxEplAb73y3A4ow+QdTYybhVtoYXgJzvTzkLc5OIlNQm72Dv+OxSAx7uk11zTTOX9YMQ==}
     hasBin: true
     peerDependencies:
-      '@fumadocs/mdx-remote': ^1.2.0
+      '@fumadocs/mdx-remote': ^1.4.0
       fumadocs-core: ^14.0.0 || ^15.0.0
       next: ^15.3.0
-      vite: 6.x.x
+      react: '*'
+      vite: 6.x.x || 7.x.x
     peerDependenciesMeta:
       '@fumadocs/mdx-remote':
         optional: true
       next:
+        optional: true
+      react:
         optional: true
       vite:
         optional: true
@@ -5225,7 +5228,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fumadocs-mdx@11.6.11(fumadocs-core@15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)):
+  fumadocs-mdx@11.10.1(fumadocs-core@15.8.5(@types/react@19.2.18)(lucide-react@1.17.0(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)):
     dependencies:
       '@mdx-js/mdx': 3.1.1
       '@standard-schema/spec': 1.1.0
@@ -5236,12 +5239,16 @@ snapshots:
       js-yaml: 4.2.0
       lru-cache: 11.5.1
       picocolors: 1.1.1
+      remark-mdx: 3.1.1
+      remark-parse: 11.0.0
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
+      unified: 11.0.5
       unist-util-visit: 5.1.0
       zod: 4.4.3
     optionalDependencies:
       next: 15.5.25(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react: 19.2.8
       vite: 7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)
     transitivePeerDependencies:
       - supports-color

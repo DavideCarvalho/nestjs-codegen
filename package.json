@@ -32,7 +32,7 @@
     "@changesets/cli": "2.31.1",
     "@vitest/coverage-v8": "4.1.11",
     "tsup": "8.5.1",
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "vite": "7.3.6",
     "vitest": "4.1.11"
   }

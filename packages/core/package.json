@@ -98,7 +98,7 @@
     "@types/node": "20.19.43",
     "class-validator": "0.15.1",
     "tsx": "4.23.13",
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "vitest": "4.1.11",
     "zod": "3.25.76"
   },

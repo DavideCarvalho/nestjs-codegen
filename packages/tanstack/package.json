@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@dudousxd/nestjs-codegen": "workspace:*",
-    "@types/node": "20.19.43",
+    "@types/node": "24.13.5",
     "ts-morph": "28.0.0",
     "typescript": "5.9.3",
     "vitest": "4.1.11"

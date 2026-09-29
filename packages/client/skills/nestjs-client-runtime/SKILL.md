@@ -40,7 +40,7 @@ export const api = createApi(
 );
 ```
 
-`headers` is a function so tokens stay dynamic. Each generated leaf is awaitable: `await api.users.list()`.
+`headers` is a function so tokens stay dynamic. Each generated leaf is a lazy `Promise`: `await api.users.list()`, or return it from a `mutationFn`/`queryFn` directly (no `.fetch()` needed).
 
 ## Core patterns
 

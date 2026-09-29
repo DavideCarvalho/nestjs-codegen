@@ -39,8 +39,29 @@ const user = await api.users.show({ params: { id } });
 const created = await api.users.create({ body: { email: 'a@b.com', password: 'secret123' } });
 ```
 
-Awaiting the same handle twice is memoized (one network call). It also exposes
-`.fetch()`/`.catch()`/`.finally()` if you'd rather not `await` directly.
+The handle is a real `Promise` (typed `RequestHandle<Response>`, which is
+`Promise<Response> & { fetch(): Promise<Response> }` plus any extension members), so it goes
+anywhere a promise does — `Promise.all`, a function typed `Promise<T>`, a TanStack
+`mutationFn`/`queryFn` — without calling `.fetch()` first:
+
+```ts
+const [users, count] = await Promise.all([api.users.list(), api.users.count()]);
+
+useMutation({ mutationFn: (body: Route.Body<'users.create'>) => api.users.create({ body }) });
+```
+
+It is **lazy**: nothing is sent until it is awaited (or `.then`/`.catch`/`.finally` is
+called), so building `queryOptions()` or reading `queryKey()` on a handle never fires a
+request. Awaiting the same handle twice is memoized (one network call); `.fetch()` always
+sends a fresh one.
+
+## Strict compiler settings
+
+The generated `api.ts` compiles cleanly under `strict` plus `noUnusedLocals`,
+`noUnusedParameters`, `exactOptionalPropertyTypes`, `noImplicitOverride`,
+`noUncheckedIndexedAccess` and `noPropertyAccessFromIndexSignature` (a fixture test compiles
+it with all of them on), so an app that type-checks the generated file doesn't have to loosen
+its own `tsconfig`. It imports from `routes.ts` only the names it uses.
 
 ## Schema pipes (`@Body(new ZodPipe(schema))`)
 

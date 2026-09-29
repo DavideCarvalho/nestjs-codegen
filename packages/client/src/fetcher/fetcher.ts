@@ -73,6 +73,11 @@ export interface TransportRequest {
    * cannot observe upload progress (native `fetch`) ignores it.
    */
   onUploadProgress?: UploadProgressHandler;
+  /**
+   * Cancels the request (TanStack Query hands one to every `queryFn`). A transport
+   * forwards it to its network call; one that cannot cancel may ignore it.
+   */
+  signal?: AbortSignal;
 }
 
 /** A normalized HTTP response a {@link Transport} returns. */

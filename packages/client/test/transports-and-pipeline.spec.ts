@@ -22,6 +22,19 @@ describe('axiosTransport (bring your own axios instance)', () => {
     });
   });
 
+  it('forwards the abort signal to axios', async () => {
+    const request = vi.fn(async (_config: { signal?: AbortSignal }) => ({
+      status: 200,
+      statusText: 'OK',
+      data: '{}',
+      headers: { 'content-type': 'application/json' },
+    }));
+    const api = createFetcher({ transport: axiosTransport({ request }) });
+    const controller = new AbortController();
+    await api.get('/x', { signal: controller.signal });
+    expect(request.mock.calls[0]?.[0].signal).toBe(controller.signal);
+  });
+
   it('non-2xx from axios → ApiHttpError (validateStatus lets it through)', async () => {
     const request = async () => ({
       status: 500,

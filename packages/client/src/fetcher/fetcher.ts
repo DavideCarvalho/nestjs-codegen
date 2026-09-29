@@ -180,6 +180,15 @@ export interface Fetcher {
   patch<T>(path: string, opts?: RequestOpts): Promise<T>;
   delete<T>(path: string, opts?: RequestOpts): Promise<T>;
   /**
+   * Issue a `HEAD` request (a `@Head()` route). A HEAD response has no body, so
+   * this resolves to `undefined` once the status is 2xx — a non-2xx still rejects
+   * with an {@link ApiHttpError}. Use {@link fetchRaw} with `method: 'HEAD'` to read
+   * the response headers.
+   */
+  head<T = undefined>(path: string, opts?: RequestOpts): Promise<T>;
+  /** Issue an `OPTIONS` request (an `@Options()` route); the body is parsed like any verb's. */
+  options<T>(path: string, opts?: RequestOpts): Promise<T>;
+  /**
    * Consume a server-sent-events (`@Sse()`) endpoint as a typed async stream.
    * Each yielded value is the JSON-parsed `data:` payload of one SSE event,
    * typed as `T` (the streamed element type the codegen carried through). The
@@ -390,10 +399,14 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
   async function request<T>(method: string, path: string, ro: RequestOpts = {}): Promise<T> {
     const res = await send(method, path, ro);
 
-    if (res.status === 204) return undefined as T;
+    // A 204 and a HEAD response carry no body by definition.
+    if (res.status === 204 || method === 'HEAD') return undefined as T;
 
     const ct = res.contentType ?? '';
     const text = await res.text();
+    // An empty body labelled JSON (some servers send the header on every
+    // response) would throw in JSON.parse; there is nothing to parse.
+    if (text === '' && ct.includes('application/json')) return undefined as T;
     if (ct.includes('application/json')) {
       const parsed: unknown = transformer ? transformer.parse<unknown>(text) : JSON.parse(text);
       return (opts.deserialize ? opts.deserialize(parsed) : parsed) as T;
@@ -476,6 +489,8 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
     put: <T>(p: string, ro?: RequestOpts) => request<T>('PUT', p, ro),
     patch: <T>(p: string, ro?: RequestOpts) => request<T>('PATCH', p, ro),
     delete: <T>(p: string, ro?: RequestOpts) => request<T>('DELETE', p, ro),
+    head: <T = undefined>(p: string, ro?: RequestOpts) => request<T>('HEAD', p, ro),
+    options: <T>(p: string, ro?: RequestOpts) => request<T>('OPTIONS', p, ro),
     sse,
     fetchBlob: (p: string, ro: RawRequestOpts = {}) =>
       requestRaw<Blob>(ro.method ?? 'GET', p, { ...ro, responseType: 'blob' }),

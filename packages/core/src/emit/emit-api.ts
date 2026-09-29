@@ -181,10 +181,17 @@ function insertIntoTree(
  * Build a TypeScript type literal for path params.
  * Returns 'never' when the route has no path params.
  */
-function buildParamsType(params: Array<{ name: string; source: string }>): string {
+function buildParamsType(
+  params: Array<{ name: string; source: string }>,
+  paramTypes?: Record<string, string> | null,
+): string {
   const pathParams = params.filter((p) => p.source === 'path');
   if (pathParams.length === 0) return 'never';
-  return `{ ${pathParams.map((p) => `${p.name}: string`).join('; ')} }`;
+  // A schema pipe on `@Param` may narrow a param (`z.enum([...])`, `z.coerce.number()`);
+  // every other path param is the string a URL segment is.
+  const typeOf = (name: string) =>
+    (paramTypes && Object.hasOwn(paramTypes, name) && paramTypes[name]) || 'string';
+  return `{ ${pathParams.map((p) => `${p.name}: ${typeOf(p.name)}`).join('; ')} }`;
 }
 
 /**
@@ -376,7 +383,7 @@ function emitRouterTypeBlock(
       }
       const response = buildResponseType(c, outDir, serialization);
       const error = buildErrorType(c);
-      const params = buildParamsType(c.params);
+      const params = buildParamsType(c.params, c.contractSource.paramTypes);
       const safeMethod = JSON.stringify(method);
       const safeUrl = JSON.stringify(c.path);
       // Filterable fields (from @dudousxd/nestjs-filter) as a string-literal
@@ -799,6 +806,17 @@ const EMPTY_PATH_NAMESPACE: readonly string[] = [
 // Main builder
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether a route gets a leaf in `api.ts`. An `@All()` handler does not: it answers
+ * every verb, so there is no one request a typed client method could issue — and in
+ * practice it is a protocol endpoint (an MCP transport, a proxy, a webhook sink)
+ * driven by a dedicated client, never by the app's own UI. It keeps its entry in
+ * `routes.ts`, so `route('mcp.handle')` still builds its URL for a hand-written call.
+ */
+function isClientCallable(route: RouteDescriptor): boolean {
+  return route.method.toUpperCase() !== 'ALL';
+}
+
 function buildApiFile(
   routes: RouteDescriptor[],
   outDir?: string,
@@ -810,7 +828,7 @@ function buildApiFile(
   const { layer } = resolveApiSlots(extensions);
   const memberExts = extensions.filter((e) => e.apiMembers);
   const headerExts = extensions.filter((e) => e.apiHeader);
-  const contracted = routes.filter((r) => r.contract);
+  const contracted = routes.filter((r) => r.contract && isClientCallable(r));
 
   // Extension context for the api.ts hooks. `generate()` passes the real one; standalone
   // `emitApi` calls (tests) get a minimal context exposing the routes (all the bundled

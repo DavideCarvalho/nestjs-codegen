@@ -10,6 +10,7 @@ import {
 } from 'ts-morph';
 import { extractSchemaFromDto } from './dto-to-ir.js';
 import { extractApplyFilterInfo } from './filter-for.js';
+import { pipeSchemaOf } from './pipe-schema.js';
 import {
   type TypeDeclResult,
   dbg,
@@ -284,8 +285,17 @@ function resolvePropertied(
   return `{ ${lines.join('; ')} }`;
 }
 
+/** Whether a param decorator names a single field (`@Query('page')`) rather than the whole object. */
+function namedField(decorator: import('ts-morph').Decorator): string | null {
+  const first = decorator.getArguments()[0];
+  return first && Node.isStringLiteral(first) ? first.getLiteralValue() : null;
+}
+
 /**
- * Extract the body type from a `@Body()` (no-arg) decorated parameter.
+ * Extract the body type from a whole-object `@Body()` parameter: the schema of a
+ * validation pipe on it (`@Body(new ZodPipe(schema))` — see {@link pipeSchemaOf})
+ * when there is one, else the parameter's declared type. A named `@Body('field')`
+ * is not the body and is skipped.
  * Returns a TS type string or null.
  */
 function extractBodyType(
@@ -295,15 +305,29 @@ function extractBodyType(
 ): string | null {
   for (const param of method.getParameters()) {
     const bodyDecorator = param.getDecorators().find((d) => d.getName() === 'Body');
-    if (!bodyDecorator) continue;
-    const bodyArgs = bodyDecorator.getArguments();
-    if (bodyArgs.length > 0) continue;
+    if (!bodyDecorator || namedField(bodyDecorator) !== null) continue;
+    const piped = pipeSchemaOf(bodyDecorator, project);
+    if (piped) return piped.type;
     const typeNode = param.getTypeNode();
     if (typeNode) {
       return resolveTypeNodeToString(typeNode, sourceFile, project, 3);
     }
   }
   return null;
+}
+
+/**
+ * Whether a parameter's type comes from a schema pipe on its `decoratorName`
+ * decorator, in which case its annotation (usually `z.infer<typeof schema>`) must
+ * not be read as a DTO reference or class.
+ */
+function hasPipeSchema(
+  param: import('ts-morph').ParameterDeclaration,
+  decoratorName: 'Body' | 'Query',
+  project: Project,
+): boolean {
+  const decorator = param.getDecorators().find((d) => d.getName() === decoratorName);
+  return !!decorator && pipeSchemaOf(decorator, project) !== null;
 }
 
 /**
@@ -332,11 +356,13 @@ function extractQueryType(
   sourceFile: SourceFile,
   project: Project,
 ): string | null {
-  // 1. Whole-object form takes precedence.
+  // 1. Whole-object form takes precedence. A schema pipe on it
+  //    (`@Query(new ZodPipe(schema))`) is the query type.
   for (const param of method.getParameters()) {
     const queryDecorator = param.getDecorators().find((d) => d.getName() === 'Query');
-    if (!queryDecorator) continue;
-    if (queryDecorator.getArguments().length > 0) continue;
+    if (!queryDecorator || namedField(queryDecorator) !== null) continue;
+    const piped = pipeSchemaOf(queryDecorator, project);
+    if (piped) return piped.type;
     const typeNode = param.getTypeNode();
     if (typeNode) {
       return resolveTypeNodeToString(typeNode, sourceFile, project, 3);
@@ -349,13 +375,18 @@ function extractQueryType(
   for (const param of method.getParameters()) {
     const queryDecorator = param.getDecorators().find((d) => d.getName() === 'Query');
     if (!queryDecorator) continue;
-    const queryArgs = queryDecorator.getArguments();
-    const nameArg = queryArgs[0];
-    if (!nameArg || !Node.isStringLiteral(nameArg)) continue;
-    const queryName = nameArg.getLiteralValue();
+    const queryName = namedField(queryDecorator);
+    if (queryName === null) continue;
+    // A schema pipe (`@Query('page', new ZodPipe(z.coerce.number()))`) types the
+    // field, and decides whether it may be omitted.
+    const piped = pipeSchemaOf(queryDecorator, project);
+    if (piped) {
+      entries.push(`${queryName}${piped.optional ? '?' : ''}: ${piped.type}`);
+      continue;
+    }
     const typeNode = param.getTypeNode();
-    // Pipes (ParseArrayPipe/ParseIntPipe/...) do not change the declared TS type,
-    // so the annotation is read verbatim. A missing annotation falls back to
+    // Other pipes (ParseArrayPipe/ParseIntPipe/...) do not change the declared TS
+    // type, so the annotation is read verbatim. A missing annotation falls back to
     // `string` (query-string values are always strings) — consistent with how
     // extractParamsType defaults a typeless `@Param`.
     const queryType = typeNode
@@ -405,6 +436,33 @@ function extractParamsType(
     entries.push(`${paramName}: ${paramType}`);
   }
   return entries.length > 0 ? `{ ${entries.join('; ')} }` : null;
+}
+
+/**
+ * Path-param types declared by schema pipes: `@Param('id', new ZodPipe(z.string().uuid()))`
+ * types `id`, and a whole `@Param(new ZodPipe(z.object({ … })))` types each of its
+ * fields. Only these carry more than the `string` every URL segment is; a param
+ * without a schema pipe is left out (the emitter keeps `string` for it).
+ * Returns null when no `@Param` carries a schema pipe.
+ */
+function extractPipedParamTypes(
+  method: MethodDeclaration,
+  project: Project,
+): Record<string, string> | null {
+  const types: Record<string, string> = {};
+  for (const param of method.getParameters()) {
+    const paramDecorator = param.getDecorators().find((d) => d.getName() === 'Param');
+    if (!paramDecorator) continue;
+    const piped = pipeSchemaOf(paramDecorator, project);
+    if (!piped) continue;
+    const name = namedField(paramDecorator);
+    if (name !== null) {
+      types[name] = piped.type;
+    } else {
+      for (const field of piped.fields ?? []) types[field.name] = field.type;
+    }
+  }
+  return Object.keys(types).length > 0 ? types : null;
 }
 
 /**
@@ -787,6 +845,7 @@ export function extractDtoContract(
   response: string;
   error?: string | null;
   params: string | null;
+  paramTypes?: Record<string, string> | null;
   queryRef?: TypeRef | null;
   bodyRef?: TypeRef | null;
   responseRef?: TypeRef | null;
@@ -835,6 +894,7 @@ export function extractDtoContract(
   }
 
   const paramsType = extractParamsType(method, sourceFile, project);
+  const paramTypes = extractPipedParamTypes(method, project);
   // For a stream, the wire shape is the ELEMENT type `T` (the client surfaces an
   // `AsyncIterable<T>`); otherwise resolve the normal response type.
   const response = isStream
@@ -850,6 +910,7 @@ export function extractDtoContract(
     body === null &&
     query === null &&
     paramsType === null &&
+    paramTypes === null &&
     response === 'unknown' &&
     errorInfo === null &&
     filterInfo === null &&
@@ -866,11 +927,21 @@ export function extractDtoContract(
   let queryRef: TypeRef | null = null;
   let responseRef: TypeRef | null = null;
 
+  // A parameter typed by a schema pipe is described by the schema, not by its
+  // annotation (`z.infer<typeof schema>`), so it contributes no named ref.
   for (const param of method.getParameters()) {
-    if (param.getDecorators().some((d) => d.getName() === 'Body') && param.getTypeNode()) {
+    if (
+      param.getDecorators().some((d) => d.getName() === 'Body') &&
+      param.getTypeNode() &&
+      !hasPipeSchema(param, 'Body', project)
+    ) {
       bodyRef = resolveBodyQueryResponseRef(param.getTypeNode()!, sourceFile, project);
     }
-    if (param.getDecorators().some((d) => d.getName() === 'Query') && param.getTypeNode()) {
+    if (
+      param.getDecorators().some((d) => d.getName() === 'Query') &&
+      param.getTypeNode() &&
+      !hasPipeSchema(param, 'Query', project)
+    ) {
       queryRef = resolveBodyQueryResponseRef(param.getTypeNode()!, sourceFile, project);
     }
   }
@@ -944,6 +1015,7 @@ export function extractDtoContract(
     response,
     error: errorInfo?.type ?? null,
     params: paramsType,
+    paramTypes,
     queryRef,
     bodyRef,
     responseRef,
@@ -974,6 +1046,7 @@ function resolveParamClass(
 ): { decl: ClassDeclaration; file: SourceFile } | null {
   for (const param of method.getParameters()) {
     if (!param.getDecorators().some((d) => d.getName() === decoratorName)) continue;
+    if (hasPipeSchema(param, decoratorName, project)) continue;
     const typeNode = param.getTypeNode();
     if (!typeNode) continue;
     // Strip array suffix — translate the element class.

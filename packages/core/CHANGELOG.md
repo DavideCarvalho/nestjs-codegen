@@ -1,5 +1,29 @@
 # @dudousxd/nestjs-codegen
 
+## 0.26.0
+
+### Minor Changes
+
+- [#98](https://github.com/DavideCarvalho/nestjs-codegen/pull/98) [`12a698e`](https://github.com/DavideCarvalho/nestjs-codegen/commit/12a698ee345f26365f6146cbd3065b2c72c8b26a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Make the generated client type-check for controllers with `@Head()`, `@Options()` and `@All()` routes.
+
+  Discovery recognized all three decorators, and `api.ts` called `fetcher.head`, `fetcher.options` and `fetcher.all` for them — none of which the `Fetcher` had, so one such route anywhere in the app broke the generated file's type-check. Apps worked around it by augmenting `Fetcher` with stubs that throw.
+
+  - **`@dudousxd/nestjs-client`**: the `Fetcher` gains `head()` and `options()`. `head()` resolves to `undefined` on a 2xx (a HEAD response has no body) and still rejects a non-2xx with `ApiHttpError`; `options()` parses its body like any verb. A response with an empty body labelled `application/json` now resolves to `undefined` instead of throwing in `JSON.parse`.
+  - **`@dudousxd/nestjs-codegen`**: an `@All()` route gets no client method. It answers every verb, so there is no single request a typed method could issue, and in practice it is a protocol endpoint (an MCP transport, a proxy, a webhook sink) driven by a dedicated client rather than by the app's UI. Mapping it onto one verb would type a request the handler may not mean, and a method-parameterized call would be an untyped escape hatch the fetcher already has (`fetchRaw`). It keeps its `routes.ts` entry, so `route('mcp.handle')` still builds its URL, and it is left out of `openapi.json`, where "any method" is not a valid operation. `RequestModel['method']` (read by client-layer extensions) now includes `'head'` and `'options'`.
+  - **`@dudousxd/nestjs-codegen-tanstack`**: import decisions ignore `@All()` routes, matching the leaves core emits.
+
+  A `@Head()`/`@Options()` route now needs `@dudousxd/nestjs-client` 0.9 or later, or a custom fetcher (`fetcherImportPath`) that has both methods.
+
+- [#98](https://github.com/DavideCarvalho/nestjs-codegen/pull/98) [`12a698e`](https://github.com/DavideCarvalho/nestjs-codegen/commit/12a698ee345f26365f6146cbd3065b2c72c8b26a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Type requests from validation-pipe schemas, and resolve refined schemas instead of degrading them to `unknown`.
+
+  **Schema pipes.** Request types were read from `@ApplyContract(defineContract(...))` or from a DTO class, so a route validating with a schema pipe — `@Body(new ZodPipe(schema)) body: z.infer<typeof schema>`, the pattern many zod codebases use everywhere — reached the client with no body at all. The pipe's argument is now read as the schema for a whole `@Body(pipe)`, a whole or named `@Query(pipe)` / `@Query('name', pipe)`, and path params through `@Param('name', pipe)` or a whole `@Param(pipe)` object (path params were always `string`; a schema can now narrow one, e.g. to an enum's literals). Any pipe counts — `new X(schema)` or `x(schema)`, whatever it is called — as long as its argument is a schema, and the schema may be declared locally, imported, written inline or returned by a helper. `ParseIntPipe`, `new DefaultValuePipe(1)` and `new ValidationPipe({ … })` are left alone: their parameter keeps being typed by its annotation.
+
+  **Refinements.** Schemas were typed by walking the method chain, which knew a fixed list of zod calls: `.email()`, `.url()`, `.uuid()`, `.regex()`, `.trim()`, `.min()`/`.max()`, `.default()`, `.refine()`, `.superRefine()`, `.transform()`, `.brand()` and zod 4's `z.email()` all turned the field into `unknown`. Types now come from the TypeScript checker's own inference, through the schema's [Standard Schema](https://standardschema.dev) types, so they resolve fully — for `defineContract` schemas as well — and are not tied to zod: valibot (>= 1) and arktype (>= 2) schemas are read the same way. Older zod without Standard Schema is read through its `_input`/`_output` types, and when the schema library cannot be resolved at all the syntactic reader still answers as before.
+
+  Request positions (body, query, params) use the schema's **input** type — what the client may send: a `.default()` field is optional, and a `.transform()` is typed by what it reads, since sending what it produces would fail validation. Where the input is `unknown` (zod 4's `z.coerce.*`), the output type stands in, so a coerced query param is a `number`. A `defineContract` `response`/`error` uses the **output** type.
+
+  The checker runs in a second, lib-loading program, built only when a route carries a schema candidate, so a codebase without schemas does not pay for it. That program holds only what the schemas can reach: every project file enters it with the imports no schema depends on blanked out, so a controller's services, database layer and SDKs stay out. Measured on a 755-route app that validates ~300 request bodies with a schema pipe: every one of those bodies now reaches the client typed, with `unknown` left only where the schema itself says so (`z.unknown()`, `z.record(z.unknown())`); discovery takes ~3 s instead of ~0.5 s (a naive program of everything the controllers import took ~8 s).
+
 ## 0.25.2
 
 ### Patch Changes

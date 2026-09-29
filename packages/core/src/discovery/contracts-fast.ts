@@ -20,6 +20,7 @@ import {
   resolveInheritedMethods,
   resolveInstantiatedReturnType,
 } from './heritage.js';
+import { clearSchemaTypeProject } from './schema-type-inference.js';
 import {
   clearTypeResolutionCaches,
   resolveImportedVariable,
@@ -68,7 +69,11 @@ export async function discoverContractsFast(
   // same process (tests, repeated CLI runs) would otherwise reuse types parsed
   // from whatever the files looked like on the first pass.
   clearMixinTypeProject();
-  return extractAllRoutes(project);
+  const routes = extractAllRoutes(project);
+  // The typed Project holds every file the schemas pulled in; nothing reuses it
+  // after a cold pass, so it is released rather than left to the WeakMap.
+  clearSchemaTypeProject(project);
+  return routes;
 }
 
 // ---------------------------------------------------------------------------
@@ -407,6 +412,8 @@ export class PersistentDiscovery {
     // The mixin type Project is module-level (not keyed by this.project), so it
     // would otherwise serve types parsed from a previous revision of the file.
     clearMixinTypeProject();
+    // Likewise the schema-typing Project: a schema's file may have changed.
+    clearSchemaTypeProject(this.project);
     return extractRoutesFrom(this.project, this.controllerPaths);
   }
 }
@@ -662,7 +669,7 @@ function extractContractRoute(args: {
   let queryZodRef: TypeRef | null = null;
 
   if (Node.isCallExpression(firstDecoratorArg)) {
-    contractDef = parseDefineContractCall(firstDecoratorArg);
+    contractDef = parseDefineContractCall(firstDecoratorArg, project);
   } else if (Node.isIdentifier(firstDecoratorArg)) {
     const identName = firstDecoratorArg.getText();
     // Resolve the const — locally OR by following imports / barrel re-exports to
@@ -679,7 +686,7 @@ function extractContractRoute(args: {
     const initializer = varDecl.getInitializer();
     if (!initializer) return null;
 
-    contractDef = parseDefineContractCall(initializer);
+    contractDef = parseDefineContractCall(initializer, project);
     // Re-export the named contract's schema members (Path A). Only when the
     // const is exported so forms.ts can import it. The ref points at the const's
     // DECLARING file (which may differ from the controller for a cross-file ref),
@@ -791,6 +798,7 @@ function extractDtoRoute(args: {
       body: dtoContract?.body ?? null,
       response: mixinResponse ?? dtoContract?.response ?? 'unknown',
       error: dtoContract?.error ?? null,
+      paramTypes: dtoContract?.paramTypes ?? null,
       queryRef: dtoContract?.queryRef ?? null,
       bodyRef: dtoContract?.bodyRef ?? null,
       responseRef: dtoContract?.responseRef ?? null,

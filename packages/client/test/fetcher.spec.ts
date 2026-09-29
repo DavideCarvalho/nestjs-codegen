@@ -434,3 +434,42 @@ describe('createFetcher — deserialize hook', () => {
     expect(result).toBe('plain text');
   });
 });
+
+describe('createFetcher — head / options (`@Head()` / `@Options()` routes)', () => {
+  it('head() issues a HEAD and resolves to undefined without reading a body', async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(null, { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    const fetcher = createFetcher({ fetch, baseUrl: '/api' });
+    await expect(fetcher.head('/uploads/:id', { params: { id: 'u1' } })).resolves.toBeUndefined();
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/uploads/u1');
+    expect(init.method).toBe('HEAD');
+  });
+
+  it('head() still rejects a non-2xx with ApiHttpError', async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 404, statusText: 'Not Found' }));
+    const fetcher = createFetcher({ fetch });
+    await expect(fetcher.head('/uploads/missing')).rejects.toBeInstanceOf(ApiHttpError);
+  });
+
+  it('options() issues an OPTIONS and parses the JSON body like any verb', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ versions: ['1.0.0'] }));
+    const fetcher = createFetcher({ fetch });
+    await expect(fetcher.options<{ versions: string[] }>('/uploads')).resolves.toEqual({
+      versions: ['1.0.0'],
+    });
+    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe('OPTIONS');
+  });
+
+  it('resolves an empty body labelled application/json to undefined instead of throwing', async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response('', { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    const fetcher = createFetcher({ fetch });
+    await expect(fetcher.options('/uploads')).resolves.toBeUndefined();
+  });
+});

@@ -145,7 +145,8 @@ export interface ApiHeaderContribution {
 export interface RequestModel {
   /** Dot-path route name, e.g. `users.show`. */
   routeName: string;
-  method: 'get' | 'post' | 'put' | 'patch' | 'delete';
+  /** The fetcher method the leaf calls. `@All()` routes get no leaf, so there is no `'all'`. */
+  method: 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options';
   isGet: boolean;
   /** True for reads: a GET, a filter-search route (has `filterFields`), or an
    *  `@AsQuery()`-marked route — even when the method is POST. Client layers

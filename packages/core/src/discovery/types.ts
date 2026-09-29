@@ -72,6 +72,12 @@ export interface ContractSource {
    * `never` — an HTTP error always carries some body).
    */
   error?: string | null;
+  /**
+   * Path-param types declared by schema pipes (`@Param('id', new ZodPipe(z.string().uuid()))`
+   * or a whole `@Param(new ZodPipe(schema))`), keyed by param name. A path param
+   * absent here is typed `string`, which every URL segment is.
+   */
+  paramTypes?: Record<string, string> | null;
   queryRef?: TypeRef | null;
   bodyRef?: TypeRef | null;
   responseRef?: TypeRef | null;

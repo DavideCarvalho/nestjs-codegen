@@ -180,6 +180,9 @@ export function buildOpenApiSpec(
 
   for (const route of routes) {
     if (!route.contract) continue;
+    // OpenAPI has no "any method" operation; an `@All()` handler has no single
+    // operation to describe, so it is left out rather than emitted as an invalid key.
+    if (route.method.toUpperCase() === 'ALL') continue;
     const oaPath = toOpenApiPath(route.path);
     const method = route.method.toLowerCase();
     let pathItem = paths[oaPath];

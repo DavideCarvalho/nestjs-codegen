@@ -19,6 +19,11 @@ const fetcher = createFetcher({
 });
 ```
 
+It has a method per HTTP verb — `get`, `post`, `put`, `patch`, `delete`, `head` and
+`options` — each taking the path plus `{ params, query, body }`. `head` resolves to
+`undefined` once the status is 2xx (a HEAD response carries no body); use
+`fetchRaw(path, { method: 'HEAD' })` to read the response headers.
+
 ## Bring your own HTTP client
 
 By default the transport is native `fetch`. Pass `transport` to use anything else.

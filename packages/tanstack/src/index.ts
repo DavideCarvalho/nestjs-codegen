@@ -58,9 +58,13 @@ export interface TanstackQueryOptions {
   pageParamName?: string;
 }
 
-/** A contracted route counts for import decisions. */
+/**
+ * A route counts for import decisions when it gets a leaf in `api.ts`: it carries a
+ * contract, and it is not an `@All()` handler (core emits no client method for
+ * those — an import only an `@All()` route would use would be left unused).
+ */
 function contracted(ctx: ExtensionContext) {
-  return ctx.routes.filter((r) => r.contract);
+  return ctx.routes.filter((r) => r.contract && r.method.toUpperCase() !== 'ALL');
 }
 
 /**

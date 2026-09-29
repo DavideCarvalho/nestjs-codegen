@@ -42,6 +42,94 @@ const created = await api.users.create({ body: { email: 'a@b.com', password: 'se
 Awaiting the same handle twice is memoized (one network call). It also exposes
 `.fetch()`/`.catch()`/`.finally()` if you'd rather not `await` directly.
 
+## Schema pipes (`@Body(new ZodPipe(schema))`)
+
+A route doesn't need `@ApplyContract` or a DTO class to be typed. When it validates with a
+**schema pipe**, the pipe's argument is the schema, and the request types come from it:
+
+```ts title="Controller"
+const createBody = z.object({
+  email: z.string().email(),
+  plan: z.enum(['free', 'pro']).default('free'),
+});
+const listQuery = z.object({ page: z.coerce.number().int().min(1).default(1) });
+
+@Post()
+create(@Body(new ZodPipe(createBody)) body: z.infer<typeof createBody>) { /* … */ }
+
+@Get()
+list(@Query(new ZodPipe(listQuery)) query: z.infer<typeof listQuery>) { /* … */ }
+
+@Get(':id/:status')
+show(
+  @Param('id', new ZodPipe(z.string().uuid())) id: string,
+  @Param('status', new ZodPipe(z.enum(['open', 'closed']))) status: 'open' | 'closed',
+) { /* … */ }
+```
+
+```ts title="Client"
+await api.users.create({ body: { email: 'a@b.com' } }); // plan may be omitted
+await api.users.list({ query: { page: 2 } });
+await api.users.show({ params: { id, status: 'open' } }); // status: 'open' | 'closed'
+```
+
+- **Any pipe, any library.** `new X(schema)` or a factory call `x(schema)` counts, whatever the
+  pipe class is called. What makes an argument a schema is its type: the TypeScript checker
+  recognizes anything implementing [Standard Schema](https://standardschema.dev) (zod ≥ 3.24,
+  valibot ≥ 1, arktype ≥ 2), so a valibot or arktype pipe works the same way. Pipes whose
+  arguments aren't schemas (`ParseIntPipe`, `new DefaultValuePipe(1)`,
+  `new ValidationPipe({ … })`) are left alone, and the parameter's own type is read as before.
+- **Where it applies.** A whole `@Body(pipe)`, a whole `@Query(pipe)` or a named
+  `@Query('name', pipe)`, and path params through `@Param('name', pipe)` or a whole
+  `@Param(pipe)` whose schema is an object.
+- **The schema can live anywhere**: declared next to the controller, imported from another file,
+  written inline, or returned by a helper (`new ZodPipe(pick(contract.body))`).
+
+### Refinements, defaults and transforms
+
+The types are the checker's own inference, not a walk over the method chain, so every
+refinement resolves to the type it refines: `.email()`, `.url()`, `.uuid()`, `.regex()`,
+`.trim()`, `.min()`/`.max()`, `.refine()`, `.superRefine()`, `.brand()`, zod 4's `z.email()`
+and friends. The same inference types `defineContract` schemas, which no longer need to be kept
+free of refinements.
+
+A request is typed by what the schema **accepts** — its input type — because that is what the
+client sends:
+
+| Schema | Request type |
+| --- | --- |
+| `z.number().optional().default(20)` | `limit?: number \| undefined` — may be omitted |
+| `z.string().nullable()` | `string \| null` |
+| `z.string().transform((s) => s.split(','))` | `string` — what the transform reads |
+| `z.coerce.number()` | `number` (zod 4 types its input as `unknown`; the output stands in) |
+
+A `defineContract` `response` is typed by what the schema **produces** — its output type — since
+that is what comes back.
+
+<Callout type="info">
+  The checker needs the schema library to be resolvable from your project (it is, if the app
+  compiles). If it isn't, zod schemas fall back to the syntactic reader, which knows the core
+  zod calls but not refinements.
+</Callout>
+
+## HEAD, OPTIONS and `@All()` routes
+
+`@Head()` and `@Options()` handlers get a client method like any verb; they call
+`fetcher.head` / `fetcher.options` (`head` resolves to `undefined` — a HEAD response has no
+body). These need `@dudousxd/nestjs-client` 0.9 or later, or a custom fetcher that has both
+methods.
+
+An `@All()` handler gets **no** client method. It answers every verb, so there is no single
+request a typed method could issue, and in practice it's a protocol endpoint — an MCP
+transport, a proxy, a webhook sink — driven by a dedicated client rather than by your UI. It
+keeps its entry in `routes.ts`, so the URL is still one call away:
+
+```ts
+import { route } from '../generated/routes';
+
+await fetch(route('mcp.handle'), { method: 'POST', body });
+```
+
 ## File uploads (multipart/form-data)
 
 A handler that accepts `@UploadedFile()` / `@UploadedFiles()` behind a Multer interceptor is

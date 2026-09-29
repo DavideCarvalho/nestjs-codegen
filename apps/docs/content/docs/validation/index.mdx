@@ -90,6 +90,15 @@ export type CreateBody = (typeof CreateBodySchema).infer;
 
 </Tabs>
 
+## Request types from schemas
+
+The adapter decides how `forms.ts` is written. The **types** of the generated client come from
+wherever the route declares its schema — a `defineContract`, or a validation pipe such as
+`@Body(new ZodPipe(schema))` — and are inferred by the TypeScript checker through
+[Standard Schema](https://standardschema.dev), so refinements, defaults and transforms resolve
+to real types whichever library the schema is written in. See
+[Schema pipes](/docs/client/api-client#schema-pipes-bodynew-zodpipeschema).
+
 ## Decorator coverage
 
 The class-validator → IR translator understands the common decorators: `@IsString`,

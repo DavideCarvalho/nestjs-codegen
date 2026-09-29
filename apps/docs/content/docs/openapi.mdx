@@ -80,7 +80,8 @@ OpenAPI path:
 
 - **Paths** — one entry per route. NestJS `:param` segments are rewritten to OpenAPI
   `{param}` (`/users/:id` → `/users/{id}`), and `operationId` is the route name
-  (`controller.method`).
+  (`controller.method`). An `@All()` handler is left out: OpenAPI has no "any method"
+  operation to describe it with.
 - **Parameters** — path params (`required: true`), query params, and header params, each
   typed `string`.
 - **Request body** — for non-`GET`/`HEAD`/`DELETE` routes with a body, lowered from the

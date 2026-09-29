@@ -1,4 +1,5 @@
-import { Node, SyntaxKind } from 'ts-morph';
+import { Node, type Project, SyntaxKind } from 'ts-morph';
+import { inferSchema, requestTypeOf, responseTypeOf } from './schema-type-inference.js';
 
 /**
  * Convert a ts-morph Node (expression) representing a Zod schema call to a
@@ -133,7 +134,30 @@ export interface ParsedContractDef {
   queryZodText: string | null;
 }
 
-export function parseDefineContractCall(callExpr: Node): ParsedContractDef | null {
+/**
+ * The type of one `defineContract` member. With a `project`, the type checker infers
+ * it from the schema (see `schema-type-inference.ts` — refinements, transforms and
+ * defaults resolve instead of degrading to `unknown`): request members (`query`,
+ * `body`) use the schema's input type, `response`/`error` its output. Without one,
+ * or when the schema library cannot be resolved, the syntactic walker
+ * ({@link zodAstToTs}) answers.
+ */
+function memberType(val: Node, position: 'request' | 'response', project?: Project): string {
+  if (project) {
+    const inferred = inferSchema(val, project);
+    if (inferred.kind === 'schema') {
+      return position === 'request'
+        ? requestTypeOf(inferred.types)
+        : responseTypeOf(inferred.types);
+    }
+  }
+  return zodAstToTs(val);
+}
+
+export function parseDefineContractCall(
+  callExpr: Node,
+  project?: Project,
+): ParsedContractDef | null {
   if (!Node.isCallExpression(callExpr)) return null;
 
   const callee = callExpr.getExpression();
@@ -164,15 +188,15 @@ export function parseDefineContractCall(callExpr: Node): ParsedContractDef | nul
     if (!val) continue;
 
     if (propName === 'query') {
-      query = zodAstToTs(val);
+      query = memberType(val, 'request', project);
       queryZodText = val.getText();
     } else if (propName === 'body') {
-      body = zodAstToTs(val);
+      body = memberType(val, 'request', project);
       bodyZodText = val.getText();
     } else if (propName === 'response') {
-      response = zodAstToTs(val);
+      response = memberType(val, 'response', project);
     } else if (propName === 'error') {
-      error = zodAstToTs(val);
+      error = memberType(val, 'response', project);
     }
   }
 

@@ -667,18 +667,39 @@ describe('extractDtoContract — typed error via error-status @ApiResponse', () 
 // extractDtoContract — @Body/@Query decorator with argument (skipped)
 // ---------------------------------------------------------------------------
 
-describe('extractDtoContract — @Body with argument is skipped', () => {
-  it('skips @Body("field") single-field decorators', () => {
+describe('extractDtoContract — @Body / @Query decorator arguments', () => {
+  it('reads @Body("field") params as properties of the body', () => {
     const { sf, project } = makeSourceFileFromCode(`
       class TestController {
-        create(@Body('name') name: string) {}
+        create(@Body('name') name: string, @Body('tags') tags?: string[]) {}
       }
     `);
-    const cls = sf.getClassOrThrow('TestController');
-    const method = cls.getMethodOrThrow('create');
+    const method = sf.getClassOrThrow('TestController').getMethodOrThrow('create');
     const result = extractDtoContract(method, sf, project);
-    // @Body('name') has arguments, so it's skipped
-    expect(result).toBeNull();
+    expect(result?.body).toBe('{ "name": string; "tags"?: Array<string> }');
+    expect(result?.bodyRef).toBeNull();
+  });
+
+  it('treats a pipe-only @Body(new Pipe(schema)) as the whole body', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class CreateDto { name: string; }
+      class TestController {
+        create(@Body(new ZodPipe(schema)) body: { name: string; age?: number }) {}
+      }
+    `);
+    const method = sf.getClassOrThrow('TestController').getMethodOrThrow('create');
+    const result = extractDtoContract(method, sf, project);
+    expect(result?.body).toBe('{ name: string; age?: number }');
+  });
+
+  it('treats a pipe-only @Query(new Pipe(schema)) as the whole query', () => {
+    const { sf, project } = makeSourceFileFromCode(`
+      class TestController {
+        list(@Query(new ZodPipe(schema)) query: { page?: number }) {}
+      }
+    `);
+    const method = sf.getClassOrThrow('TestController').getMethodOrThrow('list');
+    expect(extractDtoContract(method, sf, project)?.query).toBe('{ page?: number }');
   });
 });
 

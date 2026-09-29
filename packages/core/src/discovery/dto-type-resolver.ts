@@ -293,17 +293,44 @@ function extractBodyType(
   sourceFile: SourceFile,
   project: Project,
 ): string | null {
+  // 1. Whole-object form — `@Body()` or `@Body(new SomePipe(...))`. A pipe never
+  //    changes the parameter's declared TS type, so the annotation is the body.
   for (const param of method.getParameters()) {
     const bodyDecorator = param.getDecorators().find((d) => d.getName() === 'Body');
-    if (!bodyDecorator) continue;
-    const bodyArgs = bodyDecorator.getArguments();
-    if (bodyArgs.length > 0) continue;
+    if (!bodyDecorator || !isWholeObjectDecorator(bodyDecorator)) continue;
     const typeNode = param.getTypeNode();
     if (typeNode) {
       return resolveTypeNodeToString(typeNode, sourceFile, project, 3);
     }
   }
-  return null;
+
+  // 2. Named-property form — `@Body('title') title: string` picks one property of
+  //    the body; each contributes a property of a synthesized object type.
+  const entries: string[] = [];
+  for (const param of method.getParameters()) {
+    const bodyDecorator = param.getDecorators().find((d) => d.getName() === 'Body');
+    const name = bodyDecorator ? decoratorPropertyName(bodyDecorator) : null;
+    if (name === null) continue;
+    const typeNode = param.getTypeNode();
+    const type = typeNode ? resolveTypeNodeToString(typeNode, sourceFile, project, 3) : 'unknown';
+    entries.push(`${JSON.stringify(name)}${isParamOptional(param) ? '?' : ''}: ${type}`);
+  }
+  return entries.length > 0 ? `{ ${entries.join('; ')} }` : null;
+}
+
+/**
+ * Whether a `@Body(...)` / `@Query(...)` decorator binds the WHOLE object: no
+ * arguments, or only pipes (`@Body(new ZodPipe(schema))`, `@Query(ParseXPipe)`).
+ * A leading string literal (`@Body('title')`) picks one property instead.
+ */
+export function isWholeObjectDecorator(decorator: import('ts-morph').Decorator): boolean {
+  return decoratorPropertyName(decorator) === null;
+}
+
+/** The property a `@Body('name')` / `@Query('name')` decorator picks, or null. */
+export function decoratorPropertyName(decorator: import('ts-morph').Decorator): string | null {
+  const first = decorator.getArguments()[0];
+  return first && Node.isStringLiteral(first) ? first.getLiteralValue() : null;
 }
 
 /**
@@ -332,11 +359,10 @@ function extractQueryType(
   sourceFile: SourceFile,
   project: Project,
 ): string | null {
-  // 1. Whole-object form takes precedence.
+  // 1. Whole-object form takes precedence (`@Query()` or `@Query(new SomePipe(...))`).
   for (const param of method.getParameters()) {
     const queryDecorator = param.getDecorators().find((d) => d.getName() === 'Query');
-    if (!queryDecorator) continue;
-    if (queryDecorator.getArguments().length > 0) continue;
+    if (!queryDecorator || !isWholeObjectDecorator(queryDecorator)) continue;
     const typeNode = param.getTypeNode();
     if (typeNode) {
       return resolveTypeNodeToString(typeNode, sourceFile, project, 3);
@@ -866,11 +892,15 @@ export function extractDtoContract(
   let queryRef: TypeRef | null = null;
   let responseRef: TypeRef | null = null;
 
+  // Only a whole-object `@Body()`/`@Query()` names the request's type; a named
+  // `@Body('title')` param is one property of it.
+  const wholeObject = (param: import('ts-morph').ParameterDeclaration, name: string) =>
+    param.getDecorators().some((d) => d.getName() === name && isWholeObjectDecorator(d));
   for (const param of method.getParameters()) {
-    if (param.getDecorators().some((d) => d.getName() === 'Body') && param.getTypeNode()) {
+    if (wholeObject(param, 'Body') && param.getTypeNode()) {
       bodyRef = resolveBodyQueryResponseRef(param.getTypeNode()!, sourceFile, project);
     }
-    if (param.getDecorators().some((d) => d.getName() === 'Query') && param.getTypeNode()) {
+    if (wholeObject(param, 'Query') && param.getTypeNode()) {
       queryRef = resolveBodyQueryResponseRef(param.getTypeNode()!, sourceFile, project);
     }
   }
@@ -973,7 +1003,10 @@ function resolveParamClass(
   project: Project,
 ): { decl: ClassDeclaration; file: SourceFile } | null {
   for (const param of method.getParameters()) {
-    if (!param.getDecorators().some((d) => d.getName() === decoratorName)) continue;
+    if (
+      !param.getDecorators().some((d) => d.getName() === decoratorName && isWholeObjectDecorator(d))
+    )
+      continue;
     const typeNode = param.getTypeNode();
     if (!typeNode) continue;
     // Strip array suffix — translate the element class.

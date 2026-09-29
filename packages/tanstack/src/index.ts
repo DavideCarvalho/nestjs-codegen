@@ -28,9 +28,12 @@ const HANDLE_QUERY_HELPER: readonly string[] = [
   ' */',
   'export function handleQuery<TData>(handle: {',
   '  queryKey: () => readonly unknown[];',
-  '  fetch: () => Promise<TData>;',
-  '}): { queryKey: readonly unknown[]; queryFn: () => Promise<TData> } {',
-  '  return { queryKey: handle.queryKey(), queryFn: () => handle.fetch() };',
+  '  fetch: (opts?: { signal?: AbortSignal | undefined }) => Promise<TData>;',
+  '}): {',
+  '  queryKey: readonly unknown[];',
+  '  queryFn: (ctx: { signal?: AbortSignal | undefined }) => Promise<TData>;',
+  '} {',
+  '  return { queryKey: handle.queryKey(), queryFn: ({ signal }) => handle.fetch({ signal }) };',
   '}',
 ];
 
@@ -87,8 +90,12 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       // Reads (GET, filter-search, or `@AsQuery()`) get query helpers — this
       // includes binary GET/`@AsQuery()` routes, whose `queryFn` resolves to
       // `RawResponse<Blob>` (the response type the route carries through).
+      // The query's AbortSignal cancels the request when TanStack drops the query
+      // (unmount, key change) — on hosts that emit a signal-aware request.
       if (req.isQuery) {
-        members.queryOptions = `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
+        members.queryOptions = leaf.signalRequestExpr
+          ? `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ signal }) => ${leaf.signalRequestExpr} })`
+          : `() => _queryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: () => ${requestExpr} })`;
       }
       // ...page/cursor pagination is GET-only (it appends the page param to the query
       // string). The emitted member takes an optional `overrides` arg so a consumer can plug
@@ -102,7 +109,7 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
         // the selector while keeping every other default.
         const overridesType = `{ getNextPageParam?: (lastPage: ${resp}, allPages: ${resp}[], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ${resp}, allPages: ${resp}[], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }`;
         const defaultNext = `(lastPage: ${resp}) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }`;
-        members.infiniteQueryOptions = `(overrides?: ${overridesType}) => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${resp}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), ${pageParamName}: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? (${defaultNext}), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides })`;
+        members.infiniteQueryOptions = `(overrides?: ${overridesType}) => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.${req.method}<${resp}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), ${pageParamName}: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? (${defaultNext}), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides })`;
       }
       // ...and any non-GET (incl. filter-search POSTs) also gets a mutation entry. The
       // mutationFn takes the full leaf input ({ params?, query?, body? }) so path params

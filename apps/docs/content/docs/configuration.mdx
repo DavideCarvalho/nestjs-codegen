@@ -33,6 +33,7 @@ export default defineConfig({
   forms: { enabled: true, watch: 'src/**/*.dto.ts' },
 
   serialization: 'json',             // 'json' (default) | 'superjson'
+  types: 'reference',                // 'reference' (default) | 'standalone'
   driftGuard: true,                  // throw instead of silently overwriting on CLI↔module config drift
 
   // ── Inertia only (omit for a plain NestJS API) ──────────────────
@@ -91,6 +92,11 @@ export default defineConfig({
       type: "'json' | 'superjson'",
       default: "'json'",
     },
+    types: {
+      description: "Where the client's request/response types come from. 'reference' emits Awaited<ReturnType<import('<controller>')…>> and imports named DTOs from server source, so whatever type-checks the client also type-checks the server. 'standalone' resolves every route's body, query, and response with the TypeScript checker (inferred return types and Standard Schema pipe inputs included) and prints them; named app types are hoisted into types.ts and nothing is imported from the server. See Standalone types below.",
+      type: "'reference' | 'standalone'",
+      default: "'reference'",
+    },
     driftGuard: {
       description: "Guard against the CLI (nestjs-codegen.config.ts) and the Nest module (NestjsCodegenModule.forRoot()) writing the same outDir from two genuinely different resolved configs (e.g. serialization: 'json' vs 'superjson') — generate() throws a DriftGuardError before writing anything instead of silently overwriting. Set false to opt out. See Drift guard below.",
       type: 'boolean',
@@ -119,6 +125,50 @@ export default defineConfig({
   The **fetcher** is no longer a config concern. The generated `api.ts` is a
   `createApi(fetcher)` factory — you inject the fetcher (with its baseUrl, transport,
   and transformer) at runtime. See [API client](/docs/client/api-client).
+</Callout>
+
+## Standalone types
+
+By default (`types: 'reference'`) the generated `api.ts` points at your server: each
+`response` is `Awaited<ReturnType<import('../src/users/users.controller.js').UsersController['show']>>`
+and named DTOs are `import type`d from server files. That costs nothing when the client and
+the server share one tsconfig (an Inertia app inside the Nest project), and it means the
+type checker that checks the client also checks the server — its decorators, its Node types,
+its whole import graph.
+
+When the client lives in its own package — a Vite SPA or a mobile app in a monorepo, a
+shared `packages/client` — that coupling hurts: the SPA's `tsc` compiles the API under the
+SPA's compiler options. Set `types: 'standalone'`:
+
+```ts title="nestjs-codegen.config.ts"
+export default defineConfig({
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: '../web/src/generated' },
+  validation: zodAdapter,
+  types: 'standalone',
+});
+```
+
+The codegen then asks the TypeScript checker what every handler resolves to and prints it:
+
+- **Responses** — the handler's (awaited) return type, **inferred ones included**, so a
+  controller that just `return this.service.find(id)` is fully typed without annotations.
+- **Bodies and queries** — the `@Body()` / `@Query()` parameter; when a validation pipe gets a
+  [Standard Schema](https://standardschema.dev) (`@Body(new ZodPipe(createUser))` with zod,
+  valibot, or arktype), the schema's **input** type — what a client sends, so a `.default()`
+  field is optional. `@Body('title') title: string` parameters become one body object.
+- **Named app types** (interfaces, classes, type aliases, enums declared in your source) are
+  hoisted into `types.ts` and referenced as `$types.User`; anonymous and library types
+  (a Drizzle row, say) are inlined. A class prints as the JSON it serializes to: public
+  fields only, no methods, getters, or private members.
+
+The generated files import nothing from the server. Every local file the checker read is
+recorded as a generate input, so editing a service's return type regenerates the client —
+in watch mode too.
+
+<Callout type="info">
+  Standalone resolution builds a type-checked program of your API, so a run takes seconds
+  (and the memory of a `tsc --noEmit`) instead of the static scan's milliseconds.
 </Callout>
 
 ## Drift guard

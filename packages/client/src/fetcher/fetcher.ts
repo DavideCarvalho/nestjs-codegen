@@ -135,8 +135,13 @@ export interface FetcherOptions {
   transport?: Transport;
   /** fetch implementation for the default transport; defaults to `globalThis.fetch`. */
   fetch?: typeof fetch;
-  /** Invoked with the error before it is re-thrown. */
-  onError?: (err: ApiHttpError) => void;
+  /**
+   * Invoked with every non-2xx {@link ApiHttpError} before it is thrown. Return
+   * an `Error` (or throw one) to have the fetcher throw THAT instead — e.g. an app
+   * error class that reads the server's `message`/`code` out of `err.body`. Any
+   * other return value is ignored and the `ApiHttpError` is thrown as-is.
+   */
+  onError?: (err: ApiHttpError) => unknown;
   /**
    * superjson (or any `{ stringify, parse }`) to transform request/response bodies.
    * Pass an array to compose a pipeline (base serializer first, then string→string
@@ -232,6 +237,8 @@ interface RequestOpts {
    * (and arrays of them) ride as file parts, scalars as strings, `Date` as ISO.
    */
   multipart?: boolean | undefined;
+  /** Cancels the request; the generated TanStack `queryFn` forwards the query's signal here. */
+  signal?: AbortSignal | undefined;
 }
 
 /** Options for the {@link Fetcher.fetchRaw} / {@link Fetcher.fetchBlob} escape hatches. */
@@ -310,6 +317,7 @@ function fetchTransport(fetchImpl: typeof fetch | undefined): Transport {
       method: req.method,
       headers: req.headers,
       ...(req.body !== undefined ? { body: req.body } : {}),
+      ...(req.signal ? { signal: req.signal } : {}),
     });
     return {
       ok: res.ok,
@@ -369,6 +377,7 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
       ...(body !== undefined ? { body } : {}),
       ...(ro.responseType !== undefined ? { responseType: ro.responseType } : {}),
       ...(ro.onUploadProgress !== undefined ? { onUploadProgress: ro.onUploadProgress } : {}),
+      ...(ro.signal ? { signal: ro.signal } : {}),
     });
 
     if (!res.ok) {
@@ -380,8 +389,10 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
             .catch(() => null)
         : await res.text().catch(() => '');
       const err = new ApiHttpError(res.status, res.statusText, rawBody);
-      opts.onError?.(err);
-      throw err;
+      // `onError` may hand back (or throw) a replacement error — an app's own
+      // error class, say — which is thrown in place of the ApiHttpError.
+      const replacement = opts.onError?.(err);
+      throw replacement instanceof Error ? replacement : err;
     }
 
     return res;

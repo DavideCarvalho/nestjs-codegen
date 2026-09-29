@@ -145,6 +145,37 @@ describe('createFetcher', () => {
     expect(onError).toHaveBeenCalledOnce();
   });
 
+  it('throws the Error onError returns in place of the ApiHttpError', async () => {
+    class AppError extends Error {}
+    const fetch = vi.fn(async () => jsonResponse({ message: 'nope' }, 403));
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      onError: (err) => new AppError((err.body as { message: string }).message),
+    });
+    const caught = await api.get('/x').catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).message).toBe('nope');
+  });
+
+  it('ignores a non-Error onError return value', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ message: 'nope' }, 403));
+    const api = createFetcher({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      onError: () => 'toast-id-7',
+    });
+    await expect(api.get('/x')).rejects.toBeInstanceOf(ApiHttpError);
+  });
+
+  it('forwards the abort signal to fetch', async () => {
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true }));
+    const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });
+    const controller = new AbortController();
+    await api.get('/x', { signal: controller.signal });
+    expect(fetch.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+    await api.post('/x', { body: {} });
+    expect(fetch.mock.calls[1]?.[1]).not.toHaveProperty('signal');
+  });
+
   it('returns undefined on 204', async () => {
     const fetch = vi.fn(async () => new Response(null, { status: 204 }));
     const api = createFetcher({ fetch: fetch as unknown as typeof globalThis.fetch });

@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import type { ResolvedConfig } from '../config/types.js';
 import { PersistentDiscovery } from '../discovery/contracts-fast.js';
 import type { RouteDescriptor } from '../discovery/types.js';
-import { DriftGuardError, type EntryPoint } from '../generate-manifest.js';
+import { DriftGuardError, type EntryPoint, readManifest } from '../generate-manifest.js';
 import { generate } from '../generate.js';
 import { acquireLock } from './lock-file.js';
 
@@ -106,11 +106,59 @@ export async function watch(
   }
 
   // Initial full pass: pages + routes + contracts (same as a one-shot `codegen` run).
+  // ── Tracked-input watcher ──────────────────────────────────────────────────
+  // Files outside the globs that the last generate READ — the services and types a
+  // `types: 'standalone'` run resolved responses from, an extension's filter
+  // classes — are recorded in the manifest as `extraInputs`. Watch them too, so
+  // editing a service's return type regenerates the client without touching a
+  // controller.
+  let trackedWatcher: ReturnType<typeof chokidar.watch> | null = null;
+  let trackedDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  const trackedPaths = new Set<string>();
+  function scheduleTrackedRegenerate(): void {
+    if (trackedDebounceTimer !== undefined) clearTimeout(trackedDebounceTimer);
+    trackedDebounceTimer = setTimeout(async () => {
+      trackedDebounceTimer = undefined;
+      try {
+        await generate(config, lastRoutes, entryPoint);
+        await watchTrackedInputs();
+      } catch (err) {
+        console.error(
+          '[nestjs-codegen] Generation after a dependency change failed:',
+          err instanceof Error ? err.message : err,
+        );
+      }
+      onChange?.();
+    }, config.contracts.debounceMs);
+  }
+  async function watchTrackedInputs(): Promise<void> {
+    if (closed) return;
+    const manifest = await readManifest(config.codegen.outDir);
+    const fresh = (manifest?.extraInputs ?? [])
+      .map((rel) => resolve(config.codegen.cwd, rel))
+      .filter((abs) => !trackedPaths.has(abs));
+    if (fresh.length === 0) return;
+    for (const abs of fresh) trackedPaths.add(abs);
+    if (trackedWatcher === null) {
+      trackedWatcher = chokidar.watch(fresh, {
+        ignoreInitial: true,
+        persistent: true,
+        awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
+      });
+      trackedWatcher.on('change', scheduleTrackedRegenerate);
+      trackedWatcher.on('unlink', scheduleTrackedRegenerate);
+    } else {
+      trackedWatcher.add(fresh);
+    }
+  }
+  let closed = false;
+
   async function runInitialPass(): Promise<void> {
     try {
       const initialRoutes = (await getDiscovery()).discover();
       lastRoutes = initialRoutes;
       await generate(config, initialRoutes, entryPoint);
+      await watchTrackedInputs();
     } catch (err) {
       // A DriftGuardError is NOT a discovery failure — retrying via the pages-only
       // fallback below would just throw the identical error again and get silently
@@ -244,6 +292,12 @@ export async function watch(
 
   return {
     close: async () => {
+      closed = true;
+      if (trackedDebounceTimer !== undefined) {
+        clearTimeout(trackedDebounceTimer);
+        trackedDebounceTimer = undefined;
+      }
+      await trackedWatcher?.close();
       if (pagesDebounceTimer !== undefined) {
         clearTimeout(pagesDebounceTimer);
         pagesDebounceTimer = undefined;

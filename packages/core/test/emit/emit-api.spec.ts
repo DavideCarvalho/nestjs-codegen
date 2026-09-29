@@ -74,20 +74,20 @@ describe('emitApi', () => {
       const c = await gen();
       expect(c).toContain('export function createApi(fetcher: Fetcher)');
       expect(c).toContain("import type { Fetcher } from '@dudousxd/nestjs-client'");
-      expect(c).toContain('function __req<R>(run: () => Promise<R>)');
+      expect(c).toContain('function __req<R>(run: (signal?: AbortSignal) => Promise<R>)');
     });
 
     it('GET leaf is an awaitable handle backed by fetcher.get', async () => {
       const c = await gen();
       expect(c).toContain('list: (input?:');
       expect(c).toContain('...__req<');
-      expect(c).toContain('() => fetcher.get<');
+      expect(c).toContain('(signal) => fetcher.get<');
     });
 
     it('POST leaf is an awaitable handle backed by fetcher.post', async () => {
       const c = await gen();
       expect(c).toContain('create: (input?:');
-      expect(c).toContain('() => fetcher.post<');
+      expect(c).toContain('(signal) => fetcher.post<');
     });
 
     it('a plain POST leaf does NOT pass multipart to the fetcher', async () => {
@@ -115,7 +115,7 @@ describe('emitApi', () => {
       ];
       await emitApi(multipartRoutes, outDir, {});
       const c = await readFile(join(outDir, 'api.ts'), 'utf8');
-      expect(c).toContain('() => fetcher.post<');
+      expect(c).toContain('(signal) => fetcher.post<');
       expect(c).toContain('multipart: true');
       // The file field is intersected onto the body in the route meta type.
       expect(c).toContain('body: ({ type: string }) & { file: File | Blob }');
@@ -497,6 +497,54 @@ describe('emitApi', () => {
       await emitApi([], outDir, {});
       const c = await readFile(join(outDir, 'api.ts'), 'utf8');
       expect(c).not.toContain('import type { Jsonify }');
+    });
+  });
+  describe('module specifiers and verbs', () => {
+    it('imports server types with a .js specifier (resolves under bundler AND nodenext)', async () => {
+      const cref: RouteDescriptor[] = [
+        {
+          method: 'GET',
+          path: '/api/users/:id',
+          name: 'users.show',
+          params: [{ name: 'id', source: 'path' }],
+          controllerRef: {
+            className: 'UsersController',
+            methodName: 'show',
+            filePath: join(outDir, '..', 'server', 'users.controller.ts'),
+          },
+          contract: {
+            contractSource: {
+              query: null,
+              body: null,
+              response: 'unknown',
+              bodyRef: null,
+              queryRef: {
+                name: 'ShowQuery',
+                filePath: join(outDir, '..', 'server', 'show.dto.ts'),
+              },
+            },
+          },
+        },
+      ];
+      await emitApi(cref, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain("import('../server/users.controller.js').UsersController['show']");
+      expect(c).toContain("import type { ShowQuery } from '../server/show.dto.js';");
+    });
+
+    it('gives @All/@Head/@Options routes no api leaf (the Fetcher has no such verb)', async () => {
+      const verbs: RouteDescriptor[] = ['ALL', 'HEAD', 'OPTIONS', 'GET'].map((method) => ({
+        method,
+        path: `/api/${method.toLowerCase()}`,
+        name: `proxy.${method.toLowerCase()}`,
+        params: [],
+        contract: { contractSource: { query: null, body: null, response: 'unknown' } },
+      }));
+      await emitApi(verbs, outDir, {});
+      const c = await readFile(join(outDir, 'api.ts'), 'utf8');
+      expect(c).toContain('get: (input?');
+      expect(c).not.toMatch(/\b(all|head|options): \(input/);
+      expect(c).not.toContain('fetcher.all');
     });
   });
 });

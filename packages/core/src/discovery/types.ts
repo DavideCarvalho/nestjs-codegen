@@ -150,6 +150,13 @@ export interface ContractSource {
    * for it the same way a GET or a filter-search route does.
    */
   asQuery?: boolean;
+  /**
+   * True when `types: 'standalone'` resolved this route's `body`/`query`/`response`
+   * with the type checker: the strings are self-contained (named app types are
+   * referenced from the generated `types.ts`), so the emitter must NOT fall back to
+   * `ReturnType<import('<controller>')…>` or import the `*Ref` types from server source.
+   */
+  standalone?: boolean;
 }
 
 export interface ContractDescriptor {

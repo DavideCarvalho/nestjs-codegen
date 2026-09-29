@@ -91,6 +91,37 @@ await api.get('/things', { query: { ids: ['a', 'b'] }, arrayFormat: 'repeat' });
   safely (and why `ParseArrayPipe` is the wrong tool for optional array params).
 </Callout>
 
+## Errors
+
+A non-2xx response throws `ApiHttpError` (`status`, `statusText`, and the parsed `body`).
+`onError` sees every one before it is thrown — and when it **returns (or throws) an `Error`**,
+that error is thrown instead, so an app can keep its own error class:
+
+```ts
+class AppError extends Error {
+  constructor(readonly status: number, message: string, readonly code?: string) {
+    super(message);
+  }
+}
+
+const fetcher = createFetcher({
+  baseUrl: '/api',
+  onError: (err) => {
+    const body = err.body as { message?: string; code?: string } | null;
+    if (err.status === 401) signOut();
+    return new AppError(err.status, body?.message ?? err.message, body?.code);
+  },
+});
+```
+
+Any other return value is ignored and the `ApiHttpError` is thrown as-is.
+
+## Cancellation
+
+Every verb method takes a `signal` (`api.get('/x', { signal })`), forwarded to the transport —
+native `fetch` and `axiosTransport` both honor it. The generated TanStack `queryFn` passes the
+query's own signal, so a query TanStack drops (unmount, key change) cancels its request.
+
 ## Global headers
 
 `setGlobalHeaders` registers a function that supplies headers merged into **every** request

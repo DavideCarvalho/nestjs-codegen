@@ -1,8 +1,9 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ResolvedConfig } from './config/types.js';
 import { discoverPages } from './discovery/pages.js';
 import { discoverSharedPropsFromConfig } from './discovery/shared-props.js';
+import { resolveStandaloneTypes } from './discovery/standalone-types.js';
 import type { RouteDescriptor } from './discovery/types.js';
 import { emitApi } from './emit/emit-api.js';
 import { emitCache } from './emit/emit-cache.js';
@@ -31,6 +32,9 @@ import {
 } from './generate-manifest.js';
 import { VERSION } from './index.js';
 import { setCodegenDebug } from './util/debug-log.js';
+
+/** Hoisted named types of a `types: 'standalone'` run, next to api.ts. */
+const STANDALONE_TYPES_FILE = 'types.ts';
 
 /**
  * Build the drift-guard error message. Named exactly like the throw site so a
@@ -126,6 +130,21 @@ export async function generate(
   let routes = inputRoutes;
   const trackedInputs = new Set<string>();
   const ctx = createExtensionContext(config, () => routes, trackedInputs);
+
+  // `types: 'standalone'`: resolve body/query/response with the type checker so the
+  // client imports nothing from the server. Every local file the checker read is an
+  // input — a service's return type changes a route's response.
+  let standaloneTypes: string | null = null;
+  if (config.types === 'standalone' && routes.some((r) => r.contract && r.controllerRef)) {
+    const resolved = resolveStandaloneTypes(routes, {
+      cwd: config.codegen.cwd,
+      tsconfig: config.app?.tsconfig ?? undefined,
+    });
+    routes = resolved.routes;
+    standaloneTypes = resolved.typesModule;
+    ctx.trackInput(...resolved.inputs);
+  }
+
   if (extensions.length > 0) {
     routes = await applyTransformRoutes(routes, extensions, ctx);
   }
@@ -156,9 +175,22 @@ export async function generate(
     await emitRoutes(routes, config.codegen.outDir);
   }
 
+  const typesFile = join(config.codegen.outDir, STANDALONE_TYPES_FILE);
+  if (hasContracts && standaloneTypes !== null) {
+    await mkdir(config.codegen.outDir, { recursive: true });
+    await writeFile(typesFile, standaloneTypes, 'utf8');
+  } else {
+    // No hoisted types this run (or reference mode): a types.ts left from an
+    // earlier standalone run would be stale output.
+    await rm(typesFile, { force: true });
+  }
+
   if (hasContracts) {
     await emitApi(routes, config.codegen.outDir, {
       ...(config.fetcher?.importPath ? { fetcherImportPath: config.fetcher.importPath } : {}),
+      ...(standaloneTypes !== null
+        ? { typesModule: `./${STANDALONE_TYPES_FILE.replace(/\.ts$/, '.js')}` }
+        : {}),
       serialization: config.serialization,
       extensions,
       ctx,

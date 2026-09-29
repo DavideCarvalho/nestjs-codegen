@@ -43,9 +43,10 @@ type __Req<R> = {
   ): Promise<T1 | T2>;
   catch<T = never>(onrejected?: ((reason: unknown) => T | PromiseLike<T>) | null): Promise<R | T>;
   finally(onfinally?: (() => void) | null): Promise<R>;
-  fetch(): Promise<R>;
+  /** Run the request again (unmemoized); \`signal\` cancels it. */
+  fetch(opts?: { signal?: AbortSignal | undefined }): Promise<R>;
 };
-function __req<R>(run: () => Promise<R>): __Req<R> {
+function __req<R>(run: (signal?: AbortSignal) => Promise<R>): __Req<R> {
   let __p: Promise<R> | undefined;
   const __promise = () => {
     __p ??= run();
@@ -55,7 +56,7 @@ function __req<R>(run: () => Promise<R>): __Req<R> {
     then: (onfulfilled, onrejected) => __promise().then(onfulfilled, onrejected),
     catch: (onrejected) => __promise().catch(onrejected),
     finally: (onfinally) => __promise().finally(onfinally),
-    fetch: run,
+    fetch: (opts) => run(opts?.signal),
   };
 }
 
@@ -71,48 +72,48 @@ export function createApi(fetcher: Fetcher) {
   return {
     users: {
       list: (input?: { query?: ApiRouter["users"]["list"]['query'] }) => ({
-        ...__req<ApiRouter["users"]["list"]['response']>(() => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["users"]["list"]['response']>((signal) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined, signal })),
       }),
       show: (input?: { params: ApiRouter["users"]["show"]['params']; query?: ApiRouter["users"]["show"]['query'] }) => ({
-        ...__req<ApiRouter["users"]["show"]['response']>(() => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["users"]["show"]['response']>((signal) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined, signal })),
       }),
       create: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => ({
-        ...__req<ApiRouter["users"]["create"]['response']>(() => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body })),
+        ...__req<ApiRouter["users"]["create"]['response']>((signal) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body, signal })),
       }),
       update: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => ({
-        ...__req<ApiRouter["users"]["update"]['response']>(() => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body })),
+        ...__req<ApiRouter["users"]["update"]['response']>((signal) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body, signal })),
       }),
     },
     admin: {
       reports: {
         list: (input?: { query?: ApiRouter["admin"]["reports"]["list"]['query'] }) => ({
-          ...__req<ApiRouter["admin"]["reports"]["list"]['response']>(() => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined })),
+          ...__req<ApiRouter["admin"]["reports"]["list"]['response']>((signal) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined, signal })),
         }),
       },
     },
     pipelineRuns: {
       search: (input?: Record<string, never>) => ({
-        ...__req<ApiRouter["pipelineRuns"]["search"]['response']>(() => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {})),
+        ...__req<ApiRouter["pipelineRuns"]["search"]['response']>((signal) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { signal })),
         filterFields: ["status", "name"] as const,
       }),
     },
     orders: {
       list: (input?: { query?: ApiRouter["orders"]["list"]['query'] }) => ({
-        ...__req<ApiRouter["orders"]["list"]['response']>(() => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["orders"]["list"]['response']>((signal) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined, signal })),
         filterFields: ["total", "state"] as const,
       }),
     },
     files: {
       download: (input?: { params: ApiRouter["files"]["download"]['params']; query?: ApiRouter["files"]["download"]['query'] }) => ({
-        ...__req<ApiRouter["files"]["download"]['response']>(() => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["files"]["download"]['response']>((signal) => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined, signal })),
       }),
     },
     reports: {
       export: (input?: { body?: ApiRouter["reports"]["export"]['body'] }) => ({
-        ...__req<ApiRouter["reports"]["export"]['response']>(() => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body })),
+        ...__req<ApiRouter["reports"]["export"]['response']>((signal) => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body, signal })),
       }),
       search: (input?: { body?: ApiRouter["reports"]["search"]['body'] }) => ({
-        ...__req<ApiRouter["reports"]["search"]['response']>(() => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body })),
+        ...__req<ApiRouter["reports"]["search"]['response']>((signal) => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body, signal })),
       }),
     },
   };
@@ -211,9 +212,12 @@ export namespace Path {
  */
 export function handleQuery<TData>(handle: {
   queryKey: () => readonly unknown[];
-  fetch: () => Promise<TData>;
-}): { queryKey: readonly unknown[]; queryFn: () => Promise<TData> } {
-  return { queryKey: handle.queryKey(), queryFn: () => handle.fetch() };
+  fetch: (opts?: { signal?: AbortSignal | undefined }) => Promise<TData>;
+}): {
+  queryKey: readonly unknown[];
+  queryFn: (ctx: { signal?: AbortSignal | undefined }) => Promise<TData>;
+} {
+  return { queryKey: handle.queryKey(), queryFn: ({ signal }) => handle.fetch({ signal }) };
 }
 "
 `;
@@ -262,9 +266,10 @@ type __Req<R> = {
   ): Promise<T1 | T2>;
   catch<T = never>(onrejected?: ((reason: unknown) => T | PromiseLike<T>) | null): Promise<R | T>;
   finally(onfinally?: (() => void) | null): Promise<R>;
-  fetch(): Promise<R>;
+  /** Run the request again (unmemoized); \`signal\` cancels it. */
+  fetch(opts?: { signal?: AbortSignal | undefined }): Promise<R>;
 };
-function __req<R>(run: () => Promise<R>): __Req<R> {
+function __req<R>(run: (signal?: AbortSignal) => Promise<R>): __Req<R> {
   let __p: Promise<R> | undefined;
   const __promise = () => {
     __p ??= run();
@@ -274,7 +279,7 @@ function __req<R>(run: () => Promise<R>): __Req<R> {
     then: (onfulfilled, onrejected) => __promise().then(onfulfilled, onrejected),
     catch: (onrejected) => __promise().catch(onrejected),
     finally: (onfinally) => __promise().finally(onfinally),
-    fetch: run,
+    fetch: (opts) => run(opts?.signal),
   };
 }
 
@@ -290,24 +295,24 @@ export function createApi(fetcher: Fetcher) {
   return {
     users: {
       list: (input?: { query?: ApiRouter["users"]["list"]['query'] }) => ({
-        ...__req<ApiRouter["users"]["list"]['response']>(() => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["users"]["list"]['response']>((signal) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined, signal })),
         queryKey: () => (input === undefined ? ["users.list"] as const : ["users.list", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: () => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       show: (input?: { params: ApiRouter["users"]["show"]['params']; query?: ApiRouter["users"]["show"]['query'] }) => ({
-        ...__req<ApiRouter["users"]["show"]['response']>(() => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["users"]["show"]['response']>((signal) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined, signal })),
         queryKey: () => (input === undefined ? ["users.show"] as const : ["users.show", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: () => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       create: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => ({
-        ...__req<ApiRouter["users"]["create"]['response']>(() => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body })),
+        ...__req<ApiRouter["users"]["create"]['response']>((signal) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["users.create"] as const : ["users.create", input] as const),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body }) }),
       }),
       update: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => ({
-        ...__req<ApiRouter["users"]["update"]['response']>(() => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body })),
+        ...__req<ApiRouter["users"]["update"]['response']>((signal) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["users.update"] as const : ["users.update", input] as const),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body }) }),
       }),
@@ -315,48 +320,48 @@ export function createApi(fetcher: Fetcher) {
     admin: {
       reports: {
         list: (input?: { query?: ApiRouter["admin"]["reports"]["list"]['query'] }) => ({
-          ...__req<ApiRouter["admin"]["reports"]["list"]['response']>(() => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined })),
+          ...__req<ApiRouter["admin"]["reports"]["list"]['response']>((signal) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined, signal })),
           queryKey: () => (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const),
-          queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: () => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined }) }),
-          infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+          queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+          infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
         }),
       },
     },
     pipelineRuns: {
       search: (input?: Record<string, never>) => ({
-        ...__req<ApiRouter["pipelineRuns"]["search"]['response']>(() => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {})),
+        ...__req<ApiRouter["pipelineRuns"]["search"]['response']>((signal) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { signal })),
         filterFields: ["status", "name"] as const,
         queryKey: () => (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const), queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const), queryFn: ({ signal }) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { signal }) }),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
       }),
     },
     orders: {
       list: (input?: { query?: ApiRouter["orders"]["list"]['query'] }) => ({
-        ...__req<ApiRouter["orders"]["list"]['response']>(() => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["orders"]["list"]['response']>((signal) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined, signal })),
         filterFields: ["total", "state"] as const,
         queryKey: () => (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: () => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
     },
     files: {
       download: (input?: { params: ApiRouter["files"]["download"]['params']; query?: ApiRouter["files"]["download"]['query'] }) => ({
-        ...__req<ApiRouter["files"]["download"]['response']>(() => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["files"]["download"]['response']>((signal) => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined, signal })),
         queryKey: () => (input === undefined ? ["files.download"] as const : ["files.download", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["files.download"] as const : ["files.download", input] as const), queryFn: () => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined }) }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["files.download"] as const : ["files.download", input] as const), queryFn: ({ signal }) => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
       }),
     },
     reports: {
       export: (input?: { body?: ApiRouter["reports"]["export"]['body'] }) => ({
-        ...__req<ApiRouter["reports"]["export"]['response']>(() => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body })),
+        ...__req<ApiRouter["reports"]["export"]['response']>((signal) => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["reports.export"] as const : ["reports.export", input] as const),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["reports"]["export"]['body'] }) => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body }) }),
       }),
       search: (input?: { body?: ApiRouter["reports"]["search"]['body'] }) => ({
-        ...__req<ApiRouter["reports"]["search"]['response']>(() => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body })),
+        ...__req<ApiRouter["reports"]["search"]['response']>((signal) => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["reports.search"] as const : ["reports.search", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["reports.search"] as const : ["reports.search", input] as const), queryFn: () => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body }) }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["reports.search"] as const : ["reports.search", input] as const), queryFn: ({ signal }) => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body, signal }) }),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["reports"]["search"]['body'] }) => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body }) }),
       }),
     },
@@ -418,9 +423,12 @@ export namespace Path {
  */
 export function handleQuery<TData>(handle: {
   queryKey: () => readonly unknown[];
-  fetch: () => Promise<TData>;
-}): { queryKey: readonly unknown[]; queryFn: () => Promise<TData> } {
-  return { queryKey: handle.queryKey(), queryFn: () => handle.fetch() };
+  fetch: (opts?: { signal?: AbortSignal | undefined }) => Promise<TData>;
+}): {
+  queryKey: readonly unknown[];
+  queryFn: (ctx: { signal?: AbortSignal | undefined }) => Promise<TData>;
+} {
+  return { queryKey: handle.queryKey(), queryFn: ({ signal }) => handle.fetch({ signal }) };
 }
 "
 `;
@@ -469,9 +477,10 @@ type __Req<R> = {
   ): Promise<T1 | T2>;
   catch<T = never>(onrejected?: ((reason: unknown) => T | PromiseLike<T>) | null): Promise<R | T>;
   finally(onfinally?: (() => void) | null): Promise<R>;
-  fetch(): Promise<R>;
+  /** Run the request again (unmemoized); \`signal\` cancels it. */
+  fetch(opts?: { signal?: AbortSignal | undefined }): Promise<R>;
 };
-function __req<R>(run: () => Promise<R>): __Req<R> {
+function __req<R>(run: (signal?: AbortSignal) => Promise<R>): __Req<R> {
   let __p: Promise<R> | undefined;
   const __promise = () => {
     __p ??= run();
@@ -481,7 +490,7 @@ function __req<R>(run: () => Promise<R>): __Req<R> {
     then: (onfulfilled, onrejected) => __promise().then(onfulfilled, onrejected),
     catch: (onrejected) => __promise().catch(onrejected),
     finally: (onfinally) => __promise().finally(onfinally),
-    fetch: run,
+    fetch: (opts) => run(opts?.signal),
   };
 }
 
@@ -497,24 +506,24 @@ export function createApi(fetcher: Fetcher) {
   return {
     users: {
       list: (input?: { query?: ApiRouter["users"]["list"]['query'] }) => ({
-        ...__req<ApiRouter["users"]["list"]['response']>(() => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["users"]["list"]['response']>((signal) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined, signal })),
         queryKey: () => (input === undefined ? ["users.list"] as const : ["users.list", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: () => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["list"]['response'], allPages: ApiRouter["users"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.list"] as const : ["users.list", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["users"]["list"]['response']>(route("users.list" as never) || "/api/users", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       show: (input?: { params: ApiRouter["users"]["show"]['params']; query?: ApiRouter["users"]["show"]['query'] }) => ({
-        ...__req<ApiRouter["users"]["show"]['response']>(() => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["users"]["show"]['response']>((signal) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined, signal })),
         queryKey: () => (input === undefined ? ["users.show"] as const : ["users.show", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: () => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["users"]["show"]['response'], allPages: ApiRouter["users"]["show"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["users.show"] as const : ["users.show", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["users"]["show"]['response']>(route("users.show" as never, input?.params as never) || "/api/users/:id", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["users"]["show"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
       create: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => ({
-        ...__req<ApiRouter["users"]["create"]['response']>(() => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body })),
+        ...__req<ApiRouter["users"]["create"]['response']>((signal) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["users.create"] as const : ["users.create", input] as const),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["users"]["create"]['body'] }) => fetcher.post<ApiRouter["users"]["create"]['response']>(route("users.create" as never) || "/api/users", { body: input?.body }) }),
       }),
       update: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => ({
-        ...__req<ApiRouter["users"]["update"]['response']>(() => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body })),
+        ...__req<ApiRouter["users"]["update"]['response']>((signal) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["users.update"] as const : ["users.update", input] as const),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { params: ApiRouter["users"]["update"]['params']; body?: ApiRouter["users"]["update"]['body'] }) => fetcher.patch<ApiRouter["users"]["update"]['response']>(route("users.update" as never, input?.params as never) || "/api/users/:id", { body: input?.body }) }),
       }),
@@ -522,48 +531,48 @@ export function createApi(fetcher: Fetcher) {
     admin: {
       reports: {
         list: (input?: { query?: ApiRouter["admin"]["reports"]["list"]['query'] }) => ({
-          ...__req<ApiRouter["admin"]["reports"]["list"]['response']>(() => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined })),
+          ...__req<ApiRouter["admin"]["reports"]["list"]['response']>((signal) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined, signal })),
           queryKey: () => (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const),
-          queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: () => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined }) }),
-          infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+          queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+          infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["admin"]["reports"]["list"]['response'], allPages: ApiRouter["admin"]["reports"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["admin.reports.list"] as const : ["admin.reports.list", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["admin"]["reports"]["list"]['response']>(route("admin.reports.list" as never) || "/api/admin/reports", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["admin"]["reports"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
         }),
       },
     },
     pipelineRuns: {
       search: (input?: Record<string, never>) => ({
-        ...__req<ApiRouter["pipelineRuns"]["search"]['response']>(() => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {})),
+        ...__req<ApiRouter["pipelineRuns"]["search"]['response']>((signal) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { signal })),
         filterFields: ["status", "name"] as const,
         queryKey: () => (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const), queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const), queryFn: ({ signal }) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", { signal }) }),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
       }),
     },
     orders: {
       list: (input?: { query?: ApiRouter["orders"]["list"]['query'] }) => ({
-        ...__req<ApiRouter["orders"]["list"]['response']>(() => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["orders"]["list"]['response']>((signal) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined, signal })),
         filterFields: ["total", "state"] as const,
         queryKey: () => (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: () => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined }) }),
-        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: ({ pageParam }: { pageParam: number }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: ({ signal }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
+        infiniteQueryOptions: (overrides?: { getNextPageParam?: (lastPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ApiRouter["orders"]["list"]['response'], allPages: ApiRouter["orders"]["list"]['response'][], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }) => _infiniteQueryOptions({ queryKey: (input === undefined ? ["orders.list"] as const : ["orders.list", input] as const), queryFn: ({ pageParam, signal }: { pageParam: number; signal?: AbortSignal }) => fetcher.get<ApiRouter["orders"]["list"]['response']>(route("orders.list" as never) || "/api/orders", { query: { ...(input?.query ?? {}), page: pageParam } as Record<string, unknown>, signal }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? ((lastPage: ApiRouter["orders"]["list"]['response']) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }), getPreviousPageParam: overrides?.getPreviousPageParam, ...overrides }),
       }),
     },
     files: {
       download: (input?: { params: ApiRouter["files"]["download"]['params']; query?: ApiRouter["files"]["download"]['query'] }) => ({
-        ...__req<ApiRouter["files"]["download"]['response']>(() => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined })),
+        ...__req<ApiRouter["files"]["download"]['response']>((signal) => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined, signal })),
         queryKey: () => (input === undefined ? ["files.download"] as const : ["files.download", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["files.download"] as const : ["files.download", input] as const), queryFn: () => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined }) }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["files.download"] as const : ["files.download", input] as const), queryFn: ({ signal }) => fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined, signal }) }),
       }),
     },
     reports: {
       export: (input?: { body?: ApiRouter["reports"]["export"]['body'] }) => ({
-        ...__req<ApiRouter["reports"]["export"]['response']>(() => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body })),
+        ...__req<ApiRouter["reports"]["export"]['response']>((signal) => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["reports.export"] as const : ["reports.export", input] as const),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["reports"]["export"]['body'] }) => fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body }) }),
       }),
       search: (input?: { body?: ApiRouter["reports"]["search"]['body'] }) => ({
-        ...__req<ApiRouter["reports"]["search"]['response']>(() => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body })),
+        ...__req<ApiRouter["reports"]["search"]['response']>((signal) => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body, signal })),
         queryKey: () => (input === undefined ? ["reports.search"] as const : ["reports.search", input] as const),
-        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["reports.search"] as const : ["reports.search", input] as const), queryFn: () => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body }) }),
+        queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["reports.search"] as const : ["reports.search", input] as const), queryFn: ({ signal }) => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body, signal }) }),
         mutationOptions: () => _mutationOptions({ mutationFn: (input?: { body?: ApiRouter["reports"]["search"]['body'] }) => fetcher.post<ApiRouter["reports"]["search"]['response']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body }) }),
       }),
     },
@@ -625,9 +634,12 @@ export namespace Path {
  */
 export function handleQuery<TData>(handle: {
   queryKey: () => readonly unknown[];
-  fetch: () => Promise<TData>;
-}): { queryKey: readonly unknown[]; queryFn: () => Promise<TData> } {
-  return { queryKey: handle.queryKey(), queryFn: () => handle.fetch() };
+  fetch: (opts?: { signal?: AbortSignal | undefined }) => Promise<TData>;
+}): {
+  queryKey: readonly unknown[];
+  queryFn: (ctx: { signal?: AbortSignal | undefined }) => Promise<TData>;
+} {
+  return { queryKey: handle.queryKey(), queryFn: ({ signal }) => handle.fetch({ signal }) };
 }
 "
 `;

@@ -78,6 +78,13 @@ Each handle builds a real `queryOptions`/`mutationOptions` object, so you compos
 your own `onSuccess`, `select`, `staleTime`, etc. — and `queryKey()` derives a stable key
 from the route name + input for you.
 
+## Cancellation
+
+`queryOptions()` and `infiniteQueryOptions()` hand the query's `AbortSignal` to the request, so
+when TanStack cancels a query — the component unmounts, the key changes, you call
+`queryClient.cancelQueries` — the HTTP request is aborted too. `handleQuery` forwards it the
+same way.
+
 ## `@AsQuery()` — treating a non-GET route as a read
 
 GET routes (and [filter-search](/docs/integrations/filters) routes) get `queryOptions()`; every

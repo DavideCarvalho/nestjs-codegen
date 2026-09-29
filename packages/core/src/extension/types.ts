@@ -159,6 +159,12 @@ export interface RequestModel {
   urlExpr: string;
   /** Request-options expression, e.g. `{ query: ... }` or `{ body: input?.body }`. */
   optsExpr: string;
+  /**
+   * {@link optsExpr} plus `signal`, referencing an identifier named `signal`
+   * (`AbortSignal | undefined`) that the surrounding code must bind — e.g. a TanStack
+   * `queryFn: ({ signal }) => …`.
+   */
+  signalOptsExpr?: string;
   /** Response type access, e.g. `ApiRouter['users']['show']['response']`. */
   responseType: string;
   /** Stable query-key expression, e.g. `["users.show", input] as const`. */
@@ -182,6 +188,11 @@ export interface LeafModel {
   request: RequestModel;
   /** The expression that issues the request (the host's neutral fetcher call). */
   requestExpr: string;
+  /**
+   * The same request with {@link RequestModel.signalOptsExpr} — cancellable through an
+   * in-scope `signal` identifier. Absent on hosts older than the abort-signal support.
+   */
+  signalRequestExpr?: string;
   /** When present, the leaf renders as a handle exposing these members (ordered). */
   members?: Record<string, string>;
 }

@@ -77,6 +77,27 @@ describe('tanstackQuery', () => {
     );
   });
 
+  it("forwards TanStack's abort signal into the request when the host emits one", () => {
+    const r = req();
+    const withSignal = tanstackQuery().apiClientLayer!.buildMembers(
+      'fetcher.get<R>(u, o)',
+      { ...leaf(r), signalRequestExpr: 'fetcher.get<R>(u, { ...o, signal })' },
+      {} as never,
+    );
+    expect(withSignal.queryOptions).toContain(
+      'queryFn: ({ signal }) => fetcher.get<R>(u, { ...o, signal })',
+    );
+    expect(withSignal.infiniteQueryOptions).toContain('({ pageParam, signal }');
+    expect(withSignal.infiniteQueryOptions).toContain('as Record<string, unknown>, signal })');
+    // An older host without signalRequestExpr keeps the plain request.
+    const without = tanstackQuery().apiClientLayer!.buildMembers(
+      'fetcher.get<R>(u, o)',
+      leaf(r),
+      {} as never,
+    );
+    expect(without.queryOptions).toContain('queryFn: () => fetcher.get<R>(u, o)');
+  });
+
   it('plain mutation (POST, no filter) gets queryKey/mutationOptions only', () => {
     const r = req({ method: 'post', isGet: false, isQuery: false, hasBody: true });
     const members = tanstackQuery().apiClientLayer!.buildMembers(
@@ -187,7 +208,7 @@ describe('tanstackQuery', () => {
       );
     });
 
-    it('wraps a { queryKey, fetch } handle into { queryKey, queryFn }', () => {
+    it('wraps a { queryKey, fetch } handle into { queryKey, queryFn }', async () => {
       const ext = tanstackQuery();
       const source = ext.apiHeader?.({} as never)?.statements?.join('\n') ?? '';
       // Transpile the emitted TS (an `export function` statement) to CommonJS so it can be
@@ -199,14 +220,24 @@ describe('tanstackQuery', () => {
         TData,
       >(handle: {
         queryKey: () => readonly unknown[];
-        fetch: () => Promise<TData>;
-      }) => { queryKey: readonly unknown[]; queryFn: () => Promise<TData> };
+        fetch: (opts?: { signal?: AbortSignal }) => Promise<TData>;
+      }) => {
+        queryKey: readonly unknown[];
+        queryFn: (ctx: { signal?: AbortSignal }) => Promise<TData>;
+      };
+      let seen: AbortSignal | undefined;
       const result = handleQuery({
         queryKey: () => ['x'] as const,
-        fetch: () => Promise.resolve('ok'),
+        fetch: (opts) => {
+          seen = opts?.signal;
+          return Promise.resolve('ok');
+        },
       });
       expect(result.queryKey).toEqual(['x']);
-      return expect(result.queryFn()).resolves.toBe('ok');
+      const signal = new AbortController().signal;
+      await expect(result.queryFn({ signal })).resolves.toBe('ok');
+      // TanStack's signal reaches the request, so dropping the query cancels it.
+      expect(seen).toBe(signal);
     });
   });
 

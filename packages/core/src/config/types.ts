@@ -75,6 +75,23 @@ export interface UserConfig {
    */
   serialization?: 'json' | 'superjson';
   /**
+   * Where the generated client's request/response types come from.
+   *
+   * - `'reference'` (default): `api.ts` references the server — responses are
+   *   `Awaited<ReturnType<import('<controller>')…>>` and named DTOs are imported from
+   *   server source — so whatever type-checks the client also type-checks the server.
+   *   Right when client and server share one tsconfig.
+   * - `'standalone'`: the type checker resolves every route's body, query, and
+   *   response (inferred return types and zod/valibot/arktype pipe schemas
+   *   included) and the codegen prints them. Named app types are hoisted into
+   *   `types.ts`; the generated files import nothing from the server. Right when
+   *   the client is a separate package (a Vite SPA, a mobile app, a shared client
+   *   library) that must not compile the API.
+   *
+   * @default 'reference'
+   */
+  types?: 'reference' | 'standalone';
+  /**
    * Typed-form schema emit (`forms.ts`). Re-exports / translates contract and
    * class-validator-decorated DTO schemas into zod schemas for client-side
    * validation.
@@ -197,6 +214,7 @@ export interface ResolvedConfig {
   app: ResolvedAppConfig | null;
   fetcher: { importPath: string } | null;
   serialization: SerializationMode;
+  types: 'reference' | 'standalone';
   forms: ResolvedFormsConfig;
   openapi: ResolvedOpenApiConfig;
   mocks: ResolvedMocksConfig;

@@ -40,7 +40,13 @@ const created = await api.users.create({ body: { email: 'a@b.com', password: 'se
 ```
 
 Awaiting the same handle twice is memoized (one network call). It also exposes
-`.fetch()`/`.catch()`/`.finally()` if you'd rather not `await` directly.
+`.fetch()`/`.catch()`/`.finally()` if you'd rather not `await` directly. `.fetch()` runs the
+request again and takes an `AbortSignal` to cancel it:
+
+```ts
+const controller = new AbortController();
+const user = await api.users.show({ params: { id } }).fetch({ signal: controller.signal });
+```
 
 ## File uploads (multipart/form-data)
 
@@ -174,6 +180,13 @@ const list = useInfiniteQuery(api.users.list().infiniteQueryOptions());
 const create = useMutation(api.users.create().mutationOptions());
 create.mutate({ body: { email: 'a@b.com', password: 'secret123' } });
 ```
+
+## Types without the server
+
+Response types reference your controllers by default, so the client's type checker also
+compiles the server. For a client in its own package, set
+[`types: 'standalone'`](/docs/codegen/configuration#standalone-types) and the codegen prints
+every type — inferred return types and zod pipe schemas included — into the generated files.
 
 ## Inferring types
 

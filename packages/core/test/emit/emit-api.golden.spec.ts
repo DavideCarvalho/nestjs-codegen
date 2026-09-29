@@ -186,14 +186,14 @@ describe('emitApi golden output', () => {
       expect(c).not.toContain('response: Jsonify<RawResponse<Blob>>');
       // GET binary: fetchBlob defaults to GET, no explicit `method` opt needed.
       expect(c).toContain(
-        'fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined })',
+        'fetcher.fetchBlob(route("files.download" as never, input?.params as never) || "/api/files/:id/download", { query: input?.query as Record<string, unknown> | undefined, signal })',
       );
     });
 
     it('a non-GET binary route passes an explicit method to fetchBlob', async () => {
       const c = await gen({});
       expect(c).toContain(
-        'fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body })',
+        'fetcher.fetchBlob(route("reports.export" as never) || "/api/reports/export", { method: "POST", body: input?.body, signal })',
       );
     });
 
@@ -231,7 +231,7 @@ describe('emitApi golden output', () => {
     it('issues via fetcher.post — asQuery only affects request-shape flags, not the HTTP verb', async () => {
       const c = await gen({});
       expect(c).toContain(
-        'fetcher.post<ApiRouter["reports"]["search"][\'response\']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body })',
+        'fetcher.post<ApiRouter["reports"]["search"][\'response\']>(route("reports.search" as never) || "/api/reports/search", { body: input?.body, signal })',
       );
     });
   });

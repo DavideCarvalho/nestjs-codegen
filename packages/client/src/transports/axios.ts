@@ -9,6 +9,7 @@ interface AxiosRequestConfig {
   responseType: 'text' | 'blob' | 'arraybuffer';
   validateStatus: (status: number) => boolean;
   onUploadProgress?: (event: { loaded: number; total?: number }) => void;
+  signal?: AbortSignal;
 }
 
 /** Minimal structural shape of an axios instance — your real instance fits this. */
@@ -88,6 +89,7 @@ export function axiosTransport(instance: AxiosLike): Transport {
       ...(req.body !== undefined ? { data: req.body } : {}),
       responseType,
       validateStatus: () => true,
+      ...(req.signal ? { signal: req.signal } : {}),
       ...(onUploadProgress
         ? {
             onUploadProgress: (event: { loaded: number; total?: number }) =>

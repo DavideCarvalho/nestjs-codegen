@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import type { SerializationMode } from '../config/types.js';
+import { STANDALONE_TYPES_NAMESPACE } from '../discovery/standalone-types.js';
 import type {
   ContractSource,
   ControllerRef,
@@ -39,6 +40,11 @@ export interface ApiEmitOptions {
   ctx?: ExtensionContext | undefined;
   /** How response payloads deserialize on the client. Default `'json'`. */
   serialization?: SerializationMode | undefined;
+  /**
+   * Module specifier of the standalone `types.ts` (`types: 'standalone'`), imported
+   * as a namespace so hoisted names can never collide with the api.ts internals.
+   */
+  typesModule?: string | undefined;
 }
 
 export async function emitApi(
@@ -289,9 +295,8 @@ function rawResponseType(c: LeafEntry, outDir: string): string {
     if (respRef) return respRef.isArray ? `Array<${respRef.name}>` : respRef.name;
     return c.contractSource.response;
   }
-  if (c.controllerRef) {
-    let relPath = relative(outDir, c.controllerRef.filePath).replace(/\.ts$/, '');
-    if (!relPath.startsWith('.')) relPath = `./${relPath}`;
+  if (c.controllerRef && !c.contractSource.standalone) {
+    const relPath = relativeModuleSpecifier(outDir, c.controllerRef.filePath);
     return `Awaited<ReturnType<import('${relPath}').${c.controllerRef.className}['${c.controllerRef.methodName}']>>`;
   }
   if (respRef) {
@@ -476,6 +481,9 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     optsParts.unshift(`method: ${JSON.stringify(m.toUpperCase())}`);
   }
   const optsExpr = optsParts.length ? `{ ${optsParts.join(', ')} }` : '{}';
+  // Same options plus the in-scope `signal` identifier (the awaitable base's
+  // `fetch({ signal })` and TanStack's `queryFn({ signal })` both bind one).
+  const signalOptsExpr = `{ ${[...optsParts, 'signal'].join(', ')} }`;
 
   return {
     routeName: c.name,
@@ -487,6 +495,7 @@ function buildRequestModel(c: LeafEntry): RequestModel {
     inputType,
     urlExpr,
     optsExpr,
+    signalOptsExpr,
     responseType: `${TA}['response']`,
     // When no input is supplied the key omits the trailing element entirely
     // (`[name]` rather than `[name, undefined]`) so the bare `.queryKey()` is a
@@ -513,9 +522,13 @@ function buildRequestModel(c: LeafEntry): RequestModel {
  * never `Jsonify`-wrapped) so callers can read `content-disposition` etc. `fetchBlob` isn't
  * generic over `T` (it's always `Blob`), so no `<...>` type arg is passed, unlike the verb call.
  */
-function renderFetcherRequest(req: RequestModel, binaryResponse: boolean): string {
-  if (binaryResponse) return `fetcher.fetchBlob(${req.urlExpr}, ${req.optsExpr})`;
-  return `fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, ${req.optsExpr})`;
+function renderFetcherRequest(
+  req: RequestModel,
+  binaryResponse: boolean,
+  opts: string = req.optsExpr,
+): string {
+  if (binaryResponse) return `fetcher.fetchBlob(${req.urlExpr}, ${opts})`;
+  return `fetcher.${req.method}<${req.responseType}>(${req.urlExpr}, ${opts})`;
 }
 
 /**
@@ -534,9 +547,10 @@ function emitReqHelper(): string[] {
     '  ): Promise<T1 | T2>;',
     '  catch<T = never>(onrejected?: ((reason: unknown) => T | PromiseLike<T>) | null): Promise<R | T>;',
     '  finally(onfinally?: (() => void) | null): Promise<R>;',
-    '  fetch(): Promise<R>;',
+    '  /** Run the request again (unmemoized); `signal` cancels it. */',
+    '  fetch(opts?: { signal?: AbortSignal | undefined }): Promise<R>;',
     '};',
-    'function __req<R>(run: () => Promise<R>): __Req<R> {',
+    'function __req<R>(run: (signal?: AbortSignal) => Promise<R>): __Req<R> {',
     '  let __p: Promise<R> | undefined;',
     '  const __promise = () => {',
     '    __p ??= run();',
@@ -546,7 +560,7 @@ function emitReqHelper(): string[] {
     '    then: (onfulfilled, onrejected) => __promise().then(onfulfilled, onrejected),',
     '    catch: (onrejected) => __promise().catch(onrejected),',
     '    finally: (onfinally) => __promise().finally(onfinally),',
-    '    fetch: run,',
+    '    fetch: (opts) => run(opts?.signal),',
     '  };',
     '}',
     '',
@@ -586,7 +600,7 @@ function renderLeaf(
   streamExpr: string | undefined,
 ): string[] {
   const lines = [`${pad}${objKey}: (input?: ${req.inputType}) => ({`];
-  lines.push(`${pad}  ...__req<${req.responseType}>(() => ${requestExpr}),`);
+  lines.push(`${pad}  ...__req<${req.responseType}>((signal) => ${requestExpr}),`);
   // Runtime filterable-field names (kept in lockstep with the type-level
   // `filterFields` union) so apps can validate a dynamic field string via
   // `isFilterField(...)` rather than casting. Present only on filter routes.
@@ -644,10 +658,12 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiP
     const req = buildRequestModel(node);
     // Hand extension hooks the real, un-narrowed RouteDescriptor stored on the leaf —
     // no reconstruction or force-cast.
+    const binary = node.contractSource.binaryResponse === true;
     const leaf: LeafModel = {
       route: node.route,
       request: req,
-      requestExpr: renderFetcherRequest(req, node.contractSource.binaryResponse === true),
+      requestExpr: renderFetcherRequest(req, binary),
+      signalRequestExpr: renderFetcherRequest(req, binary, req.signalOptsExpr),
     };
 
     // Every leaf is an awaitable handle (the __req base). A client layer (TanStack) spreads
@@ -676,7 +692,16 @@ function emitApiObjectBlock(tree: Map<string, TreeNode>, indent: number, p: ApiP
 
     const streamExpr = node.contractSource.stream ? renderStreamExpr(req) : undefined;
 
-    lines.push(...renderLeaf(pad, objKey, req, leaf.requestExpr, members, streamExpr));
+    lines.push(
+      ...renderLeaf(
+        pad,
+        objKey,
+        req,
+        leaf.signalRequestExpr ?? leaf.requestExpr,
+        members,
+        streamExpr,
+      ),
+    );
   }
 
   return lines;
@@ -799,6 +824,22 @@ const EMPTY_PATH_NAMESPACE: readonly string[] = [
 // Main builder
 // ---------------------------------------------------------------------------
 
+/** HTTP verbs the {@link Fetcher} exposes a method for. */
+const CLIENT_VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * A relative module specifier for a local source file, `.ts` → `.js`. The `.js`
+ * form resolves under every TS module mode — `bundler` maps it back to the `.ts`,
+ * and `node16`/`nodenext` require it — where an extensionless one fails NodeNext.
+ */
+function relativeModuleSpecifier(outDir: string, filePath: string): string {
+  let rel = relative(outDir, filePath).replace(/\.(c|m)?tsx?$/, (ext) =>
+    ext.startsWith('.m') ? '.mjs' : ext.startsWith('.c') ? '.cjs' : '.js',
+  );
+  if (!rel.startsWith('.')) rel = `./${rel}`;
+  return rel;
+}
+
 function buildApiFile(
   routes: RouteDescriptor[],
   outDir?: string,
@@ -810,7 +851,9 @@ function buildApiFile(
   const { layer } = resolveApiSlots(extensions);
   const memberExts = extensions.filter((e) => e.apiMembers);
   const headerExts = extensions.filter((e) => e.apiHeader);
-  const contracted = routes.filter((r) => r.contract);
+  // `@All()` / `@Head()` / `@Options()` handlers (catch-all proxies, probes) have no
+  // Fetcher verb to call; they stay in routes.ts but get no api.ts leaf.
+  const contracted = routes.filter((r) => r.contract && CLIENT_VERBS.has(r.method.toUpperCase()));
 
   // Extension context for the api.ts hooks. `generate()` passes the real one; standalone
   // `emitApi` calls (tests) get a minimal context exposing the routes (all the bundled
@@ -840,7 +883,7 @@ function buildApiFile(
     // EXCEPT for streams, whose response is the element ref (not the container ReturnType).
     // errorRef is always imported (the error type is never sourced from ReturnType).
     const refs =
-      r.controllerRef && !cs.stream
+      r.controllerRef && !cs.stream && !cs.standalone
         ? [cs.queryRef, cs.bodyRef, cs.errorRef]
         : [cs.queryRef, cs.bodyRef, cs.responseRef, cs.errorRef];
     for (const ref of refs) {
@@ -902,6 +945,9 @@ function buildApiFile(
   if (contracted.some((r) => r.contract?.contractSource.binaryResponse)) {
     lines.push(`import type { RawResponse } from '${runtimeImport}';`);
   }
+  if (opts.typesModule) {
+    lines.push(`import type * as ${STANDALONE_TYPES_NAMESPACE} from '${opts.typesModule}';`);
+  }
 
   // Emit type imports from source files.
   // When two different files export the same type name, alias the duplicate
@@ -914,8 +960,7 @@ function buildApiFile(
       // source files are always absolute paths → compute a relative import.
       let relPath: string;
       if (isAbsolute(filePath)) {
-        relPath = relative(outDir, filePath).replace(/\.ts$/, '');
-        if (!relPath.startsWith('.')) relPath = `./${relPath}`;
+        relPath = relativeModuleSpecifier(outDir, filePath);
       } else {
         relPath = filePath;
       }

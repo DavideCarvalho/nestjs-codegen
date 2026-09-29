@@ -1,5 +1,37 @@
 # @dudousxd/nestjs-codegen
 
+## 0.27.0
+
+### Minor Changes
+
+- [#101](https://github.com/DavideCarvalho/nestjs-codegen/pull/101) [`eb98ec8`](https://github.com/DavideCarvalho/nestjs-codegen/commit/eb98ec87be042b56a068bff9d4d71c35b6e67283) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Several page globs and several Inertia apps (scopes).
+
+  - `pages.glob` takes one glob or an array. Each page is named relative to the static base of
+    the glob that matched it (brace globs included: the base stops at the first segment with
+    glob syntax), and two files resolving to the same page name are an error.
+  - `pages.scopes` declares more Inertia apps, one per `InertiaModule.forFeature({ scope })`:
+    `{ glob, prefix?, componentNameStrategy? }`. A scope's page names get the prefix
+    `'<scope>/'` by default (`minimal/pages/Home.tsx` → `minimal/Home`). Every page lands in
+    `InertiaPages`/`InertiaPageName`; `pages.d.ts` also exports `InertiaScopePages` and
+    `InertiaScopePageName<S>`, `components.json` records each page's `scope`, and the watcher and
+    the skip-if-unchanged hash cover every scope's pages.
+  - The top-level `scopes` option never had an effect; it is deprecated and now warns.
+
+- [#100](https://github.com/DavideCarvalho/nestjs-codegen/pull/100) [`1cc8944`](https://github.com/DavideCarvalho/nestjs-codegen/commit/1cc8944126b794cdd5748e2417f448cd1e157395) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Request handles are real Promises, and `api.ts` compiles under strict compiler flags.
+
+  - A generated leaf call (`api.users.create({ body })`) now returns a `RequestHandle<R>`: a
+    lazy, memoized `Promise<R>` that also carries `fetch()` and the extension members
+    (`queryKey`, `queryOptions`, `mutationOptions`, …). It can be returned from a TanStack
+    `mutationFn`/`queryFn`, passed to `Promise.all` or assigned to `Promise<T>` without calling
+    `.fetch()` first. Nothing is sent until it is awaited, so building `queryOptions()` or
+    reading `queryKey()` never fires a request. `.fetch()` keeps working.
+  - `api.ts` imports from `routes.ts` only the names it uses (no unused `ROUTES`/`RouteName`/…),
+    a leaf with no input to read takes no parameter, and `infiniteQueryOptions()` no longer
+    passes `getPreviousPageParam: undefined`. The output is clean under `noUnusedLocals`,
+    `noUnusedParameters`, `exactOptionalPropertyTypes`, `noImplicitOverride`,
+    `noUncheckedIndexedAccess` and `noPropertyAccessFromIndexSignature`; a fixture test compiles
+    it with all of them.
+
 ## 0.26.0
 
 ### Minor Changes

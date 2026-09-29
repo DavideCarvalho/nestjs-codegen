@@ -4,6 +4,7 @@ import { join, relative } from 'node:path';
 import fg from 'fast-glob';
 import type { ResolvedConfig } from './config/types.js';
 import { loadDiscoveryTsconfig, resolveTsconfigPath } from './discovery/contracts-fast.js';
+import { allPageGlobs } from './discovery/pages.js';
 import { VERSION } from './index.js';
 
 /** File name of the manifest persisted alongside generated output in `outDir`. */
@@ -180,11 +181,10 @@ export function diffConfigKeyHashes(
 /**
  * Globs the input source files that determine generate output: controllers
  * (`contracts.glob`), DTOs (`forms.watch`), and — when configured — Inertia pages
- * (`pages.glob`). All resolved relative to `config.codegen.cwd`.
+ * (`pages.glob` and every `pages.scopes` glob). All resolved relative to `config.codegen.cwd`.
  */
 async function discoverInputFiles(config: ResolvedConfig): Promise<string[]> {
-  const globs = [config.contracts.glob, config.forms.watch];
-  if (config.pages) globs.push(config.pages.glob);
+  const globs = [config.contracts.glob, config.forms.watch, ...allPageGlobs(config)];
 
   const cwd = config.codegen.cwd;
   const matched = await fg(globs, { cwd, absolute: true, onlyFiles: true });

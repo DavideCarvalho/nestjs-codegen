@@ -74,6 +74,54 @@ Codegen throws an actionable error if `module` doesn't resolve to a file, or `ex
 exist in it (or doesn't look like the declared `kind`) — a broken `shared.ts` import would
 otherwise surface far from its cause, as a confusing type error in the frontend build.
 
+## Several Inertia apps (scopes)
+
+nestjs-inertia can serve more than one Inertia app from one Nest app: the default one
+(`InertiaModule.forRoot`) and one per `InertiaModule.forFeature({ scope })`, each with its own
+root view, Vite build and shared props, and controllers pick theirs with `@UseInertia(scope)`.
+Point the codegen at each app's pages with `pages.scopes`:
+
+```ts title="nestjs-codegen.config.ts"
+export default defineConfig({
+  pages: {
+    glob: '../web/inertia/pages/**/*.tsx', // the default app: "Dashboard", "users/Show", …
+    scopes: {
+      // InertiaModule.forFeature({ scope: 'admin' }): "admin/Home", "admin/users/Show", …
+      admin: { glob: '../admin/inertia/pages/**/*.tsx' },
+    },
+  },
+  // …
+});
+```
+
+- Each scope's pages are named relative to its glob, with the prefix `'<scope>/'` (set
+  `prefix` to change it, `''` for none, and `componentNameStrategy` to name that scope's pages
+  differently). That's the name its handlers render: `@Inertia('admin/Home')`.
+- `glob` (for the default app and for each scope) takes one glob or an array of them.
+- All pages of every scope are in `InertiaPages`/`InertiaPageName`, so `@Inertia()` and
+  `render()` are checked for all of them, and two pages resolving to the same name are an
+  error. `pages.d.ts` also exports `InertiaScopePages` (scope → its page names) and
+  `InertiaScopePageName<'admin'>`, for typing one app's page resolver.
+- `components.json` records each page's `scope`.
+
+Shared props are per scope too: the `share` of a `forFeature` scope is the only one its pages
+get. To type them, pass `scopes` to `nestjsInertiaCodegen()` (extension 0.4+), with the same
+`{ module, export, kind }` as `shared`:
+
+```ts title="nestjs-codegen.config.ts"
+nestjsInertiaCodegen({
+  shared: { module: 'src/inertia/shared-props', export: 'buildSharedProps', kind: 'function' },
+  scopes: {
+    admin: {
+      shared: { module: 'src/admin/admin-shared-props', export: 'buildAdminSharedProps', kind: 'function' },
+    },
+  },
+}),
+```
+
+`shared.ts` then also exports `InertiaScopeSharedProps` (`{ admin: … }`) and
+`ScopeSharedProps<'admin'>`, so the admin app reads `usePage<ScopeSharedProps<'admin'>>()`.
+
 ## Excluding pages from the API prefix
 
 If you call `setGlobalPrefix('api', { exclude })`, a hand-maintained exclude list is easy to

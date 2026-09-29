@@ -4,6 +4,8 @@ import type { DiscoveredPage } from '../discovery/pages.js';
 
 export interface CacheEntry {
   name: string;
+  /** The Inertia scope of the page (`'default'` or a `pages.scopes` key). */
+  scope: string;
   relativePath: string;
   mtime: string;
 }
@@ -19,6 +21,7 @@ export async function emitCache(pages: DiscoveredPage[], outDir: string): Promis
       const s = await stat(p.absolutePath);
       return {
         name: p.name,
+        scope: p.scope ?? 'default',
         relativePath: p.relativePath,
         mtime: s.mtime.toISOString(),
       };

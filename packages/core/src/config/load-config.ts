@@ -109,12 +109,36 @@ function validateUserConfig(userConfig: UserConfigInput): void {
       'validation adapter is required — install @dudousxd/nestjs-codegen-zod and pass zodAdapter, or use @dudousxd/nestjs-codegen-valibot / -arktype',
     );
   }
-  // `pages` is Inertia-only and optional — but if present, `glob` must be a string.
-  if (userConfig.pages && typeof userConfig.pages.glob !== 'string') {
+  // `pages` is Inertia-only and optional — but if present, `glob` must be a glob or globs.
+  if (userConfig.pages && !isGlobInput(userConfig.pages.glob)) {
     throw new ConfigError(
-      'Config validation failed: `pages.glob` must be a string when `pages` is set',
+      'Config validation failed: `pages.glob` must be a string or a non-empty array of strings when `pages` is set',
     );
   }
+  for (const [scope, scopeConfig] of Object.entries(userConfig.pages?.scopes ?? {})) {
+    if (scope === 'default') {
+      throw new ConfigError(
+        'Config validation failed: `pages.scopes` cannot declare "default" — the default app is `pages.glob` (InertiaModule.forRoot).',
+      );
+    }
+    if (!isGlobInput(scopeConfig?.glob)) {
+      throw new ConfigError(
+        `Config validation failed: \`pages.scopes.${scope}.glob\` must be a string or a non-empty array of strings`,
+      );
+    }
+  }
+  if (userConfig.scopes && Object.keys(userConfig.scopes).length > 0) {
+    console.warn(
+      '[nestjs-codegen] The top-level `scopes` option has no effect and is deprecated. For several Inertia apps use `pages.scopes` (one entry per InertiaModule.forFeature scope); for several controller sets use one `contracts.glob` (e.g. a brace glob).',
+    );
+  }
+}
+
+function isGlobInput(value: unknown): value is string | string[] {
+  if (typeof value === 'string') return true;
+  return (
+    Array.isArray(value) && value.length > 0 && value.every((glob) => typeof glob === 'string')
+  );
 }
 
 function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig {
@@ -153,6 +177,19 @@ function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig
           glob: userConfig.pages.glob,
           propsExport: userConfig.pages.propsExport ?? 'ComponentProps',
           componentNameStrategy: userConfig.pages.componentNameStrategy ?? 'relative-no-ext',
+          scopes: Object.fromEntries(
+            Object.entries(userConfig.pages.scopes ?? {}).map(([scope, scopeConfig]) => [
+              scope,
+              {
+                glob: scopeConfig.glob,
+                prefix: scopeConfig.prefix ?? `${scope}/`,
+                componentNameStrategy:
+                  scopeConfig.componentNameStrategy ??
+                  userConfig.pages?.componentNameStrategy ??
+                  'relative-no-ext',
+              },
+            ]),
+          ),
         }
       : null,
     contracts: {

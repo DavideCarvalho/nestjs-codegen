@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ResolvedConfig } from './config/types.js';
-import { discoverPages } from './discovery/pages.js';
+import { discoverPageScopes } from './discovery/pages.js';
 import { discoverSharedPropsFromConfig } from './discovery/shared-props.js';
 import type { RouteDescriptor } from './discovery/types.js';
 import { emitApi } from './emit/emit-api.js';
@@ -133,12 +133,8 @@ export async function generate(
   // Inertia page discovery is opt-in — skip entirely when `pages` isn't configured.
   if (config.pages) {
     const pagesConfig = config.pages;
-    const pages = await discoverPages({
-      glob: pagesConfig.glob,
-      cwd: config.codegen.cwd,
-      propsExport: pagesConfig.propsExport,
-      componentNameStrategy: pagesConfig.componentNameStrategy,
-    });
+    // The default app's pages and every `pages.scopes` app's (their names prefixed).
+    const pages = await discoverPageScopes(config);
 
     const sharedProps = discoverSharedPropsFromConfig(config);
 

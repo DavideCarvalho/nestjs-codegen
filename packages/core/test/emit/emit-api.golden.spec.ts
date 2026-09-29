@@ -152,7 +152,8 @@ describe('emitApi golden output', () => {
     const leafStart = source.indexOf(`${key}: (input?:`, scopeStart);
     const lineStart = source.lastIndexOf('\n', leafStart) + 1;
     const indent = source.slice(lineStart, leafStart);
-    const leafEnd = source.indexOf(`\n${indent}}),`, leafStart);
+    // A leaf's members object closes one level in: `<indent>  }),`.
+    const leafEnd = source.indexOf(`\n${indent}  }),`, leafStart);
     return source.slice(leafStart, leafEnd);
   }
 

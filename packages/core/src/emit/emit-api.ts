@@ -526,35 +526,45 @@ function renderFetcherRequest(req: RequestModel, binaryResponse: boolean): strin
 }
 
 /**
- * The `__req` runtime helper, emitted once per `api.ts`. Wraps a request thunk into an
- * **awaitable handle**: `await api.x.y({...})` runs the fetch (Tuyau-style), memoized so
- * repeated awaits hit the network once. Client-layer extensions (e.g. TanStack) spread
- * extra members (`queryOptions`/`mutationOptions`/…) onto the same handle.
+ * The `__req` runtime helper, emitted once per `api.ts`. Turns a request thunk into an
+ * **awaitable handle** that is a real `Promise`: `await api.x.y({...})` runs the fetch
+ * (Tuyau-style), and the handle can be returned from anything typed `Promise<T>` (a
+ * TanStack `mutationFn`/`queryFn`, `Promise.all`, …) without calling `.fetch()` first.
+ *
+ * The promise is lazy — nothing is sent until the handle is awaited/`then`-ed, so building
+ * `queryOptions()` or reading `queryKey()` never fires a request — and memoized, so repeated
+ * awaits hit the network once. `fetch()` always issues a fresh request. Client-layer
+ * extensions (e.g. TanStack) add their members (`queryOptions`/`mutationOptions`/…) onto
+ * the same object.
+ *
+ * `__Request` extends `Promise` and overrides `then` only (`catch`/`finally` go through
+ * `then` per the spec). Its `constructor` is not `Promise`, so `await` and `Promise.resolve`
+ * adopt it through `then` rather than reading the never-settled base promise.
  */
 function emitReqHelper(): string[] {
   return [
-    '/** Awaitable request handle. `await api.x.y({...})` runs the fetch; extensions add query/mutation helpers. */',
-    'type __Req<R> = {',
-    '  then<T1 = R, T2 = never>(',
+    '/** An awaitable request handle: a lazy, memoized `Promise` that also carries `fetch()` and the members extensions add. */',
+    'export type RequestHandle<R, M = {}> = Promise<R> & { fetch(): Promise<R> } & M;',
+    'class __Request<R> extends Promise<R> {',
+    '  static override get [Symbol.species](): PromiseConstructor {',
+    '    return Promise;',
+    '  }',
+    '  private __run: () => Promise<R>;',
+    '  private __p: Promise<R> | undefined;',
+    '  constructor(run: () => Promise<R>) {',
+    '    super(() => {});',
+    '    this.__run = run;',
+    '  }',
+    '  override then<T1 = R, T2 = never>(',
     '    onfulfilled?: ((value: R) => T1 | PromiseLike<T1>) | null,',
     '    onrejected?: ((reason: unknown) => T2 | PromiseLike<T2>) | null,',
-    '  ): Promise<T1 | T2>;',
-    '  catch<T = never>(onrejected?: ((reason: unknown) => T | PromiseLike<T>) | null): Promise<R | T>;',
-    '  finally(onfinally?: (() => void) | null): Promise<R>;',
-    '  fetch(): Promise<R>;',
-    '};',
-    'function __req<R>(run: () => Promise<R>): __Req<R> {',
-    '  let __p: Promise<R> | undefined;',
-    '  const __promise = () => {',
-    '    __p ??= run();',
-    '    return __p;',
-    '  };',
-    '  return {',
-    '    then: (onfulfilled, onrejected) => __promise().then(onfulfilled, onrejected),',
-    '    catch: (onrejected) => __promise().catch(onrejected),',
-    '    finally: (onfinally) => __promise().finally(onfinally),',
-    '    fetch: run,',
-    '  };',
+    '  ): Promise<T1 | T2> {',
+    '    this.__p ??= this.__run();',
+    '    return this.__p.then(onfulfilled, onrejected);',
+    '  }',
+    '}',
+    'function __req<R, M extends object = {}>(run: () => Promise<R>, members?: M): RequestHandle<R, M> {',
+    '  return Object.assign(new __Request<R>(run), { fetch: run }, members) as RequestHandle<R, M>;',
     '}',
     '',
   ];
@@ -580,9 +590,11 @@ function emitFilterFieldGuard(): string[] {
 }
 
 /**
- * Render one leaf. Every leaf is an **awaitable handle**: the `__req(...)` base makes
- * `await api.x.y({...})` perform the request; any client-layer/member contributions
- * (TanStack options, filterQuery, …) are spread on alongside it.
+ * Render one leaf. Every leaf is an **awaitable handle**: `__req(...)` makes
+ * `await api.x.y({...})` perform the request (the handle is a real `Promise`); any
+ * client-layer/member contributions (TanStack options, filterQuery, …) are assigned onto
+ * it. A leaf without an input to read takes no parameter (clean under
+ * `noUnusedParameters`); otherwise the parameter is named `input`.
  */
 function renderLeaf(
   pad: string,
@@ -592,24 +604,33 @@ function renderLeaf(
   members: Record<string, string>,
   streamExpr: string | undefined,
 ): string[] {
-  const lines = [`${pad}${objKey}: (input?: ${req.inputType}) => ({`];
-  lines.push(`${pad}  ...__req<${req.responseType}>(() => ${requestExpr}),`);
+  const memberLines: string[] = [];
   // Runtime filterable-field names (kept in lockstep with the type-level
   // `filterFields` union) so apps can validate a dynamic field string via
   // `isFilterField(...)` rather than casting. Present only on filter routes.
   if (req.filterFieldsExpr) {
-    lines.push(`${pad}  filterFields: ${req.filterFieldsExpr},`);
+    memberLines.push(`${pad}    filterFields: ${req.filterFieldsExpr},`);
   }
   // SSE/streaming routes expose a typed `stream()` returning an AsyncIterable of
   // the streamed element type (alongside the awaitable base, which is rarely used
   // for a stream but kept for shape uniformity).
   if (streamExpr) {
-    lines.push(`${pad}  stream: () => ${streamExpr},`);
+    memberLines.push(`${pad}    stream: () => ${streamExpr},`);
   }
   for (const [name, value] of Object.entries(members)) {
-    lines.push(`${pad}  ${name}: ${value},`);
+    memberLines.push(`${pad}    ${name}: ${value},`);
   }
-  lines.push(`${pad}}),`);
+  const body = [requestExpr, ...memberLines].join('\n');
+  const param = /\binput\b/.test(body) ? `input?: ${req.inputType}` : '';
+  const lines = [`${pad}${objKey}: (${param}) =>`];
+  if (memberLines.length === 0) {
+    lines.push(`${pad}  __req<${req.responseType}>(() => ${requestExpr}),`);
+    return lines;
+  }
+  // `R` is inferred from the typed fetcher call; `M` from the members object.
+  lines.push(`${pad}  __req(() => ${requestExpr}, {`);
+  lines.push(...memberLines);
+  lines.push(`${pad}  }),`);
   return lines;
 }
 
@@ -817,6 +838,34 @@ function isClientCallable(route: RouteDescriptor): boolean {
   return route.method.toUpperCase() !== 'ALL';
 }
 
+const ROUTES_IMPORT_PLACEHOLDER = '/* @@routes-import@@ */';
+
+/** The `./routes.js` exports an `api.ts` may read: the core uses `route`, extensions the rest. */
+const ROUTES_EXPORTS: ReadonlyArray<{ name: string; typeOnly: boolean }> = [
+  // Called, never mentioned in prose: match the call so a comment saying "route" doesn't count.
+  { name: 'route', typeOnly: false },
+  { name: 'ROUTES', typeOnly: false },
+  { name: 'RouteName', typeOnly: true },
+  { name: 'ExtractParams', typeOnly: true },
+  { name: 'RouteParams', typeOnly: true },
+];
+
+/**
+ * Join the file, importing from `./routes.js` exactly the names the rest of it reads
+ * (none → no import line). The core's leaves read `route`; extension header statements
+ * (e.g. nestjs-inertia's `navigate()`) may read the others.
+ */
+function finishRoutesImport(lines: string[]): string {
+  const body = lines.filter((l) => l !== ROUTES_IMPORT_PLACEHOLDER).join('\n');
+  const used = ROUTES_EXPORTS.filter(({ name }) =>
+    new RegExp(name === 'route' ? '\\broute\\(' : `\\b${name}\\b`).test(body),
+  ).map(({ name, typeOnly }) => (typeOnly ? `type ${name}` : name));
+  const importLine = used.length ? `import { ${used.join(', ')} } from './routes.js';` : null;
+  return lines
+    .flatMap((l) => (l === ROUTES_IMPORT_PLACEHOLDER ? (importLine ? [importLine] : []) : [l]))
+    .join('\n');
+}
+
 function buildApiFile(
   routes: RouteDescriptor[],
   outDir?: string,
@@ -900,9 +949,10 @@ function buildApiFile(
   }
   lines.push(...extImports);
 
-  lines.push(
-    "import { route, ROUTES, type RouteName, type ExtractParams, type RouteParams } from './routes.js';",
-  );
+  // Placeholder for the `./routes.js` import: which of its exports the file uses is only
+  // known once the body (and the extensions' header statements) are rendered — see
+  // `finishRoutesImport`. Importing a name the file never reads fails `noUnusedLocals`.
+  lines.push(ROUTES_IMPORT_PLACEHOLDER);
   // Tuyau-style: the api is a factory that takes the fetcher at runtime, so the
   // app injects its own client (custom transport/axios, baseUrl, superjson) —
   // rather than the codegen hardcoding `import { fetcher } from '<path>'`.
@@ -972,7 +1022,7 @@ function buildApiFile(
         lines.push(...statements, '');
       }
     }
-    return lines.join('\n');
+    return finishRoutesImport(lines);
   }
 
   // Build a nested tree from all contracted routes
@@ -1041,5 +1091,5 @@ function buildApiFile(
     }
   }
 
-  return lines.join('\n');
+  return finishRoutesImport(lines);
 }

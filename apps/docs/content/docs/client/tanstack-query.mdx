@@ -74,6 +74,16 @@ function Users() {
 `infiniteQueryOptions()` (GET routes) adds `page` to the query and reads the next page from
 `response.meta.page` / `response.meta.lastPage`.
 
+Because the handle itself is a `Promise`, a hand-written `mutationFn`/`queryFn` can return the
+call directly — no `.fetch()`:
+
+```tsx
+const rename = useMutation({
+  mutationFn: (name: string) => api.users.update({ params: { id }, body: { name } }),
+});
+const count = useQuery({ queryKey: ['users', 'count'], queryFn: () => api.users.count() });
+```
+
 Each handle builds a real `queryOptions`/`mutationOptions` object, so you compose it with
 your own `onSuccess`, `select`, `staleTime`, etc. — and `queryKey()` derives a stable key
 from the route name + input for you.

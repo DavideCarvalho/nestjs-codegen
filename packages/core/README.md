@@ -53,8 +53,8 @@ export class AppModule {}
 ```
 
 The generated `api.ts` exports a `createApi(fetcher)` factory — create the client once,
-injecting your fetcher. Each endpoint is a **unified awaitable handle**: `await` it to run
-the request.
+injecting your fetcher. Each endpoint is a **unified awaitable handle**: a lazy, memoized
+`Promise` — `await` it (or return it from a TanStack `mutationFn`) to run the request.
 
 ```ts title="src/lib/api.ts"
 import { createApi } from '../generated/api';

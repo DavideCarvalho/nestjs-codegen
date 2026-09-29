@@ -74,14 +74,16 @@ describe('emitApi', () => {
       const c = await gen();
       expect(c).toContain('export function createApi(fetcher: Fetcher)');
       expect(c).toContain("import type { Fetcher } from '@dudousxd/nestjs-client'");
-      expect(c).toContain('function __req<R>(run: () => Promise<R>)');
+      expect(c).toContain(
+        'function __req<R, M extends object = {}>(run: () => Promise<R>, members?: M)',
+      );
+      expect(c).toContain('class __Request<R> extends Promise<R>');
     });
 
     it('GET leaf is an awaitable handle backed by fetcher.get', async () => {
       const c = await gen();
       expect(c).toContain('list: (input?:');
-      expect(c).toContain('...__req<');
-      expect(c).toContain('() => fetcher.get<');
+      expect(c).toContain('__req<ApiRouter["users"]["list"][\'response\']>(() => fetcher.get<');
     });
 
     it('POST leaf is an awaitable handle backed by fetcher.post', async () => {
@@ -246,7 +248,7 @@ describe('emitApi', () => {
     it('GET handle is awaitable AND exposes queryKey + queryOptions + infiniteQueryOptions', async () => {
       const c = await gen(true);
       expect(c).toContain('list: (input?:');
-      expect(c).toContain('...__req<'); // still awaitable
+      expect(c).toContain('__req(() => fetcher.get<'); // still awaitable
       expect(c).toContain(
         'queryKey: () => (input === undefined ? ["users.list"] as const : ["users.list", input] as const)',
       );

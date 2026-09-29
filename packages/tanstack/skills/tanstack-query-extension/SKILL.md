@@ -80,7 +80,8 @@ function Users() {
     ...api.users.create().mutationOptions(),
     onSuccess: () => qc.invalidateQueries({ queryKey: api.users.list().queryKey() }),
   });
-  const direct = api.users.show({ params: { id } }); // still a plain awaitable request
+  const direct = api.users.show({ params: { id } }); // still a plain (lazy) Promise
+  const rename = useMutation({ mutationFn: (name: string) => api.users.update({ params: { id }, body: { name } }) }); // no .fetch()
 }
 ```
 

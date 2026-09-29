@@ -257,7 +257,9 @@ describe('tanstackQuery', () => {
       expect(io).toMatch(/^\(overrides\?:/);
       // Caller-provided selectors win over the defaults.
       expect(io).toContain('getNextPageParam: overrides?.getNextPageParam ??');
-      expect(io).toContain('getPreviousPageParam: overrides?.getPreviousPageParam');
+      // getPreviousPageParam only arrives through the `...overrides` spread: an explicit
+      // `getPreviousPageParam: undefined` breaks `exactOptionalPropertyTypes`.
+      expect(io).not.toContain('getPreviousPageParam: overrides?.getPreviousPageParam');
       expect(io).toContain('...overrides');
     });
 

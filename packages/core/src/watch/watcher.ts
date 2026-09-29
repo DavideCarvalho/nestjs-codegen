@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import chokidar from 'chokidar';
 import type { ResolvedConfig } from '../config/types.js';
 import { PersistentDiscovery } from '../discovery/contracts-fast.js';
+import { allPageGlobs } from '../discovery/pages.js';
 import type { RouteDescriptor } from '../discovery/types.js';
 import { DriftGuardError, type EntryPoint } from '../generate-manifest.js';
 import { generate } from '../generate.js';
@@ -150,12 +151,17 @@ export async function watch(
   let pagesDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   // No `pages` config → watch a path that matches nothing (pages are Inertia-only).
-  const pagesGlob = config.pages?.glob ?? '.nestjs-codegen-no-pages';
-  const pagesWatcher = chokidar.watch(join(config.codegen.cwd, pagesGlob), {
-    ignoreInitial: true,
-    persistent: true,
-    awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
-  });
+  const pageGlobs = allPageGlobs(config);
+  const pagesWatcher = chokidar.watch(
+    (pageGlobs.length ? pageGlobs : ['.nestjs-codegen-no-pages']).map((glob) =>
+      join(config.codegen.cwd, glob),
+    ),
+    {
+      ignoreInitial: true,
+      persistent: true,
+      awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
+    },
+  );
 
   function schedulePagesRegenerate(): void {
     if (pagesDebounceTimer !== undefined) {

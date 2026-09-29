@@ -55,8 +55,13 @@ export default defineConfig({
       default: '[]',
     },
     'pages.glob': {
-      description: 'Glob for Inertia page components.',
-      type: 'string',
+      description: "Glob(s) for the default Inertia app's page components (InertiaModule.forRoot). Several globs are allowed; each page is named relative to the static base of the glob that matched it (inertia/pages/users/Show.tsx under 'inertia/pages/**/*.tsx' → users/Show). Two files resolving to the same name are an error.",
+      type: 'string | string[]',
+    },
+    'pages.scopes': {
+      description: "More Inertia apps, one per InertiaModule.forFeature({ scope }), keyed by scope name: { glob, prefix?, componentNameStrategy? }. Each scope's page names get prefix (default '<scope>/', e.g. minimal/Home). See /docs/integrations/inertia#several-inertia-apps-scopes.",
+      type: 'Record<string, PageScopeConfig>',
+      default: '{}',
     },
     'contracts.glob': {
       description: 'Glob for controller files to scan for routes + contracts.',
@@ -64,7 +69,7 @@ export default defineConfig({
       default: "'src/**/*.controller.ts'",
     },
     scopes: {
-      description: "Multi-scope discovery. A record of named scopes, each { glob, prefix? } — scan several controller sets (e.g. a public API and an internal admin API) in one run, each with its own file glob and optional route-path prefix. Omit for single-scope projects (the default contracts.glob).",
+      description: "Deprecated, no effect (a config that sets it gets a warning). For several Inertia apps use pages.scopes; for several controller sets use one contracts.glob, e.g. a brace glob.",
       type: 'Record<string, ScopeConfig>',
       default: '{}',
     },
@@ -213,39 +218,12 @@ even though the controller's own file never names it.
 ## Multi-scope discovery
 
 <Callout type="warn">
-**Experimental — not yet wired.** `scopes` is currently parsed and validated into the resolved
-config, but the discovery/generate pipeline does not consume it yet (no code reads `.scopes`), so
-setting it has **no effect** today. It's documented here as the intended shape; until it's wired,
-generate each surface with a separate run/config (distinct `contracts.glob` + `outDir`). Track this
-before relying on it in CI.
+**Deprecated — no effect.** The top-level `scopes` option was parsed but never read by
+discovery, and a config that sets it now gets a warning. What it was meant for is covered
+elsewhere:
+
+- **Several Inertia apps** (one `InertiaModule.forFeature({ scope })` each): use
+  [`pages.scopes`](/docs/integrations/inertia#several-inertia-apps-scopes).
+- **Several controller sets**: `contracts.glob` is one glob, so reach them with a brace glob,
+  e.g. `'src/{public,admin}/**/*.controller.ts'`.
 </Callout>
-
-Most projects scan a single controller set via `contracts.glob`. When you need to generate
-from **several distinct surfaces** — say a public API and an internal admin API that live in
-different directories and mount under different route prefixes — use `scopes`. It's a record
-of named scopes, each a `ScopeConfig` (`{ glob, prefix? }`):
-
-```ts title="nestjs-codegen.config.ts"
-export default defineConfig({
-  validation: zodAdapter,
-  codegen: { outDir: 'src/generated' },
-
-  scopes: {
-    public: { glob: 'src/public/**/*.controller.ts', prefix: '/api' },
-    admin: { glob: 'src/admin/**/*.controller.ts', prefix: '/admin' },
-  },
-});
-```
-
-<TypeTable
-  type={{
-    'ScopeConfig.glob': {
-      description: 'Glob (relative to codegen.cwd) for the controllers in this scope.',
-      type: 'string',
-    },
-    'ScopeConfig.prefix': {
-      description: 'Route-path prefix applied to every route discovered in this scope.',
-      type: 'string',
-    },
-  }}
-/>

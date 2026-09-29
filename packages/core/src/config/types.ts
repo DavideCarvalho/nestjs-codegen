@@ -27,9 +27,22 @@ export interface UserConfig {
   validation: ValidationOption;
   /** Inertia page discovery. Omit when you don't use Inertia. */
   pages?: {
-    glob: string;
+    /**
+     * Page files of the default Inertia app (`InertiaModule.forRoot`), relative to `cwd`. One
+     * glob or several; a page is named relative to the static base of the glob that matched it
+     * (`inertia/pages/users/Show.tsx` under `inertia/pages/**\/*.tsx` → `users/Show`).
+     */
+    glob: string | string[];
     propsExport?: string;
-    componentNameStrategy?: 'relative-no-ext' | 'kebab' | ((path: string) => string);
+    componentNameStrategy?: PageNameStrategy;
+    /**
+     * Further Inertia apps, one per `InertiaModule.forFeature({ scope })`, keyed by scope name.
+     * Each has its own page glob(s); its page names get a prefix (default `'<scope>/'`, so
+     * `minimal/pages/Home.tsx` → `minimal/Home`, the name its `@Inertia('minimal/Home')`
+     * handlers render). Every page of every scope lands in `InertiaPages`/`InertiaPageName`;
+     * `InertiaScopePages` lists each scope's page names.
+     */
+    scopes?: Record<string, PageScopeConfig>;
   };
   contracts?: {
     /** Glob pattern (relative to cwd) for controller files. Default: `'src/**\/\*.controller.ts'` */
@@ -37,6 +50,11 @@ export interface UserConfig {
     /** Debounce delay in ms before re-running route discovery. Default: `500` */
     debounceMs?: number;
   };
+  /**
+   * @deprecated Has no effect: discovery never read it. For several Inertia apps use
+   * `pages.scopes`; for several controller sets use one `contracts.glob` (brace/extglob).
+   * A config that sets it gets a warning.
+   */
   scopes?: Record<string, ScopeConfig>;
   codegen?: {
     outDir?: string;
@@ -134,15 +152,37 @@ export interface UserConfig {
   driftGuard?: boolean;
 }
 
+/** @deprecated See `UserConfig.scopes`. */
 export interface ScopeConfig {
   glob: string;
   prefix?: string;
 }
 
+/** How a page file's path (relative to its glob's static base) becomes its component name. */
+export type PageNameStrategy = 'relative-no-ext' | 'kebab' | ((path: string) => string);
+
+/** One more Inertia app (an `InertiaModule.forFeature({ scope })`) — see `pages.scopes`. */
+export interface PageScopeConfig {
+  /** Page files of this app, relative to `cwd`. */
+  glob: string | string[];
+  /** Prepended to every page name of this scope. Default `'<scope>/'`; `''` for none. */
+  prefix?: string;
+  /** Naming strategy for this scope's pages. Default: `pages.componentNameStrategy`. */
+  componentNameStrategy?: PageNameStrategy;
+}
+
+export interface ResolvedPageScopeConfig {
+  glob: string | string[];
+  prefix: string;
+  componentNameStrategy: PageNameStrategy;
+}
+
 export interface ResolvedPagesConfig {
-  glob: string;
+  glob: string | string[];
   propsExport: string;
-  componentNameStrategy: 'relative-no-ext' | 'kebab' | ((path: string) => string);
+  componentNameStrategy: PageNameStrategy;
+  /** Feature scopes (not including the default app), with defaults applied. */
+  scopes: Record<string, ResolvedPageScopeConfig>;
 }
 
 export interface ResolvedContractsConfig {

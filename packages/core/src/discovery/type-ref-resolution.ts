@@ -118,14 +118,23 @@ export function resolveModuleSpecifier(
 ): string[] {
   if (moduleSpecifier.startsWith('.')) {
     const dir = dirname(sourceFile.getFilePath());
-    // Strip an explicit ESM `.js`/`.ts` extension so `./x.dto.js` resolves to
-    // `./x.dto.ts` (NodeNext import style).
-    const noExt = moduleSpecifier.replace(/\.(js|ts)$/, '');
-    return [
-      resolve(dir, `${noExt}.ts`),
+    // A specifier names the RUNTIME file (`./x.dto.js`, NodeNext style); its types
+    // live in the matching source or declaration file. Bundled package declarations
+    // import their chunks this way too — `./tool-X.cjs` from `index.d.cts` has its
+    // types in `tool-X.d.cts` — so each runtime extension maps to its declaration
+    // counterparts, after the source ones.
+    const ext = /\.(c|m)?(j|t)sx?$/.exec(moduleSpecifier)?.[0];
+    const base = ext ? moduleSpecifier.slice(0, -ext.length) : moduleSpecifier;
+    const flavour = ext?.startsWith('.c') ? 'c' : ext?.startsWith('.m') ? 'm' : '';
+    const candidates = [
+      resolve(dir, `${base}.${flavour}ts`),
+      ...(flavour === '' ? [resolve(dir, `${base}.tsx`)] : []),
       resolve(dir, `${moduleSpecifier}.ts`),
       resolve(dir, moduleSpecifier, 'index.ts'),
+      resolve(dir, `${base}.d.${flavour}ts`),
+      ...(ext === undefined ? [resolve(dir, moduleSpecifier, 'index.d.ts')] : []),
     ];
+    return [...new Set(candidates)];
   }
 
   // Try to resolve path aliases via the tsconfig's `paths`.

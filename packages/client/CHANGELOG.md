@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-client
 
+## 0.9.2
+
+### Patch Changes
+
+- [#109](https://github.com/DavideCarvalho/nestjs-codegen/pull/109) [`1f47a4f`](https://github.com/DavideCarvalho/nestjs-codegen/commit/1f47a4fcf32f63e9e43d7e41b9d1f07d170eb7d8) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `Jsonify<T>` keeps an `any`-valued property `any` again. 0.9.1 typed it `undefined` (`{ id: any }` became `{ id: undefined }`): the check that keeps `x?: undefined` also matched `any`. The type-level specs of `Jsonify` are now compiled by the test run (`vitest` typecheck), which would have caught it.
+
 ## 0.9.1
 
 ### Patch Changes

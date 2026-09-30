@@ -1,5 +1,14 @@
 # @dudousxd/nestjs-codegen-tanstack
 
+## 0.5.3
+
+### Patch Changes
+
+- [#107](https://github.com/DavideCarvalho/nestjs-codegen/pull/107) [`35980a7`](https://github.com/DavideCarvalho/nestjs-codegen/commit/35980a70f8ba142328fd601983c9551258d512a8) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Two fixes for apps that type-check the generated client.
+
+  - **`@dudousxd/nestjs-client`**: `Jsonify<T>` keeps an optional property whose only value is `undefined` (`error?: undefined`). TypeScript adds those to the members of an inferred union — the return type of a handler with two `return` branches is `{ ok: true; error?: undefined } | { ok: false; error: string }` — so the property can be read on the union. `Jsonify` dropped them as non-serializable, and `result.error` on the client became "Property 'error' does not exist on type …". A required `undefined`-only property and function-valued properties are still dropped.
+  - **`@dudousxd/nestjs-codegen-tanstack`**: `mutationOptions()` of a route without params, query or body names its unused `mutationFn` parameter `_input`, so `api.ts` compiles under `noUnusedParameters` with the TanStack layer too (it already did without it).
+
 ## 0.5.2
 
 ### Patch Changes

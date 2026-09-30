@@ -46,6 +46,12 @@ export default defineConfig({
     // failed as timeouts — a slow test reported as a broken one. The work is slow,
     // not hung, so the ceiling is what was wrong.
     testTimeout: 20_000,
+    // The type-level specs (`expectTypeOf`) are compiled too: at runtime they assert nothing.
+    typecheck: {
+      enabled: true,
+      include: ['packages/client/test/shared/jsonify.spec.ts'],
+      tsconfig: './packages/client/tsconfig.typetests.json',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

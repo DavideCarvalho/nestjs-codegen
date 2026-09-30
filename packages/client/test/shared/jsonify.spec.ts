@@ -89,6 +89,12 @@ describe('Jsonify', () => {
   it('keeps an any-valued property (not dropped)', () => {
     type Input = { x: any };
     expectTypeOf<Jsonify<Input>>().toHaveProperty('x');
+    expectTypeOf<Jsonify<Input>['x']>().toBeAny();
+  });
+
+  it('keeps an optional any-valued property any', () => {
+    type Input = { x?: any; n: number };
+    expectTypeOf<Jsonify<Input>['x']>().toBeAny();
   });
 
   it('keeps an unknown-valued property (not dropped)', () => {

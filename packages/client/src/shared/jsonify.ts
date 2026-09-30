@@ -79,7 +79,11 @@ type OptionalUndefinedKey<T, K extends keyof T> = [T[K]] extends [undefined]
  * (kept by `SerializableKeys`) stays `x?: undefined`.
  */
 type JsonifyObject<T> = {
-  [K in keyof Pick<T, SerializableKeys<T>>]: [T[K]] extends [undefined] ? undefined : Jsonify<T[K]>;
+  [K in keyof Pick<T, SerializableKeys<T>>]: 0 extends 1 & T[K] // `any` passes through
+    ? T[K]
+    : [T[K]] extends [undefined]
+      ? undefined
+      : Jsonify<T[K]>;
 };
 
 /**

@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-codegen
 
+## 0.27.2
+
+### Patch Changes
+
+- [#105](https://github.com/DavideCarvalho/nestjs-codegen/pull/105) [`12be710`](https://github.com/DavideCarvalho/nestjs-codegen/commit/12be710f3c21ccc2e058d901a9921a72587ad939) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Follow relative imports inside declaration files to their declarations: `./chunk.cjs` resolves to `chunk.d.cts` (and `.cts`), `./chunk.mjs` to `chunk.d.mts`, `./chunk.js` to `chunk.d.ts` — after the source candidates, as before. A package's bundled `index.d.cts` imports its chunks by runtime name, and those types came out `unknown`.
+
 ## 0.27.1
 
 ### Patch Changes

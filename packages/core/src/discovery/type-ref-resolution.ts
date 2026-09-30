@@ -165,10 +165,18 @@ export function resolveImportedType(
   name: string,
   sourceFile: SourceFile,
   project: Project,
+  seen: Set<string> = new Set(),
 ): TypeDeclResult | null {
   for (const importDecl of sourceFile.getImportDeclarations()) {
-    const namedImport = importDecl.getNamedImports().find((n) => n.getName() === name);
+    // Match on the LOCAL name: bundled declaration files import under an alias
+    // (`import { p as ToolKind } from './chunk'`), and the local name is what the
+    // file's own `export { ToolKind }` and its type references use.
+    const namedImport = importDecl
+      .getNamedImports()
+      .find((n) => (n.getAliasNode()?.getText() ?? n.getName()) === name);
     if (!namedImport) continue;
+    // The source-side (pre-alias) name to look up in the target module.
+    const sourceName = namedImport.getName();
 
     const moduleSpecifier = importDecl.getModuleSpecifierValue();
     const candidates = resolveModuleSpecifier(moduleSpecifier, sourceFile, project);
@@ -182,11 +190,11 @@ export function resolveImportedType(
           continue;
         }
       }
-      const result = findTypeInFile(name, importedFile);
+      const result = findTypeInFile(sourceName, importedFile);
       if (result) return result;
       // The target module may itself re-export the symbol from elsewhere
       // (`export { X } from './mod'` or `import { X } ...; export { X }`).
-      const viaReExport = resolveReExportedType(name, importedFile, project, new Set());
+      const viaReExport = resolveReExportedType(sourceName, importedFile, project, new Set());
       if (viaReExport) return viaReExport;
     }
 
@@ -198,12 +206,15 @@ export function resolveImportedType(
     // enumerated from the declaration file), rather than silently degrading the
     // route to a non-filter route.
     if (candidates.length === 0) {
-      const viaCompiler = resolveBareSpecifierType(name, importDecl, project);
+      const viaCompiler = resolveBareSpecifierType(sourceName, importDecl, project);
       if (viaCompiler) return viaCompiler;
     }
   }
-  // The current file may re-export the symbol from another module.
-  return resolveReExportedType(name, sourceFile, project, new Set());
+  // The current file may re-export the symbol from another module. `seen` is the
+  // caller's walk when there is one: `resolveReExportedType` reaches here for a bare
+  // `export { X }`, and a fresh set would let a symbol that resolves to no type
+  // (an unmatched import, a value) re-enter the same file forever.
+  return resolveReExportedType(name, sourceFile, project, seen);
 }
 
 /**
@@ -233,7 +244,8 @@ function resolveBareSpecifierType(
  * Follow `export { X } from './mod'` / `export * from './mod'` re-exports, and
  * bare `export { X }` statements that re-publish a previously-imported symbol,
  * to find a type declaration in a sibling module. Guards against import cycles
- * via `seen`.
+ * via `seen`, keyed by file AND name: one file may legitimately be walked for two
+ * names (`export { A } from './a'; export { A as B }` reaches it for `B`, then `A`).
  */
 function resolveReExportedType(
   name: string,
@@ -241,9 +253,9 @@ function resolveReExportedType(
   project: Project,
   seen: Set<string>,
 ): TypeDeclResult | null {
-  const filePath = file.getFilePath();
-  if (seen.has(filePath)) return null;
-  seen.add(filePath);
+  const visit = `${file.getFilePath()}#${name}`;
+  if (seen.has(visit)) return null;
+  seen.add(visit);
 
   for (const exportDecl of file.getExportDeclarations()) {
     const moduleSpecifier = exportDecl.getModuleSpecifierValue();
@@ -277,7 +289,7 @@ function resolveReExportedType(
       name;
     const local = findTypeInFile(sourceName, file);
     if (local) return local;
-    const imported = resolveImportedType(sourceName, file, project);
+    const imported = resolveImportedType(sourceName, file, project, seen);
     if (imported) return imported;
   }
   return null;

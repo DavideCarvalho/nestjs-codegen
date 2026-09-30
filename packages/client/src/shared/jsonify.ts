@@ -46,20 +46,40 @@ type NonSerializableValue = ((...args: never[]) => unknown) | symbol | undefined
  * property: `any` is assignable to `NonSerializableValue`, so without the guard
  * an `{ x: any }` would silently DROP `x`. We KEEP `any` properties (matching
  * how `unknown` properties survive — both pass straight through `Jsonify`).
+ *
+ * An OPTIONAL property whose only value is `undefined` (`x?: undefined`) is kept
+ * too. It is what TypeScript adds to the members of an inferred union so the
+ * property can be read on the union (`{ ok: true; error?: undefined } |
+ * { ok: false; error: string }`, the return type of a handler with two `return`
+ * branches), and it models JSON's absent key exactly. Dropping it made
+ * `result.error` a compile error on the client.
  */
 type SerializableKeys<T> = {
-  [K in keyof T]-?: 0 extends 1 & T[K] ? K : [T[K]] extends [NonSerializableValue] ? never : K;
+  [K in keyof T]-?: 0 extends 1 & T[K]
+    ? K
+    : [T[K]] extends [NonSerializableValue]
+      ? OptionalUndefinedKey<T, K>
+      : K;
 }[keyof T];
+
+/** `K` when `T[K]` is an optional property that can only be `undefined`, else `never`. */
+type OptionalUndefinedKey<T, K extends keyof T> = [T[K]] extends [undefined]
+  ? // biome-ignore lint/complexity/noBannedTypes: `{}` is the "no required keys" probe
+    {} extends Pick<T, K>
+    ? K
+    : never
+  : never;
 
 /**
  * Recurse a plain object: keep only serializable keys and `Jsonify` each value.
  * The mapped type copies the optional/`readonly` modifiers from `T`, so an
  * optional property stays optional (its `undefined` arm models JSON's absent
  * key). `Jsonify<T[K]>` strips any leftover `undefined`/function arms inside a
- * union value as part of the recursion.
+ * union value as part of the recursion. An optional `undefined`-only property
+ * (kept by `SerializableKeys`) stays `x?: undefined`.
  */
 type JsonifyObject<T> = {
-  [K in keyof Pick<T, SerializableKeys<T>>]: Jsonify<T[K]>;
+  [K in keyof Pick<T, SerializableKeys<T>>]: [T[K]] extends [undefined] ? undefined : Jsonify<T[K]>;
 };
 
 /**

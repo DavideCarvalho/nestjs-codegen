@@ -319,7 +319,7 @@ export function createApi(fetcher: Fetcher) {
           filterFields: ["status", "name"] as const,
           queryKey: () => (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const),
           queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const), queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
-          mutationOptions: () => _mutationOptions({ mutationFn: (input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
+          mutationOptions: () => _mutationOptions({ mutationFn: (_input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
         }),
     },
     orders: {
@@ -526,7 +526,7 @@ export function createApi(fetcher: Fetcher) {
           filterFields: ["status", "name"] as const,
           queryKey: () => (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const),
           queryOptions: () => _queryOptions({ queryKey: (input === undefined ? ["pipelineRuns.search"] as const : ["pipelineRuns.search", input] as const), queryFn: () => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
-          mutationOptions: () => _mutationOptions({ mutationFn: (input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
+          mutationOptions: () => _mutationOptions({ mutationFn: (_input?: Record<string, never>) => fetcher.post<ApiRouter["pipelineRuns"]["search"]['response']>(route("pipelineRuns.search" as never) || "/api/pipeline-runs/search", {}) }),
         }),
     },
     orders: {

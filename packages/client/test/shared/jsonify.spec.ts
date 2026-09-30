@@ -31,6 +31,20 @@ describe('Jsonify', () => {
     expectTypeOf<Jsonify<Input>>().toEqualTypeOf<Expected>();
   });
 
+  it('keeps the optional undefined-only properties of an inferred union, so they can be read', () => {
+    // What TypeScript infers for a handler with two `return` branches.
+    type Input = { ok: true; at: Date; error?: undefined } | { ok: false; error: string };
+    type Expected = { ok: true; at: string; error?: undefined } | { ok: false; error: string };
+    expectTypeOf<Jsonify<Input>>().toEqualTypeOf<Expected>();
+    expectTypeOf<Jsonify<Input>['error']>().toEqualTypeOf<string | undefined>();
+  });
+
+  it('still drops a required undefined-only property and an optional function', () => {
+    type Input = { id: string; gone: undefined; compute?: () => number };
+    type Expected = { id: string };
+    expectTypeOf<Jsonify<Input>>().toEqualTypeOf<Expected>();
+  });
+
   it('drops function-valued properties (not serializable)', () => {
     type Input = { id: string; compute: () => number };
     type Expected = { id: string };

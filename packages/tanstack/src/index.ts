@@ -112,7 +112,10 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       // mutationFn takes the full leaf input ({ params?, query?, body? }) so path params
       // can be supplied dynamically at mutate() time, not just at the leaf call.
       if (!req.isGet) {
-        members.mutationOptions = `() => _mutationOptions({ mutationFn: (input?: ${req.inputType}) => ${requestExpr} })`;
+        // A request that reads nothing from its input (no params, query or body) names the
+        // parameter `_input`, so the file compiles under `noUnusedParameters`.
+        const param = /\binput\b/.test(requestExpr) ? 'input' : '_input';
+        members.mutationOptions = `() => _mutationOptions({ mutationFn: (${param}?: ${req.inputType}) => ${requestExpr} })`;
       }
       return members;
     },

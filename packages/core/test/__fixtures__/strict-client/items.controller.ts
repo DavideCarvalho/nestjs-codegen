@@ -11,7 +11,7 @@ export interface Item {
   createdAt: Date;
 }
 
-/** Every leaf shape a client usually has: list, read, create, delete, a no-input read. */
+/** Every leaf shape a client usually has: list, read, create, delete, a no-input read and write. */
 @Controller('items')
 export class ItemsController {
   @Get()
@@ -36,6 +36,11 @@ export class ItemsController {
   @Post()
   create(@Body(new StandardSchemaPipe(createItem)) body: z.infer<typeof createItem>): Item {
     return { id: '1', title: body.title, createdAt: new Date() };
+  }
+
+  @Post('reindex')
+  reindex(): { queued: boolean } {
+    return { queued: true };
   }
 
   @Delete(':id')

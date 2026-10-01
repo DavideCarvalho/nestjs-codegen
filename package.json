@@ -5,7 +5,7 @@
   "description": "Extensible codegen for NestJS — typed client artifacts with pluggable validation libs (zod/valibot/arktype), optional TanStack Query and superjson. Works with or without Inertia.",
   "license": "MIT",
   "author": "Davi Carvalho <davi@goflip.ai>",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=20"
   },

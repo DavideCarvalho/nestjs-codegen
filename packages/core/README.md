@@ -123,7 +123,7 @@ const create = useMutation(api.users.create().mutationOptions());
 generative UI with your design-system components: the names and props of your shadcn
 `components/ui` (read from their TypeScript types) go to `.genui/sandbox-kit.json`, on every
 generate and in watch mode. It needs the optional peer `@dudousxd/nestjs-agent-core`
-(>=0.50.0).
+(>=0.51.0).
 
 ```ts
 import { defineConfig, genuiSandboxKit } from '@dudousxd/nestjs-codegen';

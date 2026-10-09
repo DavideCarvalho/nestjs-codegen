@@ -79,19 +79,19 @@ async function loadKitModule(): Promise<KitModule> {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') {
       throw new CodegenError(
-        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}" — install @dudousxd/nestjs-agent-core@>=0.50.0, or pass \`generate\` to genuiSandboxKit().`,
+        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}" — install @dudousxd/nestjs-agent-core@>=0.51.0, or pass \`generate\` to genuiSandboxKit().`,
       );
     }
     if (code === 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
       throw new CodegenError(
-        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}", which the installed @dudousxd/nestjs-agent-core does not export — upgrade it to >=0.50.0.`,
+        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}", which the installed @dudousxd/nestjs-agent-core does not export — upgrade it to >=0.51.0.`,
       );
     }
     throw err;
   }
   if (typeof mod.writeSandboxKitDocs !== 'function') {
     throw new CodegenError(
-      `"${GENUI_KIT_MODULE}" has no writeSandboxKitDocs export — upgrade @dudousxd/nestjs-agent-core to >=0.50.0.`,
+      `"${GENUI_KIT_MODULE}" has no writeSandboxKitDocs export — upgrade @dudousxd/nestjs-agent-core to >=0.51.0.`,
     );
   }
   return mod as KitModule;
@@ -141,7 +141,7 @@ function resolveKitFilesLocally(
  * `emitFiles`; the kit files, stylesheets and the descriptor are tracked as inputs, so editing
  * a component regenerates in watch mode and a deleted descriptor is rewritten.
  *
- * Needs the optional peer `@dudousxd/nestjs-agent-core` (>=0.50.0) unless `generate` is given.
+ * Needs the optional peer `@dudousxd/nestjs-agent-core` (>=0.51.0) unless `generate` is given.
  */
 export function genuiSandboxKit(options: GenuiSandboxKitOptions = {}): CodegenExtension {
   const output = options.output ?? DEFAULT_SANDBOX_KIT_OUTPUT;

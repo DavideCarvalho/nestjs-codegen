@@ -116,6 +116,29 @@ const create = useMutation(api.users.create().mutationOptions());
 | [`@dudousxd/nestjs-filter-codegen`](https://www.npmjs.com/package/@dudousxd/nestjs-filter-codegen) | Extension — typed `filterQuery` helpers from the [nestjs-filter](https://github.com/DavideCarvalho/nestjs-filter) repo. |
 | [`@dudousxd/nestjs-inertia-codegen-extension`](https://www.npmjs.com/package/@dudousxd/nestjs-inertia-codegen-extension) | Extension — Inertia `router` / navigate output from the nestjs-inertia repo. |
 
+### Generative-UI sandbox kit (built in)
+
+`genuiSandboxKit()` writes the sandbox-kit docs that
+[`@dudousxd/nestjs-agent`](https://github.com/DavideCarvalho/nestjs-agent) uses to render
+generative UI with your design-system components: the names and props of your shadcn
+`components/ui` (read from their TypeScript types) go to `.genui/sandbox-kit.json`, on every
+generate and in watch mode. It needs the optional peer `@dudousxd/nestjs-agent-core`
+(>=0.51.0).
+
+```ts
+import { defineConfig, genuiSandboxKit } from '@dudousxd/nestjs-codegen';
+
+export default defineConfig({
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: 'src/generated' },
+  extensions: [genuiSandboxKit({ include: 'web/components/ui/*.tsx', css: 'web/styles/globals.css' })],
+});
+```
+
+Options: `entry`, `include` (default: the first shadcn `components/ui` dir found), `css`,
+`tsconfig`, `output` (default `.genui/sandbox-kit.json`, relative to the app cwd), and
+`generate` to inject the docs writer.
+
 Write your own against the `@dudousxd/nestjs-codegen/extension` contract:
 
 ```ts

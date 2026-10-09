@@ -83,6 +83,9 @@
     "typescript": ">=5.0.0"
   },
   "peerDependenciesMeta": {
+    "@dudousxd/nestjs-agent-core": {
+      "optional": true
+    },
     "@nestjs/common": {
       "optional": true
     },

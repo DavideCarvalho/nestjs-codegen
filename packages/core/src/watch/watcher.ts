@@ -1,11 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import type { ResolvedConfig } from '../config/types.js';
 import { PersistentDiscovery } from '../discovery/contracts-fast.js';
 import { allPageGlobs } from '../discovery/pages.js';
 import type { RouteDescriptor } from '../discovery/types.js';
-import { DriftGuardError, type EntryPoint } from '../generate-manifest.js';
+import { DriftGuardError, type EntryPoint, readManifest } from '../generate-manifest.js';
 import { generate } from '../generate.js';
 import { acquireLock } from './lock-file.js';
 
@@ -51,7 +51,12 @@ const NO_OP_WATCHER: Watcher = { close: async () => {} };
  *    re-runs static AST route discovery via ts-morph, then re-emits `routes.ts` and (when
  *    contracts are present) `api.ts` + `index.d.ts`.
  *
- * Both watchers share a single lock file in `config.codegen.outDir`. If another live process
+ * 3. **Tracked-inputs watcher** — the files extensions declared via `ctx.trackInput` (recorded
+ *    in the manifest as `extraInputs`), re-synced after every pass. A change re-runs the
+ *    contracts path, so an extension's out-of-glob dependencies (a filter class, a sandbox-kit
+ *    component) regenerate in watch mode too, not only on the next one-shot run.
+ *
+ * All watchers share a single lock file in `config.codegen.outDir`. If another live process
  * already holds the lock, logs a warning and returns a no-op watcher.
  */
 export async function watch(
@@ -106,12 +111,41 @@ export async function watch(
     return discovery;
   }
 
+  // ── Tracked-inputs watcher (extension dependencies outside the host globs) ──
+  // Starts empty; `syncTrackedInputs` adds whatever the last pass recorded in the
+  // manifest's `extraInputs`. Paths are only ever added — a dependency dropped by
+  // a later pass costs at most a no-op regenerate (the hash skips it).
+  const trackedWatcher = chokidar.watch([], {
+    ignoreInitial: true,
+    persistent: true,
+    awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
+  });
+  const trackedPaths = new Set<string>();
+  async function syncTrackedInputs(): Promise<void> {
+    const manifest = await readManifest(config.codegen.outDir);
+    const fresh: string[] = [];
+    for (const path of manifest?.extraInputs ?? []) {
+      const abs = resolve(config.codegen.cwd, path);
+      if (trackedPaths.has(abs)) continue;
+      trackedPaths.add(abs);
+      fresh.push(abs);
+    }
+    if (fresh.length > 0) trackedWatcher.add(fresh);
+  }
+  async function generateAndTrack(routes: RouteDescriptor[]): Promise<void> {
+    try {
+      await generate(config, routes, entryPoint);
+    } finally {
+      await syncTrackedInputs().catch(() => {});
+    }
+  }
+
   // Initial full pass: pages + routes + contracts (same as a one-shot `codegen` run).
   async function runInitialPass(): Promise<void> {
     try {
       const initialRoutes = (await getDiscovery()).discover();
       lastRoutes = initialRoutes;
-      await generate(config, initialRoutes, entryPoint);
+      await generateAndTrack(initialRoutes);
     } catch (err) {
       // A DriftGuardError is NOT a discovery failure — retrying via the pages-only
       // fallback below would just throw the identical error again and get silently
@@ -127,7 +161,7 @@ export async function watch(
         `[nestjs-codegen] Initial route discovery failed, falling back to pages-only: ${err instanceof Error ? err.message : String(err)}`,
       );
       try {
-        await generate(config, lastRoutes, entryPoint);
+        await generateAndTrack(lastRoutes);
       } catch {
         /* fallback: pages only */
       }
@@ -172,7 +206,7 @@ export async function watch(
       try {
         // Reuse the last-known routes so a pages-only regen never drops the
         // contract-derived api.ts (see lastRoutes declaration).
-        await generate(config, lastRoutes, entryPoint);
+        await generateAndTrack(lastRoutes);
       } catch (err) {
         console.error(
           '[nestjs-codegen] Pages generation failed:',
@@ -219,7 +253,7 @@ export async function watch(
         // options as the initial pass (query / mutationClient / queryImport / fetcher
         // importPath + the validation adapter). Emitting api.ts/forms.ts directly here
         // would silently drop those settings on every contract edit.
-        await generate(config, routes, entryPoint);
+        await generateAndTrack(routes);
       } catch (err) {
         console.error(
           '[nestjs-codegen] Contracts generation failed:',
@@ -248,6 +282,13 @@ export async function watch(
   formsWatcher.on('change', (p) => scheduleContractsRegenerate(p));
   formsWatcher.on('unlink', (p) => scheduleContractsRegenerate(p));
 
+  // A tracked input may be a file discovery parsed (a filter class), so route it
+  // through the contracts path: rediscovery refreshes it if it is in the Project
+  // and ignores it otherwise.
+  trackedWatcher.on('add', (p) => scheduleContractsRegenerate(p));
+  trackedWatcher.on('change', (p) => scheduleContractsRegenerate(p));
+  trackedWatcher.on('unlink', (p) => scheduleContractsRegenerate(p));
+
   return {
     close: async () => {
       if (pagesDebounceTimer !== undefined) {
@@ -261,6 +302,7 @@ export async function watch(
       await pagesWatcher.close();
       await contractsWatcher.close();
       await formsWatcher.close();
+      await trackedWatcher.close();
       await lock.release();
     },
   };

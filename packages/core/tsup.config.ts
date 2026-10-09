@@ -14,5 +14,5 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   outDir: 'dist',
-  external: ['ts-morph', 'typescript', 'cac', '@nestjs/common'],
+  external: ['ts-morph', 'typescript', 'cac', '@nestjs/common', '@dudousxd/nestjs-agent-core'],
 });

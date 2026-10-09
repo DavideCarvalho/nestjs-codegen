@@ -1,0 +1,66 @@
+---
+title: Generative-UI sandbox kit
+description: Write the sandbox-kit docs for @dudousxd/nestjs-agent alongside the generated client.
+icon: Sparkles
+---
+
+[`@dudousxd/nestjs-agent`](https://github.com/DavideCarvalho/nestjs-agent) can render
+generative UI in a sandbox with **your** design-system components (shadcn `components/ui`
+by default). The model is told which components exist and what props they take from a
+descriptor, `.genui/sandbox-kit.json`, that the Nest server reads relative to the app root.
+
+The **`genuiSandboxKit()`** extension, built into `@dudousxd/nestjs-codegen`, writes that
+descriptor on every codegen pass: one-off `nestjs-codegen codegen`, `--watch`, and the Nest
+module's watcher. The component names and props are read from their TypeScript types by
+`writeSandboxKitDocs` from `@dudousxd/nestjs-agent-core/genui/kit`, an optional peer
+dependency:
+
+```bash
+pnpm add -D @dudousxd/nestjs-agent-core@">=0.51.0"
+```
+
+```ts title="nestjs-codegen.config.ts"
+import { defineConfig, genuiSandboxKit } from '@dudousxd/nestjs-codegen';
+
+export default defineConfig({
+  contracts: { glob: 'src/**/*.controller.ts' },
+  codegen: { outDir: 'src/generated' },
+  extensions: [
+    genuiSandboxKit({
+      include: 'web/components/ui/*.tsx', // default: the first shadcn `components/ui` dir found
+      css: 'web/styles/globals.css',      // its custom properties become the sandbox theme
+    }),
+  ],
+});
+```
+
+## Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `entry` | — | A module whose exports are the kit (e.g. `src/genui/kit.ts`). Takes precedence over `include`. |
+| `include` | the first of `inertia/`, `resources/js/`, `src/`, `app/`, or the root `components/ui/*.{tsx,jsx,ts,js}` that exists | A glob (or several) whose files' exports are the kit. |
+| `css` | — | Stylesheet glob(s) whose CSS custom properties become the sandbox theme. |
+| `tsconfig` | the project's | The tsconfig the component prop types are read through. |
+| `output` | `.genui/sandbox-kit.json` | Where the descriptor is written, relative to the app `cwd` (or absolute). |
+| `generate` | `writeSandboxKitDocs` | Replace the docs writer (tests, or another generator). It receives `{ root, output, entry?, include?, css?, tsconfig? }` and is expected to write `output` itself. |
+
+A project with no kit (no `entry`, nothing matching `include`, no `components/ui`) writes
+nothing; the extension is a no-op there. Without `generate` and without
+`@dudousxd/nestjs-agent-core` installed, codegen fails with an error naming the package to
+install.
+
+## Freshness and watch mode
+
+The descriptor lives outside `outDir`, so the extension writes it directly rather than
+through `emitFiles`, and nothing it does collides with the core's output files. It declares
+the kit files, their directories, the stylesheets and the descriptor itself through
+`ctx.trackInput`, so:
+
+- editing a component, adding one to the kit directory, or editing a stylesheet regenerates
+  the descriptor, in both watch mode and the next one-off run;
+- a deleted descriptor (e.g. `.genui/` is gitignored and the checkout is fresh) is rewritten
+  even when everything else is up to date.
+
+The writer leaves an unchanged descriptor untouched, so a regenerate that changes nothing
+does not trigger a reload in the server.

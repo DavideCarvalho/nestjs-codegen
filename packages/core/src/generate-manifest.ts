@@ -251,13 +251,33 @@ export async function computeInputsHash(
   }
 
   for (const file of extra) {
-    const contents = await readFile(join(cwd, file), 'utf8').catch(() => null);
     hash.update(`extra:${file}\n`);
-    hash.update(contents ?? ' missing');
+    hash.update(await readTrackedInput(join(cwd, file)));
     hash.update('\n');
   }
 
   return hash.digest('hex');
+}
+
+/**
+ * The hashable contents of a tracked input: a file's text, or — for a tracked
+ * DIRECTORY — its sorted entry names, so adding or removing a file inside it
+ * invalidates (an extension tracks a directory when the set of files in it is
+ * an input, e.g. the sandbox-kit extension's `components/ui`). Anything
+ * unreadable hashes as a `missing` marker rather than throwing.
+ */
+async function readTrackedInput(path: string): Promise<string> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EISDIR') return '\x00missing';
+  }
+  try {
+    const entries = await readdir(path);
+    return `\x00dir:${entries.sort().join('\n')}`;
+  } catch {
+    return '\x00missing';
+  }
 }
 
 /** Read and validate the manifest in `outDir`, or `null` if absent/unreadable/malformed. */

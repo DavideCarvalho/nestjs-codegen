@@ -64,5 +64,15 @@ export {
   schemaModuleToJsonSchema,
 } from './ir/schema-node-to-json-schema.js';
 export type { JsonSchema } from './ir/schema-node-to-json-schema.js';
+// Optional built-in extensions
+export {
+  genuiSandboxKit,
+  DEFAULT_SANDBOX_KIT_OUTPUT,
+} from './extension/genui-sandbox-kit.js';
+export type {
+  GenuiSandboxKitOptions,
+  WriteSandboxKitDocsOptions,
+} from './extension/genui-sandbox-kit.js';
+
 export { discoverContractsFast } from './discovery/contracts-fast.js';
 export type { FastDiscoveryOptions } from './discovery/contracts-fast.js';

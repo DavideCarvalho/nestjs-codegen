@@ -33,6 +33,7 @@ import it into `forRoot()`.
 | `tanstackQuery()` | `@dudousxd/nestjs-codegen-tanstack` | Wraps each leaf into a handle exposing `queryOptions`/`mutationOptions`/`infiniteQueryOptions`/`queryKey`. See [TanStack Query](/docs/client/tanstack-query). |
 | `nestjsFilterCodegen()` | `@dudousxd/nestjs-filter-codegen` | Adds a typed `filterQuery()` member to leaves whose route is decorated with `@ApplyFilter`/`@FilterFor`. See [nestjs-filter](/docs/integrations/filters). |
 | `nestjsInertiaCodegen()` | `@dudousxd/nestjs-inertia-codegen-extension` | Adds the Inertia `router` import and a typed `navigate()` helper to `api.ts`, plus opt-in `shared.ts` and `page-excludes.ts` emission. See [nestjs-inertia](/docs/integrations/inertia). |
+| `genuiSandboxKit()` | `@dudousxd/nestjs-codegen` (built in) | Writes the generative-UI sandbox-kit docs (`.genui/sandbox-kit.json`) for `@dudousxd/nestjs-agent` from your `components/ui` types. See [Generative-UI sandbox kit](/docs/integrations/genui-sandbox-kit). |
 
 ## Write your own
 
@@ -71,7 +72,16 @@ most one extension may claim each — two claimers is a hard error):
   callable returning a `Promise`. e.g. TanStack wraps each leaf into a handle.
 
 Every hook receives a read-only `ExtensionContext` (`cwd`, `outDir`, `routes`, `config`,
-and two lazily-created shared ts-morph projects).
+`trackInput`, and two lazily-created shared ts-morph projects).
+
+### Declaring inputs outside the host's globs
+
+Codegen skips a pass when its inputs are unchanged. If your extension reads a file the
+host's globs (`contracts.glob`, `forms.watch`, `pages.glob`) do not cover, declare it with
+**`ctx.trackInput(...paths)`**: it is recorded in the manifest, folded into the next run's
+freshness hash, and watched by `--watch` / the Nest module's watcher, so editing it
+regenerates. A tracked **directory** hashes as its file listing, so adding or removing a
+file in it also regenerates.
 
 ### Which project to ask for
 

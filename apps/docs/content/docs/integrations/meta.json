@@ -4,6 +4,7 @@
   "pages": [
     "extensions",
     "inertia",
-    "filters"
+    "filters",
+    "genui-sandbox-kit"
   ]
 }

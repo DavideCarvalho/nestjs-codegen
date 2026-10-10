@@ -149,11 +149,12 @@ describe('genuiSandboxKit', () => {
   });
 
   it('throws a clear error when @dudousxd/nestjs-agent-core is not installed', async () => {
-    const ext = genuiSandboxKit();
+    // A module that is not installed (the real one is, as a workspace peer).
+    const ext = genuiSandboxKit({ kitModule: '@dudousxd/not-installed-genui-kit' });
     const ctx = createExtensionContext(makeConfig(cwd, [ext]), () => []);
     const run = ext.emitFiles?.(ctx);
     await expect(run).rejects.toBeInstanceOf(CodegenError);
-    await expect(run).rejects.toThrow(/@dudousxd\/nestjs-agent-core@>=0\.50\.0/);
+    await expect(run).rejects.toThrow(/@dudousxd\/nestjs-agent-core@>=0\.52\.0/);
   });
 
   it('runs during generate(): skips when unchanged, reruns on a kit edit, a new component, or a deleted descriptor', async () => {

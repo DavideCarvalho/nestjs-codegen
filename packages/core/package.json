@@ -80,7 +80,8 @@
   "peerDependencies": {
     "@nestjs/common": ">=9.0.0",
     "tsx": ">=4.0.0",
-    "typescript": ">=5.0.0"
+    "typescript": ">=5.0.0",
+    "@dudousxd/nestjs-agent-core": ">=0.52.0"
   },
   "peerDependenciesMeta": {
     "@dudousxd/nestjs-agent-core": {

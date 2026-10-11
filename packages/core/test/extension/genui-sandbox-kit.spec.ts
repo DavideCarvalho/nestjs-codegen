@@ -89,8 +89,8 @@ describe('genuiSandboxKit', () => {
   it('calls the generator with root = cwd and the options, and tracks kit + css + output', async () => {
     const { calls, generateDocs } = fakeWriter();
     const ext = genuiSandboxKit({
-      include: 'src/components/ui/*.tsx',
-      css: 'src/styles/*.css',
+      components: 'src/components/ui/*.tsx',
+      styles: 'src/styles/*.css',
       tsconfig: 'tsconfig.app.json',
       generate: generateDocs,
     });
@@ -104,8 +104,8 @@ describe('genuiSandboxKit', () => {
       {
         root: cwd,
         output: DEFAULT_SANDBOX_KIT_OUTPUT,
-        include: 'src/components/ui/*.tsx',
-        css: 'src/styles/*.css',
+        components: 'src/components/ui/*.tsx',
+        styles: 'src/styles/*.css',
         tsconfig: 'tsconfig.app.json',
       },
     ]);
@@ -120,10 +120,11 @@ describe('genuiSandboxKit', () => {
     );
   });
 
-  it('passes entry and a custom output through, tracking the entry and its directory', async () => {
+  it('passes a module, a wrapper and a custom output through, tracking them and their directory', async () => {
     const { calls, generateDocs } = fakeWriter();
     const ext = genuiSandboxKit({
-      entry: 'src/components/ui/button.tsx',
+      components: 'src/components/ui/button.tsx',
+      wrapper: 'src/components/ui/card.tsx',
       output: 'var/kit.json',
       generate: generateDocs,
     });
@@ -131,14 +132,24 @@ describe('genuiSandboxKit', () => {
     await ext.emitFiles?.(createExtensionContext(makeConfig(cwd, [ext]), () => [], tracked));
 
     expect(calls).toEqual([
-      { root: cwd, output: 'var/kit.json', entry: 'src/components/ui/button.tsx' },
+      {
+        root: cwd,
+        output: 'var/kit.json',
+        components: 'src/components/ui/button.tsx',
+        wrapper: 'src/components/ui/card.tsx',
+      },
     ]);
     expect([...tracked].sort()).toEqual(
-      ['src/components/ui/button.tsx', 'src/components/ui', 'var/kit.json'].sort(),
+      [
+        'src/components/ui/button.tsx',
+        'src/components/ui/card.tsx',
+        'src/components/ui',
+        'var/kit.json',
+      ].sort(),
     );
   });
 
-  it('falls back to the default shadcn components/ui dir when neither entry nor include is set', async () => {
+  it('falls back to the default shadcn components/ui dir without `components`', async () => {
     const { generateDocs } = fakeWriter();
     const ext = genuiSandboxKit({ generate: generateDocs });
     const tracked = new Set<string>();
@@ -148,13 +159,45 @@ describe('genuiSandboxKit', () => {
     expect(tracked).toContain('src/components/ui');
   });
 
+  it('the options from before nestjs-agent-core 0.53 throw a migration message', () => {
+    expect(() => genuiSandboxKit({ include: 'web/*.tsx', css: 'a.css' } as never)).toThrow(
+      /`include`, `css` were removed — `include: G` is now `components: G`.*`css: G` is now `styles: G`/,
+    );
+  });
+
+  it("with the real kit module: writes components, the styles' vocabulary and theme, and tracks what the styles import", async () => {
+    await writeFile(
+      join(cwd, 'src/styles/app.css'),
+      "@import './base.css';\n.btn { color: var(--primary); }\n.btn-primary { color: red; }\n",
+    );
+    await writeFile(
+      join(cwd, 'src/styles/base.css'),
+      ':root { --primary: red; }\n.card { padding: 1rem; }\n',
+    );
+    await writeFile(join(cwd, 'package.json'), '{}');
+    const ext = genuiSandboxKit({ styles: 'src/styles/app.css', stylesDocs: 'Cards use .card.' });
+    const tracked = new Set<string>();
+    await ext.emitFiles?.(createExtensionContext(makeConfig(cwd, [ext]), () => [], tracked));
+    const written = JSON.parse(await readFile(join(cwd, DEFAULT_SANDBOX_KIT_OUTPUT), 'utf8'));
+    expect(written.version).toBe(2);
+    // The kit is there (its docs need the app's own TypeScript, which this temp project has not).
+    expect(written.jsx).toBe(true);
+    expect(Array.isArray(written.components)).toBe(true);
+    expect(written.vocabulary.groups.map((g: { name: string }) => g.name)).toEqual(
+      expect.arrayContaining(['btn', 'card']),
+    );
+    expect(written.theme.vars['--primary']).toBe('red');
+    expect(written.guide).toBe('Cards use .card.');
+    expect(tracked).toContain('src/styles/base.css');
+  }, 60_000);
+
   it('throws a clear error when @dudousxd/nestjs-agent-core is not installed', async () => {
     // A module that is not installed (the real one is, as a workspace peer).
     const ext = genuiSandboxKit({ kitModule: '@dudousxd/not-installed-genui-kit' });
     const ctx = createExtensionContext(makeConfig(cwd, [ext]), () => []);
     const run = ext.emitFiles?.(ctx);
     await expect(run).rejects.toBeInstanceOf(CodegenError);
-    await expect(run).rejects.toThrow(/@dudousxd\/nestjs-agent-core@>=0\.52\.0/);
+    await expect(run).rejects.toThrow(/@dudousxd\/nestjs-agent-core@>=0\.53\.0/);
   });
 
   it('runs during generate(): skips when unchanged, reruns on a kit edit, a new component, or a deleted descriptor', async () => {

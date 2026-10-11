@@ -1,5 +1,13 @@
 # @dudousxd/nestjs-codegen
 
+## 0.29.0
+
+### Minor Changes
+
+- [#113](https://github.com/DavideCarvalho/nestjs-codegen/pull/113) [`e01376c`](https://github.com/DavideCarvalho/nestjs-codegen/commit/e01376cce17518b32f105526c0b7627f01738921) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `genuiSandboxKit()` takes the same options as the agent's Vite plugin: `components` (files, globs, directories or packages), `styles` (the app's style entries: the model is told the Tailwind tokens or the CSS class vocabulary, and the theme's variables), `wrapper`, `stylesDocs`, `tsconfig` and `output`. The stylesheets and what they `@import` are tracked as inputs.
+
+  **Breaking:** `include` and `entry` are now `components`, and `css` is now `styles`. Passing the old options throws a `CodegenError` naming the replacement. It needs `@dudousxd/nestjs-agent-core` >= 0.53.0.
+
 ## 0.28.0
 
 ### Minor Changes

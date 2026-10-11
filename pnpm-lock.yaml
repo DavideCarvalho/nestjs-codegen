@@ -129,9 +129,6 @@ importers:
 
   packages/core:
     dependencies:
-      '@dudousxd/nestjs-agent-core':
-        specifier: '>=0.52.0'
-        version: 0.52.0(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.23.13))
       cac:
         specifier: 6.7.14
         version: 6.7.14
@@ -145,6 +142,9 @@ importers:
         specifier: 28.0.0
         version: 28.0.0
     devDependencies:
+      '@dudousxd/nestjs-agent-core':
+        specifier: 0.53.0
+        version: 0.53.0(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.23.13))
       '@dudousxd/nestjs-codegen-zod':
         specifier: workspace:*
         version: link:../zod
@@ -378,8 +378,8 @@ packages:
   '@changesets/write@0.4.0':
     resolution: {integrity: sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q==}
 
-  '@dudousxd/nestjs-agent-core@0.52.0':
-    resolution: {integrity: sha512-lCFJaxwZQml42EoPAOF2r8LS/BlpOE44NGH1Q9SkyzAxQjSClKLRmRgT8IpyCpkl2q0nAEjFsJ+eylm81pTWSg==}
+  '@dudousxd/nestjs-agent-core@0.53.0':
+    resolution: {integrity: sha512-+HdCbs0GyvJsGAVmDjaeRrvZaG7vq+PgpYA6SAydpWFsBOMqC0kFm3XGBqqsh/wU2XPTBbOJvaf8mgp1KjRAig==}
     peerDependencies:
       '@resvg/resvg-js': ^2.6.0
       typescript: '>=5'
@@ -3647,7 +3647,7 @@ snapshots:
       human-id: 4.2.0
       prettier: 2.8.8
 
-  '@dudousxd/nestjs-agent-core@0.52.0(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.23.13))':
+  '@dudousxd/nestjs-agent-core@0.53.0(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.23.13))':
     dependencies:
       '@dudousxd/nestjs-diagnostics': 0.7.2(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
       '@standard-schema/spec': 1.1.0
@@ -4793,7 +4793,7 @@ snapshots:
       obug: 2.1.2
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@types/node@20.19.43)(@vitest/coverage-v8@4.1.11)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
+      vitest: 4.1.11(@types/node@20.19.43)(@vitest/coverage-v8@4.1.11)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.23.13))
 
   '@vitest/expect@4.1.11':
     dependencies:

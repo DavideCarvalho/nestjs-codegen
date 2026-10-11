@@ -120,10 +120,10 @@ const create = useMutation(api.users.create().mutationOptions());
 
 `genuiSandboxKit()` writes the sandbox-kit docs that
 [`@dudousxd/nestjs-agent`](https://github.com/DavideCarvalho/nestjs-agent) uses to render
-generative UI with your design-system components: the names and props of your shadcn
-`components/ui` (read from their TypeScript types) go to `.genui/sandbox-kit.json`, on every
-generate and in watch mode. It needs the optional peer `@dudousxd/nestjs-agent-core`
-(>=0.52.0).
+generative UI in your design system. The names and props of your components (read from their
+TypeScript types), and what your styles offer, go to `.genui/sandbox-kit.json`. That happens on
+every generate and in watch mode. It needs the optional peer `@dudousxd/nestjs-agent-core`
+(>=0.53.0).
 
 ```ts
 import { defineConfig, genuiSandboxKit } from '@dudousxd/nestjs-codegen';
@@ -131,13 +131,15 @@ import { defineConfig, genuiSandboxKit } from '@dudousxd/nestjs-codegen';
 export default defineConfig({
   contracts: { glob: 'src/**/*.controller.ts' },
   codegen: { outDir: 'src/generated' },
-  extensions: [genuiSandboxKit({ include: 'web/components/ui/*.tsx', css: 'web/styles/globals.css' })],
+  extensions: [genuiSandboxKit({ components: 'web/components/ui', styles: 'web/styles/globals.css' })],
 });
 ```
 
-Options: `entry`, `include` (default: the first shadcn `components/ui` dir found), `css`,
-`tsconfig`, `output` (default `.genui/sandbox-kit.json`, relative to the app cwd), and
-`generate` to inject the docs writer.
+Options (the same as the agent's Vite plugin):
+
+- `components` (default: the first shadcn `components/ui` dir found), `styles`, `wrapper`, `stylesDocs`, `tsconfig`;
+- `output` (default `.genui/sandbox-kit.json`, relative to the app cwd);
+- `generate`, to inject the docs writer.
 
 Write your own against the `@dudousxd/nestjs-codegen/extension` contract:
 

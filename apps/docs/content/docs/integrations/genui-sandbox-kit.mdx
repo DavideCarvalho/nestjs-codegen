@@ -5,18 +5,22 @@ icon: Sparkles
 ---
 
 [`@dudousxd/nestjs-agent`](https://github.com/DavideCarvalho/nestjs-agent) can render
-generative UI in a sandbox with **your** design-system components (shadcn `components/ui`
-by default). The model is told which components exist and what props they take from a
+generative UI in a sandbox in **your** design system, whatever its stack: your styles (Tailwind,
+Bootstrap, Sass, plain CSS), your React components (shadcn `components/ui` by default, MUI, your
+own) and your providers. The model is told which components exist and what props they take, and
+what your styles offer (Tailwind tokens, or the CSS classes they define), from a
 descriptor, `.genui/sandbox-kit.json`, that the Nest server reads relative to the app root.
 
 The **`genuiSandboxKit()`** extension, built into `@dudousxd/nestjs-codegen`, writes that
 descriptor on every codegen pass: one-off `nestjs-codegen codegen`, `--watch`, and the Nest
-module's watcher. The component names and props are read from their TypeScript types by
+module's watcher. It takes the same options as the agent's Vite plugin
+(`genuiSandboxKit()` from `@dudousxd/nestjs-agent/vite`). The component names and props are read
+from their TypeScript types, and the styles are compiled and read, by
 `writeSandboxKitDocs` from `@dudousxd/nestjs-agent-core/genui/kit`, an optional peer
 dependency:
 
 ```bash
-pnpm add -D @dudousxd/nestjs-agent-core@">=0.52.0"
+pnpm add -D @dudousxd/nestjs-agent-core@">=0.53.0"
 ```
 
 ```ts title="nestjs-codegen.config.ts"
@@ -27,8 +31,8 @@ export default defineConfig({
   codegen: { outDir: 'src/generated' },
   extensions: [
     genuiSandboxKit({
-      include: 'web/components/ui/*.tsx', // default: the first shadcn `components/ui` dir found
-      css: 'web/styles/globals.css',      // its custom properties become the sandbox theme
+      components: 'web/components/ui',  // default: the first shadcn `components/ui` dir found
+      styles: 'web/styles/globals.css',  // Tailwind tokens or CSS classes, and the theme's variables
     }),
   ],
 });
@@ -38,14 +42,19 @@ export default defineConfig({
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `entry` | — | A module whose exports are the kit (e.g. `src/genui/kit.ts`). Takes precedence over `include`. |
-| `include` | the first of `inertia/`, `resources/js/`, `src/`, `app/`, or the root `components/ui/*.{tsx,jsx,ts,js}` that exists | A glob (or several) whose files' exports are the kit. |
-| `css` | — | Stylesheet glob(s) whose CSS custom properties become the sandbox theme. |
+| `components` | the first of `inertia/`, `resources/js/`, `src/`, `app/`, or the root `components/ui` that exists | Modules whose exports are the kit's React components: files, globs, directories or packages. |
+| `styles` | — | The app's style entry files (plain CSS, Sass, a Tailwind stylesheet…). With Tailwind, the model is told your theme tokens and utilities; otherwise the classes the CSS defines. Either way it gets the root custom properties as the theme. |
+| `wrapper` | — | A module whose default export wraps the model's App (theme providers). It is recorded in the docs; the agent's Vite plugin bundles it. |
+| `stylesDocs` | — | Guidance on the styles for the model: a markdown file, or the text itself. |
 | `tsconfig` | the project's | The tsconfig the component prop types are read through. |
 | `output` | `.genui/sandbox-kit.json` | Where the descriptor is written, relative to the app `cwd` (or absolute). |
-| `generate` | `writeSandboxKitDocs` | Replace the docs writer (tests, or another generator). It receives `{ root, output, entry?, include?, css?, tsconfig? }` and is expected to write `output` itself. |
+| `generate` | `writeSandboxKitDocs` | Replace the docs writer (tests, or another generator). It receives `{ root, output, components?, styles?, wrapper?, stylesDocs?, tsconfig? }` and is expected to write `output` itself. |
 
-A project with no kit (no `entry`, nothing matching `include`, no `components/ui`) writes
+### Migration from 0.28
+
+`include` and `entry` are now `components`, and `css` is now `styles`. Passing the old options throws a `CodegenError` that names the replacement. It needs `@dudousxd/nestjs-agent-core` >= 0.53.
+
+A project with no kit (no `components` match, no `components/ui`, no `styles`) writes
 nothing; the extension is a no-op there. Without `generate` and without
 `@dudousxd/nestjs-agent-core` installed, codegen fails with an error naming the package to
 install.
@@ -54,7 +63,7 @@ install.
 
 The descriptor lives outside `outDir`, so the extension writes it directly rather than
 through `emitFiles`, and nothing it does collides with the core's output files. It declares
-the kit files, their directories, the stylesheets and the descriptor itself through
+the kit files, their directories, the stylesheets (and the files they `@import`) and the descriptor itself through
 `ctx.trackInput`, so:
 
 - editing a component, adding one to the kit directory, or editing a stylesheet regenerates

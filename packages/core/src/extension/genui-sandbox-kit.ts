@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import fg from 'fast-glob';
 import { CodegenError } from '../exceptions.js';
@@ -12,8 +12,8 @@ export const DEFAULT_SANDBOX_KIT_OUTPUT = '.genui/sandbox-kit.json';
 
 /**
  * Where a shadcn `components.json` puts `ui` by default — the same list the kit module probes
- * when neither `entry` nor `include` is given. Only used to track inputs when the kit module's
- * own `resolveSandboxKitFiles` is not available (an injected `generate`).
+ * without `components`. Only used to track inputs when the kit module's own
+ * `resolveSandboxKitFiles` is not available (an injected `generate`).
  */
 const DEFAULT_KIT_DIRS = [
   'inertia/components/ui',
@@ -27,19 +27,30 @@ const DEFAULT_KIT_DIRS = [
 export interface WriteSandboxKitDocsOptions {
   root: string;
   output: string;
-  entry?: string;
-  include?: string | readonly string[];
-  css?: string | readonly string[];
+  components?: string | readonly string[];
+  styles?: string | readonly string[];
+  wrapper?: string;
+  stylesDocs?: string;
   tsconfig?: string;
 }
 
+/** The same options as the agent's Vite plugin (`@dudousxd/nestjs-agent/vite`). */
 export interface GenuiSandboxKitOptions {
-  /** A module whose exports are the kit (e.g. `src/genui/kit.ts`). */
-  entry?: string;
-  /** A glob (or several) whose files' exports are the kit (e.g. `web/components/ui/*.tsx`). */
-  include?: string | readonly string[];
-  /** Stylesheet glob(s) whose custom properties become the sandbox theme. */
-  css?: string | readonly string[];
+  /**
+   * Modules whose exports are the kit's React components: files, globs, directories or packages
+   * (`web/components/ui`, `src/genui/kit.ts`, `@mui/material`). Default: the first shadcn
+   * `components/ui` dir found.
+   */
+  components?: string | readonly string[];
+  /**
+   * The app's style entry files (plain CSS, Sass, a Tailwind stylesheet…): what the model is told
+   * about the styles (Tailwind tokens, or the CSS class vocabulary) and the theme's variables.
+   */
+  styles?: string | readonly string[];
+  /** A module whose default export wraps the model's App (theme providers). */
+  wrapper?: string;
+  /** Guidance on the styles for the model: a markdown file, or the text itself. */
+  stylesDocs?: string;
   /** The tsconfig the component prop types are read through. */
   tsconfig?: string;
   /**
@@ -57,8 +68,14 @@ export interface GenuiSandboxKitOptions {
   kitModule?: string;
 }
 
+/** The options before nestjs-agent-core 0.53, and what replaced each. */
+const LEGACY_OPTIONS: Record<string, string> = {
+  entry: '`entry: X` is now `components: X`',
+  include: '`include: G` is now `components: G` (globs, files, directories or packages)',
+  css: "`css: G` is now `styles: G` (the app's style entry files)",
+};
+
 interface SandboxKitFiles {
-  entry?: string;
   files: string[];
   dirs: string[];
 }
@@ -67,9 +84,16 @@ interface KitModule {
   writeSandboxKitDocs: (options: WriteSandboxKitDocsOptions) => Promise<unknown>;
   resolveSandboxKitFiles?: (
     root: string,
-    options: { entry?: string; include?: string | readonly string[] },
+    options: { components?: string | readonly string[]; wrapper?: string },
   ) => SandboxKitFiles | null;
+  resolveStyleEntries?: (
+    root: string,
+    styles: string | readonly string[],
+  ) => { files: string[]; missing: string[] };
+  collectStyleSources?: (entries: readonly string[]) => { file: string }[];
 }
+
+const MIN_CORE = '0.53.0';
 
 async function loadKitModule(specifier: string = GENUI_KIT_MODULE): Promise<KitModule> {
   // A variable specifier keeps the optional peer out of type-checking and bundling.
@@ -80,19 +104,24 @@ async function loadKitModule(specifier: string = GENUI_KIT_MODULE): Promise<KitM
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') {
       throw new CodegenError(
-        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}" — install @dudousxd/nestjs-agent-core@>=0.52.0, or pass \`generate\` to genuiSandboxKit().`,
+        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}" — install @dudousxd/nestjs-agent-core@>=${MIN_CORE}, or pass \`generate\` to genuiSandboxKit().`,
       );
     }
     if (code === 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
       throw new CodegenError(
-        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}", which the installed @dudousxd/nestjs-agent-core does not export — upgrade it to >=0.52.0.`,
+        `genuiSandboxKit() needs "${GENUI_KIT_MODULE}", which the installed @dudousxd/nestjs-agent-core does not export — upgrade it to >=${MIN_CORE}.`,
       );
     }
     throw err;
   }
   if (typeof mod.writeSandboxKitDocs !== 'function') {
     throw new CodegenError(
-      `"${GENUI_KIT_MODULE}" has no writeSandboxKitDocs export — upgrade @dudousxd/nestjs-agent-core to >=0.52.0.`,
+      `"${GENUI_KIT_MODULE}" has no writeSandboxKitDocs export — upgrade @dudousxd/nestjs-agent-core to >=${MIN_CORE}.`,
+    );
+  }
+  if (typeof mod.resolveStyleEntries !== 'function') {
+    throw new CodegenError(
+      `The installed @dudousxd/nestjs-agent-core predates genuiSandboxKit({ components, styles, wrapper }) — upgrade it to >=${MIN_CORE}.`,
     );
   }
   return mod as KitModule;
@@ -109,69 +138,120 @@ function globBase(glob: string): string {
 }
 
 /**
- * Fallback kit-file resolution (mirrors the kit module's): `entry`, else `include`, else the
- * first existing default `components/ui` dir. Directories are returned too so that adding a
- * component file invalidates the run.
+ * Fallback kit-file resolution (a subset of the kit module's): `components` globs, files and
+ * directories, else the first existing default `components/ui` dir. Directories are returned too
+ * so that adding a component file invalidates the run.
  */
 function resolveKitFilesLocally(
   root: string,
-  options: { entry?: string; include?: string | readonly string[] },
+  options: { components?: string | readonly string[]; wrapper?: string },
 ): SandboxKitFiles | null {
-  if (options.entry !== undefined) {
-    const entry = isAbsolute(options.entry) ? options.entry : resolve(root, options.entry);
-    return { entry, files: [entry], dirs: [dirname(entry)] };
+  const specs =
+    options.components === undefined
+      ? DEFAULT_KIT_DIRS.filter((dir) => existsSync(resolve(root, dir))).slice(0, 1)
+      : typeof options.components === 'string'
+        ? [options.components]
+        : [...options.components];
+  const files: string[] = [];
+  const dirs = new Set<string>();
+  for (const spec of specs) {
+    if (/[*?{]/.test(spec)) {
+      files.push(...fg.sync(spec, { cwd: root, absolute: true, onlyFiles: true }));
+      dirs.add(resolve(root, globBase(spec)));
+      continue;
+    }
+    const path = isAbsolute(spec) ? spec : resolve(root, spec);
+    if (existsSync(path) && statSync(path).isDirectory()) {
+      files.push(...fg.sync('*.{tsx,jsx,ts,js}', { cwd: path, absolute: true, onlyFiles: true }));
+      dirs.add(path);
+    } else if (existsSync(path)) {
+      files.push(path);
+      dirs.add(dirname(path));
+    }
   }
-  const include =
-    options.include ??
-    DEFAULT_KIT_DIRS.filter((dir) => existsSync(resolve(root, dir))).map(
-      (dir) => `${dir}/*.{tsx,jsx,ts,js}`,
-    )[0];
-  if (include === undefined) return null;
-  const globs = typeof include === 'string' ? [include] : [...include];
-  const files = fg.sync(globs, { cwd: root, absolute: true, onlyFiles: true }).sort();
-  return { files, dirs: [...new Set(globs.map((glob) => resolve(root, globBase(glob))))] };
+  if (options.wrapper !== undefined) {
+    const wrapper = isAbsolute(options.wrapper) ? options.wrapper : resolve(root, options.wrapper);
+    if (existsSync(wrapper)) files.push(wrapper);
+  }
+  if (files.length === 0 && dirs.size === 0) return null;
+  return { files: [...new Set(files)].sort(), dirs: [...dirs] };
 }
 
 /**
  * Writes the generative-UI **sandbox kit docs** — the app's design-system components (shadcn
- * `components/ui` by default) with the props read from their TypeScript types — to
+ * `components/ui` by default) with the props read from their TypeScript types, and what its
+ * `styles` are (Tailwind tokens, or a CSS class vocabulary, and the theme's variables) — to
  * `.genui/sandbox-kit.json`, where the `@dudousxd/nestjs-agent` server reads them.
  *
  * Runs on every generate pass (one-shot CLI, `--watch`, and the Nest module's watcher). The
  * descriptor lives outside `outDir`, so it is written by the generator itself, not through
- * `emitFiles`; the kit files, stylesheets and the descriptor are tracked as inputs, so editing
- * a component regenerates in watch mode and a deleted descriptor is rewritten.
+ * `emitFiles`; the kit files, the stylesheets (and what they import) and the descriptor are
+ * tracked as inputs, so editing a component or a stylesheet regenerates in watch mode and a
+ * deleted descriptor is rewritten.
  *
- * Needs the optional peer `@dudousxd/nestjs-agent-core` (>=0.52.0) unless `generate` is given.
+ * Needs the optional peer `@dudousxd/nestjs-agent-core` (>=0.53.0) unless `generate` is given.
  */
 export function genuiSandboxKit(options: GenuiSandboxKitOptions = {}): CodegenExtension {
+  const legacy = Object.keys(LEGACY_OPTIONS).filter(
+    (key) => (options as Record<string, unknown>)[key] !== undefined,
+  );
+  if (legacy.length > 0) {
+    throw new CodegenError(
+      `genuiSandboxKit(): ${legacy.map((key) => `\`${key}\``).join(', ')} ${legacy.length > 1 ? 'were' : 'was'} removed — ${legacy.map((key) => LEGACY_OPTIONS[key]).join('; ')}. The options are now the agent's Vite plugin's: components, styles, wrapper, stylesDocs.`,
+    );
+  }
   const output = options.output ?? DEFAULT_SANDBOX_KIT_OUTPUT;
   const source = {
-    ...(options.entry !== undefined ? { entry: options.entry } : {}),
-    ...(options.include !== undefined ? { include: options.include } : {}),
+    ...(options.components !== undefined ? { components: options.components } : {}),
+    ...(options.wrapper !== undefined ? { wrapper: options.wrapper } : {}),
   };
   const extension: CodegenExtension & { options: Record<string, unknown> } = {
     name: 'genui-sandbox-kit',
     // Not read by the host: serialized into the config hash, so changing an option
     // invalidates skip-when-unchanged.
-    options: { ...source, css: options.css, tsconfig: options.tsconfig, output },
+    options: {
+      ...source,
+      styles: options.styles,
+      stylesDocs: options.stylesDocs,
+      tsconfig: options.tsconfig,
+      output,
+    },
     async emitFiles(ctx: ExtensionContext) {
       const root = ctx.cwd;
       let generate = options.generate;
-      let resolveFiles = resolveKitFilesLocally;
+      let mod: KitModule | undefined;
       if (!generate) {
-        const mod = await loadKitModule(options.kitModule);
+        mod = await loadKitModule(options.kitModule);
         generate = mod.writeSandboxKitDocs;
-        if (typeof mod.resolveSandboxKitFiles === 'function') {
-          resolveFiles = mod.resolveSandboxKitFiles;
-        }
       }
+      const resolveFiles = mod?.resolveSandboxKitFiles ?? resolveKitFilesLocally;
 
-      const kit = resolveFiles(root, source);
+      let kit: SandboxKitFiles | null = null;
+      try {
+        kit = resolveFiles(root, source);
+      } catch {
+        kit = null;
+      }
       if (kit) ctx.trackInput(...kit.files, ...kit.dirs);
-      if (options.css !== undefined) {
-        const css = typeof options.css === 'string' ? [options.css] : [...options.css];
-        ctx.trackInput(...fg.sync(css, { cwd: root, absolute: true, onlyFiles: true }));
+      if (options.styles !== undefined) {
+        const entries = mod?.resolveStyleEntries
+          ? mod.resolveStyleEntries(root, options.styles).files
+          : fg.sync(typeof options.styles === 'string' ? [options.styles] : [...options.styles], {
+              cwd: root,
+              absolute: true,
+              onlyFiles: true,
+            });
+        // What the stylesheets import, too: an edit to a partial changes the vocabulary.
+        const files = mod?.collectStyleSources
+          ? mod.collectStyleSources(entries).map((source) => source.file)
+          : entries;
+        ctx.trackInput(...new Set([...entries, ...files]));
+      }
+      if (options.stylesDocs !== undefined && !options.stylesDocs.includes('\n')) {
+        const guide = isAbsolute(options.stylesDocs)
+          ? options.stylesDocs
+          : resolve(root, options.stylesDocs);
+        if (existsSync(guide)) ctx.trackInput(guide);
       }
       // The descriptor itself: a deleted one changes the hash, so the next run rewrites it
       // even when every other input is unchanged.
@@ -181,7 +261,8 @@ export function genuiSandboxKit(options: GenuiSandboxKitOptions = {}): CodegenEx
         root,
         output,
         ...source,
-        ...(options.css !== undefined ? { css: options.css } : {}),
+        ...(options.styles !== undefined ? { styles: options.styles } : {}),
+        ...(options.stylesDocs !== undefined ? { stylesDocs: options.stylesDocs } : {}),
         ...(options.tsconfig !== undefined ? { tsconfig: options.tsconfig } : {}),
       });
       // The descriptor is written outside outDir by `generate`; nothing is emitted here.

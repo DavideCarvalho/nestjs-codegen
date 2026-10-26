@@ -7,20 +7,23 @@ import fg from 'fast-glob';
  */
 import {
   type ClassDeclaration,
+  FileSystemRefreshResult,
   type MethodDeclaration,
   Node,
   Project,
   type SourceFile,
   ts,
 } from 'ts-morph';
+import { DiskFingerprints } from './disk-fingerprints.js';
 import { extractDtoContract } from './dto-type-resolver.js';
 import { clearEnumCache } from './enum-resolution.js';
 import {
   clearMixinTypeProject,
+  invalidateMixinTypeProject,
   resolveInheritedMethods,
   resolveInstantiatedReturnType,
 } from './heritage.js';
-import { clearSchemaTypeProject } from './schema-type-inference.js';
+import { clearSchemaTypeProject, invalidateSchemaTypeProject } from './schema-type-inference.js';
 import {
   clearTypeResolutionCaches,
   resolveImportedVariable,
@@ -307,12 +310,24 @@ function byPath<T>(items: readonly T[], path: (item: T) => string = String): T[]
   });
 }
 
+/** What the watcher knows about the files behind a {@link PersistentDiscovery.rediscover}. */
+export interface RediscoverOptions {
+  /** A watched file was created or deleted (a rename is both). */
+  filesAddedOrRemoved?: boolean;
+}
+
 /**
  * A persistent-Project discovery session for watch mode. Holds ONE ts-morph
  * `Project` for the watcher's lifetime, re-globbing the controller set and
  * re-parsing only the file(s) that changed on each rediscovery — avoiding the
  * dominant cost of rebuilding the Project and re-parsing every controller + DTO
  * from scratch on every debounced change.
+ *
+ * The two type-checked programs extraction leans on (schema inference's and the
+ * mixin one) load the lib files and the schema libraries' declarations, which is
+ * most of a pass's cost, so they are kept too: each pass they re-read only what
+ * changed on disk. When files were added or removed they are built again instead,
+ * since a new file can change what an unchanged import resolves to.
  *
  * Correctness: the per-Project resolution memoization (`_findTypeCache`,
  * `_resolveNamedRefCache`, `_enumCache`) no longer auto-invalidates because the
@@ -326,6 +341,8 @@ export class PersistentDiscovery {
   private readonly glob: string;
   /** Absolute paths of the controllers currently loaded as extraction roots. */
   private controllerPaths = new Set<string>();
+  /** Every file in {@link project}, as last read from disk. */
+  private readonly files = new DiskFingerprints();
 
   private constructor(project: Project, cwd: string, glob: string) {
     this.project = project;
@@ -355,6 +372,10 @@ export class PersistentDiscovery {
 
   /** Run the initial extraction (equivalent to a first `discoverContractsFast`). */
   discover(): RouteDescriptor[] {
+    // A previous session in this process may have left the module-level mixin
+    // Project behind, holding files as they were then.
+    clearMixinTypeProject();
+    clearSchemaTypeProject(this.project);
     return this.runExtraction();
   }
 
@@ -363,19 +384,33 @@ export class PersistentDiscovery {
    * from disk (controllers AND any lazily-loaded DTO/imported files), re-globs
    * to pick up added/removed controllers, clears the per-Project caches, then
    * re-extracts. `changedPaths` is a hint; correctness does not depend on it
-   * being exhaustive because re-globbing + refresh-on-presence covers the set.
+   * being exhaustive because re-globbing + comparing every loaded file with the
+   * disk covers the set.
    */
-  async rediscover(changedPaths?: Iterable<string>): Promise<RouteDescriptor[]> {
-    // 1. Refresh explicitly-changed files that are already in the Project. This
-    //    re-parses ONLY those files (the expensive ts-morph parse) — DTOs that
-    //    didn't change keep their already-parsed AST.
-    if (changedPaths) {
-      for (const p of changedPaths) {
-        const abs = resolve(p);
-        const sf = this.project.getSourceFile(abs);
-        if (sf) {
-          await sf.refreshFromFileSystem();
-        }
+  async rediscover(
+    changedPaths?: Iterable<string>,
+    options: RediscoverOptions = {},
+  ): Promise<RouteDescriptor[]> {
+    // 1. Refresh the files in the Project that changed on disk. This re-parses
+    //    ONLY those files (the expensive ts-morph parse) — DTOs that didn't change
+    //    keep their already-parsed AST. A file outside the watched globs (a schema
+    //    module a controller imports) is caught here too, though no hint names it.
+    //    The program lists the files resolution pulled in as well as the ones
+    //    added to the Project; packages are left out.
+    const hinted = new Set([...(changedPaths ?? [])].map((p) => resolve(p)));
+    const program = this.project.getProgram().compilerObject;
+    const sources = program
+      .getSourceFiles()
+      .filter(
+        (file) =>
+          !program.isSourceFileDefaultLibrary(file) &&
+          !program.isSourceFileFromExternalLibrary(file),
+      )
+      .map((file) => ({ path: file.fileName, text: file.text }));
+    for (const path of new Set([...hinted, ...this.files.changed(sources)])) {
+      const sf = this.project.getSourceFile(path);
+      if (sf && (await sf.refreshFromFileSystem()) === FileSystemRefreshResult.Deleted) {
+        this.files.forget(path);
       }
     }
 
@@ -384,11 +419,13 @@ export class PersistentDiscovery {
     const globbed = new Set(
       await fg(this.glob, { cwd: this.cwd, absolute: true, onlyFiles: true }),
     );
+    let controllersChanged = false;
     for (const f of globbed) {
       if (!this.controllerPaths.has(f)) {
         try {
           this.project.addSourceFileAtPath(f);
           this.controllerPaths.add(f);
+          controllersChanged = true;
         } catch {
           /* file vanished between glob and add — ignore */
         }
@@ -399,9 +436,17 @@ export class PersistentDiscovery {
         const sf = this.project.getSourceFile(f);
         if (sf) this.project.removeSourceFile(sf);
         this.controllerPaths.delete(f);
+        controllersChanged = true;
       }
     }
 
+    if (controllersChanged || options.filesAddedOrRemoved) {
+      clearMixinTypeProject();
+      clearSchemaTypeProject(this.project);
+    } else {
+      invalidateMixinTypeProject();
+      invalidateSchemaTypeProject(this.project);
+    }
     return this.runExtraction();
   }
 
@@ -409,11 +454,6 @@ export class PersistentDiscovery {
   private runExtraction(): RouteDescriptor[] {
     clearTypeResolutionCaches(this.project);
     clearEnumCache(this.project);
-    // The mixin type Project is module-level (not keyed by this.project), so it
-    // would otherwise serve types parsed from a previous revision of the file.
-    clearMixinTypeProject();
-    // Likewise the schema-typing Project: a schema's file may have changed.
-    clearSchemaTypeProject(this.project);
     return extractRoutesFrom(this.project, this.controllerPaths);
   }
 }

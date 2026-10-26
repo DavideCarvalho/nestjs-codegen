@@ -1,4 +1,12 @@
-import { type ClassDeclaration, type MethodDeclaration, Node, Project } from 'ts-morph';
+import {
+  type ClassDeclaration,
+  FileSystemRefreshResult,
+  type MethodDeclaration,
+  Node,
+  Project,
+  ts,
+} from 'ts-morph';
+import { DiskFingerprints } from './disk-fingerprints.js';
 
 export interface InheritedMethods {
   /** Every method the base contributes, across its whole heritage chain, nearest declaration first. */
@@ -446,22 +454,99 @@ function resolvePropertyClassReference(
  * flag is the cause — `skipFileDependencyResolution` makes no difference.
  *
  * Rather than pay lib loading for every discovery run, this Project is built
- * lazily on the first mixin controller and reused. Cleared alongside the other
- * per-Project caches so watch mode never serves a stale type.
+ * lazily on the first mixin controller and reused: the cold path drops it after a
+ * pass, and the watcher keeps it and brings it up to date with the disk instead
+ * (see {@link invalidateMixinTypeProject}).
  */
 let mixinTypeProject: Project | undefined;
+let mixinFiles = new DiskFingerprints();
+let mixinStale = false;
+/** The imports that failed to resolve in a program, kept with the program they were read from. */
+let unresolved:
+  | { program: ts.Program; imports: Array<{ specifier: string; from: string }> }
+  | undefined;
 
 function getMixinTypeProject(): Project {
-  mixinTypeProject ??= new Project({
-    skipAddingFilesFromTsConfig: true,
-    compilerOptions: { strict: true },
-  });
+  if (mixinTypeProject && mixinStale && !refreshMixinTypeProject(mixinTypeProject)) {
+    mixinTypeProject = undefined;
+  }
+  mixinStale = false;
+  if (!mixinTypeProject) {
+    mixinTypeProject = new Project({
+      skipAddingFilesFromTsConfig: true,
+      compilerOptions: { strict: true },
+    });
+    mixinFiles = new DiskFingerprints();
+    unresolved = undefined;
+  }
   return mixinTypeProject;
 }
 
 /** Drop the mixin type Project so the next resolution re-reads from disk. */
 export function clearMixinTypeProject(): void {
   mixinTypeProject = undefined;
+  mixinStale = false;
+}
+
+/**
+ * Mark the mixin type Project as behind the disk. Its next use re-reads the files
+ * that changed and keeps everything else it has parsed, lib files included.
+ */
+export function invalidateMixinTypeProject(): void {
+  mixinStale = true;
+}
+
+/**
+ * Re-read the files of `project` that changed on disk. False when the result
+ * would not match a new Project's — a file it read is gone, or an import that
+ * failed to resolve now resolves (an unchanged program would keep the failure) —
+ * and a new Project is needed.
+ */
+function refreshMixinTypeProject(project: Project): boolean {
+  const program = project.getProgram().compilerObject;
+  const files = program
+    .getSourceFiles()
+    .filter((file) => !program.isSourceFileDefaultLibrary(file))
+    .map((file) => ({ path: file.fileName, text: file.text }));
+  const changed = mixinFiles.changed(files);
+  if (changed.length === 0) return !resolvesNow(program);
+  for (const path of changed) {
+    const sf = project.getSourceFile(path);
+    if (sf?.refreshFromFileSystemSync() !== FileSystemRefreshResult.Updated) return false;
+  }
+  // The next program resolves every failed import again; this also brings the
+  // files a changed one now imports into the Project, as adding it did.
+  project.resolveSourceFileDependencies();
+  return true;
+}
+
+/**
+ * Whether an import that failed to resolve in `program` now resolves to a
+ * TypeScript file the program does not hold.
+ */
+function resolvesNow(program: ts.Program): boolean {
+  if (unresolved?.program !== program) {
+    const checker = program.getTypeChecker();
+    const imports: Array<{ specifier: string; from: string }> = [];
+    for (const file of program.getSourceFiles()) {
+      if (program.isSourceFileDefaultLibrary(file) || file.isDeclarationFile) continue;
+      for (const statement of file.statements) {
+        if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
+        const specifier = statement.moduleSpecifier;
+        if (!specifier || !ts.isStringLiteral(specifier)) continue;
+        if (!checker.getSymbolAtLocation(specifier)) {
+          imports.push({ specifier: specifier.text, from: file.fileName });
+        }
+      }
+    }
+    unresolved = { program, imports };
+  }
+  const options = program.getCompilerOptions();
+  return unresolved.imports.some(({ specifier, from }) => {
+    const file = ts.resolveModuleName(specifier, from, options, ts.sys).resolvedModule
+      ?.resolvedFileName;
+    return file !== undefined && /\.(m|c)?tsx?$/.test(file) && !program.getSourceFile(file);
+  });
 }
 
 /**

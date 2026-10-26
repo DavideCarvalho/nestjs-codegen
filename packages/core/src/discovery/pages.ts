@@ -22,6 +22,8 @@ export interface DiscoverPagesOptions {
   prefix?: string;
   /** Recorded on each page. Default `'default'`. */
   scope?: string;
+  /** Reads a page's source. Default: from disk. */
+  read?: (path: string) => Promise<string>;
 }
 
 // Files matching these patterns are never treated as Inertia pages even if
@@ -71,7 +73,7 @@ export async function discoverPages(opts: DiscoverPagesOptions): Promise<Discove
       const rel = relative(opts.cwd, file);
       const nameRel = relative(pagesBase, file).split(sep).join('/');
       const name = `${prefix}${computeName(nameRel, opts.componentNameStrategy)}`;
-      const source = await readFile(file, 'utf8');
+      const source = await (opts.read ? opts.read(file) : readFile(file, 'utf8'));
       const propsSource = extractPropsSource(source, opts.propsExport);
       out.push({ name, absolutePath: file, relativePath: rel, propsSource, scope });
     }
@@ -83,11 +85,19 @@ export async function discoverPages(opts: DiscoverPagesOptions): Promise<Discove
 /**
  * Discover the pages of every Inertia app in the config: the default app (`pages.glob`) and
  * each `pages.scopes` entry, whose page names carry its prefix. Returns `[]` without `pages`.
+ * `read` supplies page sources already in memory.
  */
-export async function discoverPageScopes(config: ResolvedConfig): Promise<DiscoveredPage[]> {
+export async function discoverPageScopes(
+  config: ResolvedConfig,
+  read?: (path: string) => Promise<string>,
+): Promise<DiscoveredPage[]> {
   const pages = config.pages;
   if (!pages) return [];
-  const common = { cwd: config.codegen.cwd, propsExport: pages.propsExport };
+  const common = {
+    cwd: config.codegen.cwd,
+    propsExport: pages.propsExport,
+    ...(read ? { read } : {}),
+  };
   const out = await discoverPages({
     ...common,
     glob: pages.glob,

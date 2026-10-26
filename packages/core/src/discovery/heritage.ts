@@ -4,9 +4,9 @@ import {
   type MethodDeclaration,
   Node,
   Project,
-  ts,
 } from 'ts-morph';
 import { DiskFingerprints } from './disk-fingerprints.js';
+import { UnresolvedImports } from './unresolved-imports.js';
 
 export interface InheritedMethods {
   /** Every method the base contributes, across its whole heritage chain, nearest declaration first. */
@@ -461,10 +461,7 @@ function resolvePropertyClassReference(
 let mixinTypeProject: Project | undefined;
 let mixinFiles = new DiskFingerprints();
 let mixinStale = false;
-/** The imports that failed to resolve in a program, kept with the program they were read from. */
-let unresolved:
-  | { program: ts.Program; imports: Array<{ specifier: string; from: string }> }
-  | undefined;
+let mixinUnresolved = new UnresolvedImports();
 
 function getMixinTypeProject(): Project {
   if (mixinTypeProject && mixinStale && !refreshMixinTypeProject(mixinTypeProject)) {
@@ -477,7 +474,7 @@ function getMixinTypeProject(): Project {
       compilerOptions: { strict: true },
     });
     mixinFiles = new DiskFingerprints();
-    unresolved = undefined;
+    mixinUnresolved = new UnresolvedImports();
   }
   return mixinTypeProject;
 }
@@ -509,7 +506,7 @@ function refreshMixinTypeProject(project: Project): boolean {
     .filter((file) => !program.isSourceFileDefaultLibrary(file))
     .map((file) => ({ path: file.fileName, text: file.text }));
   const changed = mixinFiles.changed(files);
-  if (changed.length === 0) return !resolvesNow(program);
+  if (changed.length === 0) return mixinUnresolved.nowResolving(program).length === 0;
   for (const path of changed) {
     const sf = project.getSourceFile(path);
     if (sf?.refreshFromFileSystemSync() !== FileSystemRefreshResult.Updated) return false;
@@ -518,35 +515,6 @@ function refreshMixinTypeProject(project: Project): boolean {
   // files a changed one now imports into the Project, as adding it did.
   project.resolveSourceFileDependencies();
   return true;
-}
-
-/**
- * Whether an import that failed to resolve in `program` now resolves to a
- * TypeScript file the program does not hold.
- */
-function resolvesNow(program: ts.Program): boolean {
-  if (unresolved?.program !== program) {
-    const checker = program.getTypeChecker();
-    const imports: Array<{ specifier: string; from: string }> = [];
-    for (const file of program.getSourceFiles()) {
-      if (program.isSourceFileDefaultLibrary(file) || file.isDeclarationFile) continue;
-      for (const statement of file.statements) {
-        if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
-        const specifier = statement.moduleSpecifier;
-        if (!specifier || !ts.isStringLiteral(specifier)) continue;
-        if (!checker.getSymbolAtLocation(specifier)) {
-          imports.push({ specifier: specifier.text, from: file.fileName });
-        }
-      }
-    }
-    unresolved = { program, imports };
-  }
-  const options = program.getCompilerOptions();
-  return unresolved.imports.some(({ specifier, from }) => {
-    const file = ts.resolveModuleName(specifier, from, options, ts.sys).resolvedModule
-      ?.resolvedFileName;
-    return file !== undefined && /\.(m|c)?tsx?$/.test(file) && !program.getSourceFile(file);
-  });
 }
 
 /**

@@ -424,6 +424,28 @@ export const createNote = z.object({ late: z.number().int() });
         },
       },
       {
+        name: 'a mixin controller imports a factory that does not exist yet',
+        apply: async () => [
+          await put(
+            root,
+            'src/widgets.controller.ts',
+            FILES['src/widgets.controller.ts'].replace("'./table-factory'", "'./table-factory-v2'"),
+          ),
+        ],
+      },
+      {
+        // Outside every watched glob, so no hint and no add reported.
+        name: 'the missing factory appears unannounced',
+        apply: async () => {
+          await put(
+            root,
+            'src/table-factory-v2.ts',
+            FILES['src/table-factory.ts'].replace('Promise<Paginated<E>>', 'Promise<E[]>'),
+          );
+          return [];
+        },
+      },
+      {
         name: 'a controller is edited after all of that',
         apply: async () => [
           await put(

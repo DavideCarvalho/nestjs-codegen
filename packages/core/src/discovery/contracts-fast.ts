@@ -30,6 +30,7 @@ import {
   setDiscoveryContext,
 } from './type-ref-resolution.js';
 import type { ContractSource, MixinBinding, RouteDescriptor, TypeRef } from './types.js';
+import { UnresolvedImports } from './unresolved-imports.js';
 import { type ParsedContractDef, parseDefineContractCall } from './zod-ast-to-ts.js';
 
 // Re-export so existing test import paths (`../discovery/contracts-fast.js`)
@@ -343,6 +344,7 @@ export class PersistentDiscovery {
   private controllerPaths = new Set<string>();
   /** Every file in {@link project}, as last read from disk. */
   private readonly files = new DiskFingerprints();
+  private readonly unresolved = new UnresolvedImports();
 
   private constructor(project: Project, cwd: string, glob: string) {
     this.project = project;
@@ -412,6 +414,18 @@ export class PersistentDiscovery {
       if (sf && (await sf.refreshFromFileSystem()) === FileSystemRefreshResult.Deleted) {
         this.files.forget(path);
       }
+    }
+    // A file whose missing import now exists is parsed again, so the next program
+    // resolves its imports afresh; one only resolution pulled in is dropped and
+    // pulled in again the same way. Go-to-definition reads the language service's
+    // program, which is only rebuilt when a file changes, so that is the one read.
+    const inProject = new Set<string>(this.project.getSourceFiles().map((sf) => sf.getFilePath()));
+    const definitions = this.project.getLanguageService().compilerObject.getProgram();
+    for (const path of definitions ? this.unresolved.nowResolving(definitions) : []) {
+      const sf = this.project.getSourceFile(path);
+      if (!sf) continue;
+      this.project.removeSourceFile(sf);
+      if (inProject.has(path)) this.project.addSourceFileAtPathIfExists(path);
     }
 
     // 2. Re-glob to reconcile the controller set: add new controllers, drop

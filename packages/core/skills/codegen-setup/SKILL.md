@@ -58,7 +58,11 @@ export class AppModule {}
 ```
 
 Run the app as usual (`nest start --watch`): the watcher does an initial generate, then regenerates
-as controllers/DTOs change. `@nestjs/common` is an optional peer — your Nest app already has it.
+as controllers/DTOs change. Passes after the first are incremental: the type-checked programs are
+kept and only files changed on disk are re-read (including loaded files outside the watched globs,
+picked up on the next pass); creating or deleting a watched file rebuilds them from scratch. See
+`apps/docs/content/docs/cli.mdx` ("What a watch pass costs"). `@nestjs/common` is an optional peer —
+your Nest app already has it.
 
 ## Core patterns
 

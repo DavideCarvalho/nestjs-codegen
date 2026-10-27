@@ -63,9 +63,15 @@ export type SchemaInference =
  * pays for it.
  */
 const programs = new WeakMap<Project, SchemaTypeProgram>();
+/** Discovery Projects whose program must catch up with their files before its next use. */
+const stale = new WeakSet<Project>();
 
 function programFor(discovery: Project): SchemaTypeProgram {
   let program = programs.get(discovery);
+  if (program && stale.has(discovery)) {
+    stale.delete(discovery);
+    if (!program.refresh()) program = undefined;
+  }
   if (!program) {
     program = new SchemaTypeProgram(discovery);
     programs.set(discovery, program);
@@ -74,12 +80,22 @@ function programFor(discovery: Project): SchemaTypeProgram {
 }
 
 /**
- * Drop the typed program built for `discovery`, so the next inference re-reads the
- * files. The watcher reuses one discovery Project across changes and calls this on
- * every pass; the cold path calls it once extraction is done.
+ * Drop the typed program built for `discovery`, so the next inference builds a new
+ * one. The cold path calls it once extraction is done, and the watcher when files
+ * were added or removed.
  */
 export function clearSchemaTypeProject(discovery: Project): void {
   programs.delete(discovery);
+  stale.delete(discovery);
+}
+
+/**
+ * Mark the typed program built for `discovery` as behind its files. The watcher
+ * calls this on every pass; the program catches up on its next use, keeping the lib
+ * and package declarations it has already loaded.
+ */
+export function invalidateSchemaTypeProject(discovery: Project): void {
+  if (programs.has(discovery)) stale.add(discovery);
 }
 
 /** The node in `typedSf` that spans exactly what `node` spans in the discovery file. */

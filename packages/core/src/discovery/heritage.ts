@@ -1,4 +1,12 @@
-import { type ClassDeclaration, type MethodDeclaration, Node, Project } from 'ts-morph';
+import {
+  type ClassDeclaration,
+  FileSystemRefreshResult,
+  type MethodDeclaration,
+  Node,
+  Project,
+} from 'ts-morph';
+import { DiskFingerprints } from './disk-fingerprints.js';
+import { UnresolvedImports } from './unresolved-imports.js';
 
 export interface InheritedMethods {
   /** Every method the base contributes, across its whole heritage chain, nearest declaration first. */
@@ -446,22 +454,67 @@ function resolvePropertyClassReference(
  * flag is the cause — `skipFileDependencyResolution` makes no difference.
  *
  * Rather than pay lib loading for every discovery run, this Project is built
- * lazily on the first mixin controller and reused. Cleared alongside the other
- * per-Project caches so watch mode never serves a stale type.
+ * lazily on the first mixin controller and reused: the cold path drops it after a
+ * pass, and the watcher keeps it and brings it up to date with the disk instead
+ * (see {@link invalidateMixinTypeProject}).
  */
 let mixinTypeProject: Project | undefined;
+let mixinFiles = new DiskFingerprints();
+let mixinStale = false;
+let mixinUnresolved = new UnresolvedImports();
 
 function getMixinTypeProject(): Project {
-  mixinTypeProject ??= new Project({
-    skipAddingFilesFromTsConfig: true,
-    compilerOptions: { strict: true },
-  });
+  if (mixinTypeProject && mixinStale && !refreshMixinTypeProject(mixinTypeProject)) {
+    mixinTypeProject = undefined;
+  }
+  mixinStale = false;
+  if (!mixinTypeProject) {
+    mixinTypeProject = new Project({
+      skipAddingFilesFromTsConfig: true,
+      compilerOptions: { strict: true },
+    });
+    mixinFiles = new DiskFingerprints();
+    mixinUnresolved = new UnresolvedImports();
+  }
   return mixinTypeProject;
 }
 
 /** Drop the mixin type Project so the next resolution re-reads from disk. */
 export function clearMixinTypeProject(): void {
   mixinTypeProject = undefined;
+  mixinStale = false;
+}
+
+/**
+ * Mark the mixin type Project as behind the disk. Its next use re-reads the files
+ * that changed and keeps everything else it has parsed, lib files included.
+ */
+export function invalidateMixinTypeProject(): void {
+  mixinStale = true;
+}
+
+/**
+ * Re-read the files of `project` that changed on disk. False when the result
+ * would not match a new Project's — a file it read is gone, or an import that
+ * failed to resolve now resolves (an unchanged program would keep the failure) —
+ * and a new Project is needed.
+ */
+function refreshMixinTypeProject(project: Project): boolean {
+  const program = project.getProgram().compilerObject;
+  const files = program
+    .getSourceFiles()
+    .filter((file) => !program.isSourceFileDefaultLibrary(file))
+    .map((file) => ({ path: file.fileName, text: file.text }));
+  const changed = mixinFiles.changed(files);
+  if (changed.length === 0) return mixinUnresolved.nowResolving(program).length === 0;
+  for (const path of changed) {
+    const sf = project.getSourceFile(path);
+    if (sf?.refreshFromFileSystemSync() !== FileSystemRefreshResult.Updated) return false;
+  }
+  // The next program resolves every failed import again; this also brings the
+  // files a changed one now imports into the Project, as adding it did.
+  project.resolveSourceFileDependencies();
+  return true;
 }
 
 /**

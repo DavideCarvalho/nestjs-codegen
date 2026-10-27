@@ -7,9 +7,11 @@
  * Gracefully returns null when the share function cannot be analyzed
  * (complex logic, service calls, external references, etc.).
  */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
+import { type CompilerOptions, Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
 import type { ResolvedConfig } from '../config/types.js';
+import { loadDiscoveryTsconfig } from './contracts-fast.js';
 
 export interface SharedPropsResult {
   /** The TS type string — either `Awaited<ReturnType<typeof import('...').fn>>` or an inline object type */
@@ -69,12 +71,7 @@ export function discoverSharedPropsFromConfig(config: ResolvedConfig): SharedPro
     const tsconfigPath = config.app.tsconfig ?? join(config.codegen.cwd, 'tsconfig.json');
     let project: Project;
     try {
-      project = new Project({
-        tsConfigFilePath: tsconfigPath,
-        skipAddingFilesFromTsConfig: true,
-        skipLoadingLibFiles: true,
-        skipFileDependencyResolution: true,
-      });
+      project = sharedPropsProject(tsconfigPath);
     } catch {
       project = new Project({
         skipAddingFilesFromTsConfig: true,
@@ -88,6 +85,39 @@ export function discoverSharedPropsFromConfig(config: ResolvedConfig): SharedPro
     // Graceful fallback — skip shared props if anything goes wrong
     return null;
   }
+}
+
+/**
+ * The compiler options a tsconfig parsed to, by tsconfig path, with the text of the
+ * tsconfig and every file it extends at the time. A Project built from a
+ * `tsConfigFilePath` also lists every file the tsconfig includes, a walk of the
+ * project tree, so each generate pass (one per change in watch mode) reuses the
+ * options for as long as that text is unchanged.
+ */
+const parsedTsconfigs = new Map<string, { text: string; options: CompilerOptions }>();
+
+function readText(file: string): string {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return '\0missing';
+  }
+}
+
+function sharedPropsProject(tsconfigPath: string): Project {
+  const text = loadDiscoveryTsconfig(tsconfigPath)
+    .files.map((file) => `${file}\0${readText(file)}`)
+    .join('\0');
+  const flags = {
+    skipAddingFilesFromTsConfig: true,
+    skipLoadingLibFiles: true,
+    skipFileDependencyResolution: true,
+  };
+  const parsed = parsedTsconfigs.get(tsconfigPath);
+  if (parsed?.text === text) return new Project({ ...flags, compilerOptions: parsed.options });
+  const project = new Project({ ...flags, tsConfigFilePath: tsconfigPath });
+  parsedTsconfigs.set(tsconfigPath, { text, options: project.getCompilerOptions() });
+  return project;
 }
 
 /**

@@ -26,6 +26,8 @@ import {
   diffConfigKeyHashes,
   isManifestFresh,
   listOutputFiles,
+  readInput,
+  readInputs,
   readManifest,
   writeManifest,
 } from './generate-manifest.js';
@@ -81,8 +83,10 @@ export async function generate(
   // the hash. Without them an extension that reads outside the host's globs —
   // the filter extension reads each route's `@ApplyFilter` target — produces
   // output that nothing invalidates.
+  // The inputs are read once, here, and serve both hashes and page discovery.
   const manifest = await readManifest(config.codegen.outDir);
-  const inputsHash = await computeInputsHash(config, manifest?.extraInputs ?? []);
+  const inputs = await readInputs(config);
+  const inputsHash = await computeInputsHash(config, manifest?.extraInputs ?? [], inputs);
   if (await isManifestFresh(config.codegen.outDir, manifest, inputsHash)) {
     console.log(`[nestjs-codegen] ${config.codegen.outDir} up to date, skipped`);
     return;
@@ -134,7 +138,7 @@ export async function generate(
   if (config.pages) {
     const pagesConfig = config.pages;
     // The default app's pages and every `pages.scopes` app's (their names prefixed).
-    const pages = await discoverPageScopes(config);
+    const pages = await discoverPageScopes(config, (path) => readInput(inputs, path));
 
     const sharedProps = discoverSharedPropsFromConfig(config);
 
@@ -206,7 +210,7 @@ export async function generate(
   // dependency set changes would store a hash the next run cannot reproduce,
   // costing one spurious regeneration before it settles.
   const recordedHash =
-    extraInputs.length > 0 ? await computeInputsHash(config, extraInputs) : inputsHash;
+    extraInputs.length > 0 ? await computeInputsHash(config, extraInputs, inputs) : inputsHash;
   await writeManifest(config.codegen.outDir, {
     version: VERSION,
     hash: recordedHash,

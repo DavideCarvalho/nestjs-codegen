@@ -193,6 +193,58 @@ async function discoverInputFiles(config: ResolvedConfig): Promise<string[]> {
 }
 
 /**
+ * The contents of a pass's input files, read once and shared by everything in the
+ * pass that needs them: the freshness hash before the pass, the hash recorded after
+ * it, and page discovery.
+ */
+export interface InputSnapshot {
+  /** The entry tsconfig and everything it extends (just the entry path when there is none). */
+  tsconfigFiles: string[];
+  /** The globbed input files, absolute and sorted. */
+  files: string[];
+  /** Contents by absolute path; null for a tsconfig that could not be read. */
+  contents: Map<string, string | null>;
+  /** Tracked inputs read so far, by absolute path. */
+  tracked: Map<string, string>;
+}
+
+/** Files read at once; a large app's inputs read unbounded would exhaust file descriptors. */
+const READ_CONCURRENCY = 64;
+
+async function readAll<T>(paths: readonly string[], read: (path: string) => Promise<T>) {
+  const out = new Map<string, T>();
+  for (let i = 0; i < paths.length; i += READ_CONCURRENCY) {
+    const batch = paths.slice(i, i + READ_CONCURRENCY);
+    const texts = await Promise.all(batch.map(read));
+    batch.forEach((path, j) => out.set(path, texts[j] as T));
+  }
+  return out;
+}
+
+/** Read every input file a generate pass depends on: see {@link computeInputsHash}. */
+export async function readInputs(config: ResolvedConfig): Promise<InputSnapshot> {
+  const cwd = config.codegen.cwd;
+  const tsconfigPath = resolveTsconfigPath(cwd, config.app?.tsconfig ?? undefined);
+  const extended = loadDiscoveryTsconfig(tsconfigPath).files;
+  const tsconfigFiles = extended.length > 0 ? extended : [tsconfigPath];
+  const files = await discoverInputFiles(config);
+  const contents = new Map<string, string | null>();
+  const tsconfigs = await readAll(tsconfigFiles, (file) =>
+    readFile(file, 'utf8').catch(() => null),
+  );
+  for (const [file, text] of tsconfigs) contents.set(file, text);
+  for (const [file, text] of await readAll(files, (file) => readFile(file, 'utf8'))) {
+    contents.set(file, text);
+  }
+  return { tsconfigFiles, files, contents, tracked: new Map() };
+}
+
+/** A file's contents from `snapshot` when it holds them, else from disk. */
+export async function readInput(snapshot: InputSnapshot, path: string): Promise<string> {
+  return snapshot.contents.get(path) ?? readFile(path, 'utf8');
+}
+
+/**
  * Compute a content hash over everything that determines generate output: the
  * contents of all discovered input source files, the serialized resolved config,
  * and the lib version. A change to any input — a controller edit, a config tweak,
@@ -215,44 +267,46 @@ async function discoverInputFiles(config: ResolvedConfig): Promise<string[]> {
  * and an `exclude` is exactly what such a fix tends to be. The whole `extends`
  * chain is hashed, not just the entry file, since that is where a shared
  * `paths` block usually lives.
+ *
+ * `snapshot` is the pass's already-read inputs ({@link readInputs}); without one
+ * they are read here.
  */
 export async function computeInputsHash(
   config: ResolvedConfig,
   extraInputs: readonly string[] = [],
+  snapshot?: InputSnapshot,
 ): Promise<string> {
+  const inputs = snapshot ?? (await readInputs(config));
   const hash = createHash('sha256');
   hash.update(`version:${VERSION}\n`);
   hash.update(`config:${serializeConfig(config)}\n`);
 
   const cwd = config.codegen.cwd;
 
-  const tsconfigPath = resolveTsconfigPath(cwd, config.app?.tsconfig ?? undefined);
-  // `files` is the entry tsconfig plus everything it extends; empty when there is
-  // no tsconfig, in which case the entry path still hashes as a `missing` marker
-  // so ADDING one invalidates too.
-  const tsconfigFiles = loadDiscoveryTsconfig(tsconfigPath).files;
-  for (const file of tsconfigFiles.length > 0 ? tsconfigFiles : [tsconfigPath]) {
-    const contents = await readFile(file, 'utf8').catch(() => null);
+  // `tsconfigFiles` is the entry tsconfig plus everything it extends; with no
+  // tsconfig, the entry path still hashes as a `missing` marker so ADDING one
+  // invalidates too.
+  for (const file of inputs.tsconfigFiles) {
     hash.update(`tsconfig:${relative(cwd, file)}\n`);
-    hash.update(contents ?? ' missing');
+    hash.update(inputs.contents.get(file) ?? ' missing');
     hash.update('\n');
   }
-  const globbed = await discoverInputFiles(config);
-  const globbedRelative = new Set(globbed.map((file) => relative(cwd, file)));
+  const globbedRelative = new Set(inputs.files.map((file) => relative(cwd, file)));
   // A tracked file that a glob already covers must not be hashed twice.
   const extra = [...new Set(extraInputs)].filter((file) => !globbedRelative.has(file)).sort();
 
-  for (const file of globbed) {
-    const contents = await readFile(file, 'utf8');
+  for (const file of inputs.files) {
     // Hash the relative path too, so a rename (same contents) still invalidates.
     hash.update(`file:${relative(cwd, file)}\n`);
-    hash.update(contents);
+    hash.update(inputs.contents.get(file) as string);
     hash.update('\n');
   }
 
+  const unread = extra.map((file) => join(cwd, file)).filter((abs) => !inputs.tracked.has(abs));
+  for (const [abs, text] of await readAll(unread, readTrackedInput)) inputs.tracked.set(abs, text);
   for (const file of extra) {
     hash.update(`extra:${file}\n`);
-    hash.update(await readTrackedInput(join(cwd, file)));
+    hash.update(inputs.tracked.get(join(cwd, file)) as string);
     hash.update('\n');
   }
 

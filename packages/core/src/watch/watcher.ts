@@ -226,6 +226,8 @@ export async function watch(
   // Absolute paths changed since the last rediscovery, accumulated across the
   // debounce window so a burst of edits refreshes every touched file exactly once.
   const pendingChangedPaths = new Set<string>();
+  // Whether a file in that window was created or deleted rather than edited.
+  let pendingAddedOrRemoved = false;
 
   const contractsWatcher = chokidar.watch(join(config.codegen.cwd, config.contracts.glob), {
     ignoreInitial: true,
@@ -233,8 +235,9 @@ export async function watch(
     awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
   });
 
-  function scheduleContractsRegenerate(changedPath?: string): void {
+  function scheduleContractsRegenerate(changedPath?: string, addedOrRemoved = false): void {
     if (typeof changedPath === 'string') pendingChangedPaths.add(changedPath);
+    if (addedOrRemoved) pendingAddedOrRemoved = true;
     if (contractsDebounceTimer !== undefined) {
       clearTimeout(contractsDebounceTimer);
     }
@@ -242,11 +245,15 @@ export async function watch(
       contractsDebounceTimer = undefined;
       const changed = [...pendingChangedPaths];
       pendingChangedPaths.clear();
+      const filesAddedOrRemoved = pendingAddedOrRemoved;
+      pendingAddedOrRemoved = false;
       try {
         // Reuse the persistent Project: refresh only the changed file(s), re-glob
         // for added/removed controllers, then re-extract. Avoids reconstructing
         // the Project and re-parsing every controller + DTO on each change.
-        const routes: RouteDescriptor[] = await (await getDiscovery()).rediscover(changed);
+        const routes: RouteDescriptor[] = await (await getDiscovery()).rediscover(changed, {
+          filesAddedOrRemoved,
+        });
         lastRoutes = routes;
 
         // Route through generate() so the incremental pass honors the SAME emit
@@ -264,9 +271,9 @@ export async function watch(
     }, config.contracts.debounceMs);
   }
 
-  contractsWatcher.on('add', (p) => scheduleContractsRegenerate(p));
+  contractsWatcher.on('add', (p) => scheduleContractsRegenerate(p, true));
   contractsWatcher.on('change', (p) => scheduleContractsRegenerate(p));
-  contractsWatcher.on('unlink', (p) => scheduleContractsRegenerate(p));
+  contractsWatcher.on('unlink', (p) => scheduleContractsRegenerate(p, true));
 
   // ── DTO watcher (forms.ts synthesis from class-validator DTOs) ───────────────
   // DTO classes live in *.dto.ts files (not matched by the controller glob), but
@@ -278,16 +285,16 @@ export async function watch(
     awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
   });
 
-  formsWatcher.on('add', (p) => scheduleContractsRegenerate(p));
+  formsWatcher.on('add', (p) => scheduleContractsRegenerate(p, true));
   formsWatcher.on('change', (p) => scheduleContractsRegenerate(p));
-  formsWatcher.on('unlink', (p) => scheduleContractsRegenerate(p));
+  formsWatcher.on('unlink', (p) => scheduleContractsRegenerate(p, true));
 
   // A tracked input may be a file discovery parsed (a filter class), so route it
   // through the contracts path: rediscovery refreshes it if it is in the Project
   // and ignores it otherwise.
-  trackedWatcher.on('add', (p) => scheduleContractsRegenerate(p));
+  trackedWatcher.on('add', (p) => scheduleContractsRegenerate(p, true));
   trackedWatcher.on('change', (p) => scheduleContractsRegenerate(p));
-  trackedWatcher.on('unlink', (p) => scheduleContractsRegenerate(p));
+  trackedWatcher.on('unlink', (p) => scheduleContractsRegenerate(p, true));
 
   return {
     close: async () => {

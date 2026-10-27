@@ -27,6 +27,27 @@ npx nestjs-codegen codegen --watch   # regenerate on file changes
 The watcher debounces and holds a lock file so two watchers don't fight over the
 output directory.
 
+### What a watch pass costs
+
+The first pass is a full, cold run. Later passes are incremental, and their output is
+the same as a cold run on the same tree:
+
+- The type-checked programs discovery uses (schema inference, and typing the responses
+  of factory-built "mixin" controllers) are kept between passes. A pass re-reads only
+  the files that changed on disk, so in a large app it takes a few hundred milliseconds
+  rather than seconds.
+- Each pass checks every file discovery has loaded against the disk by mtime and size,
+  re-reading content only when those differ. That includes files outside the watched
+  globs, such as a schema module a controller imports. Editing such a file does not
+  start a pass by itself; the next pass picks it up.
+- An import of a module that does not exist yet is checked again on each pass, so it
+  resolves once the module is created, even outside the watched globs.
+- Creating or deleting a watched controller, DTO or tracked input rebuilds both programs
+  from scratch, because a new file can change what an unchanged import resolves to.
+- Each controller, DTO and page is read once per generate pass. The shared-props step
+  reuses the parsed `tsconfig` until the text of that tsconfig or a file it `extends`
+  changes.
+
 ## `init`
 
 Scaffold a starter `nestjs-codegen.config.ts` (and, for Inertia projects, the app

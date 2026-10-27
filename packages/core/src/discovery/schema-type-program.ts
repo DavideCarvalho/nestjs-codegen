@@ -1,4 +1,5 @@
-import { Node, Project, type SourceFile, ts } from 'ts-morph';
+import { FileSystemRefreshResult, Node, Project, type SourceFile, ts } from 'ts-morph';
+import { DiskFingerprints } from './disk-fingerprints.js';
 
 /**
  * The type-checked program schema inference runs in, kept as small as the schemas
@@ -32,6 +33,16 @@ interface Needs {
   names: Set<string>;
 }
 
+type Want = { schema?: boolean; all?: boolean; names?: string[] };
+
+/** One file's pruned text, and what it asked of the files it imports. */
+interface Pruned {
+  text: string;
+  requests: Array<{ path: string; want: Want }>;
+  /** Every import resolved, so the same source and needs prune the same way again. */
+  resolved: boolean;
+}
+
 /** The param decorators whose pipes discovery reads schemas from. */
 const PARAM_DECORATORS = new Set(['Body', 'Query', 'Param']);
 
@@ -47,6 +58,11 @@ export class SchemaTypeProgram {
   private readonly needs = new Map<string, Needs>();
   /** Pruned text per file, as last written into {@link project}. */
   private readonly written = new Map<string, string>();
+  /** What {@link project} read from disk unpruned (packages, declaration files). */
+  private readonly externalFiles = new DiskFingerprints();
+  private readonly scratchFiles = new DiskFingerprints();
+  /** The last pruning of each file, with the source text and needs it was pruned for. */
+  private readonly pruned = new Map<string, Pruned & { source: string; needs: string }>();
 
   constructor(private readonly discovery: Project) {
     const base = discovery.getCompilerOptions();
@@ -71,10 +87,60 @@ export class SchemaTypeProgram {
       skipAddingFilesFromTsConfig: true,
       compilerOptions: this.options,
     });
-    // Everything discovery holds now (the controllers) goes in before the first
-    // query: a file added afterwards discards the program and its checker, and
-    // rebuilding them once per controller is exactly the cost this avoids.
-    for (const sf of discovery.getSourceFiles()) this.request(sf.getFilePath(), { schema: true });
+    this.requestDiscoveryFiles();
+  }
+
+  /**
+   * Bring the program up to date with discovery's files and the disk, keeping the
+   * lib and package declarations it has already parsed and checked. Leaves it
+   * holding exactly the files a new program built now would hold, with the same
+   * text. Returns false when a file the program read unpruned has changed on disk
+   * (a package was reinstalled, a `.d.ts` was edited): the caller builds a new
+   * program instead.
+   */
+  refresh(): boolean {
+    const program = this.project.getProgram().compilerObject;
+    const external = program
+      .getSourceFiles()
+      .filter(
+        (file) => !program.isSourceFileDefaultLibrary(file) && !this.written.has(file.fileName),
+      )
+      .map((file) => ({ path: file.fileName, text: file.text }));
+    if (this.externalFiles.changed(external).length > 0) return false;
+
+    const scratch = this.scratch
+      .getSourceFiles()
+      .map((sf) => ({ path: sf.getFilePath(), text: sf.getFullText() }));
+    for (const path of this.scratchFiles.changed(scratch)) {
+      const sf = this.scratch.getSourceFile(path);
+      if (sf?.refreshFromFileSystemSync() === FileSystemRefreshResult.Deleted) {
+        this.scratchFiles.forget(path);
+      }
+    }
+
+    // What a file must keep depends on what every other file asks of it, so the
+    // closure is recomputed from the roots; only files whose pruned text changed
+    // are written again.
+    this.needs.clear();
+    this.requestDiscoveryFiles();
+    for (const path of [...this.written.keys()]) {
+      if (this.needs.has(path)) continue;
+      const sf = this.project.getSourceFile(path);
+      if (sf) this.project.removeSourceFile(sf);
+      this.written.delete(path);
+    }
+    return true;
+  }
+
+  /**
+   * Everything discovery holds now (the controllers) goes in before the first
+   * query: a file added afterwards discards the program and its checker, and
+   * rebuilding them once per controller is exactly the cost this avoids.
+   */
+  private requestDiscoveryFiles(): void {
+    for (const sf of this.discovery.getSourceFiles()) {
+      this.request(sf.getFilePath(), { schema: true });
+    }
     this.flush();
   }
 
@@ -93,7 +159,7 @@ export class SchemaTypeProgram {
 
   private readonly queue: string[] = [];
 
-  private request(path: string, want: { schema?: boolean; all?: boolean; names?: string[] }): void {
+  private request(path: string, want: Want): void {
     let needs = this.needs.get(path);
     const isNew = !needs;
     needs ??= { schema: false, all: false, names: new Set() };
@@ -118,16 +184,25 @@ export class SchemaTypeProgram {
 
   /** Run the worklist to a fixpoint, then write every changed file into the program. */
   private flush(): void {
-    const changed = new Map<string, string>();
+    const changed = new Map<string, string | undefined>();
     while (this.queue.length > 0) {
       const path = this.queue.pop() as string;
       const original = this.original(path);
-      if (!original) continue;
-      const needs = this.needs.get(path) as Needs;
-      const text = this.prune(original, needs);
+      if (!original) {
+        if (this.written.has(path)) changed.set(path, undefined);
+        continue;
+      }
+      const { text, requests } = this.pruneCached(path, original, this.needs.get(path) as Needs);
+      for (const { path: target, want } of requests) this.request(target, want);
       if (this.written.get(path) !== text) changed.set(path, text);
     }
     for (const [path, text] of changed) {
+      if (text === undefined) {
+        const sf = this.project.getSourceFile(path);
+        if (sf) this.project.removeSourceFile(sf);
+        this.written.delete(path);
+        continue;
+      }
       this.project.createSourceFile(path, text, { overwrite: true });
       this.written.set(path, text);
     }
@@ -142,11 +217,30 @@ export class SchemaTypeProgram {
     );
   }
 
+  /** {@link prune}, reusing the last result while the file's text and needs are the same. */
+  private pruneCached(path: string, sf: SourceFile, needs: Needs): Pruned {
+    const source = sf.getFullText();
+    const key = `${needs.schema}:${needs.all}:${[...needs.names].sort().join(',')}`;
+    const last = this.pruned.get(path);
+    if (last && last.source === source && last.needs === key) return last;
+    const result = this.prune(sf, needs);
+    if (result.resolved) this.pruned.set(path, { ...result, source, needs: key });
+    else this.pruned.delete(path);
+    return result;
+  }
+
   /**
    * `sf`'s text with every import/re-export nothing in `needs` references blanked,
-   * requesting from each kept one's target the names it brings in.
+   * and the names each kept one brings in from its target.
    */
-  private prune(sf: SourceFile, needs: Needs): string {
+  private prune(sf: SourceFile, needs: Needs): Pruned {
+    const requests: Pruned['requests'] = [];
+    let resolved = true;
+    const resolveFrom = (specifier: string) => {
+      const target = this.resolve(specifier, sf);
+      if (target === null) resolved = false;
+      return target ?? undefined;
+    };
     const locals = topLevelDeclarations(sf);
     const roots: Node[] = [];
     if (needs.all) roots.push(...sf.getStatements());
@@ -207,7 +301,7 @@ export class SchemaTypeProgram {
     };
 
     for (const decl of sf.getImportDeclarations()) {
-      const target = this.resolve(decl.getModuleSpecifierValue(), sf);
+      const target = resolveFrom(decl.getModuleSpecifierValue());
       const namespace = decl.getNamespaceImport()?.getText();
       const def = decl.getDefaultImport()?.getText();
       const named = decl
@@ -224,9 +318,12 @@ export class SchemaTypeProgram {
         continue;
       }
       if (target) {
-        this.request(target, {
-          all: wantsNamespace,
-          names: [...(wantsDefault ? ['default'] : []), ...named.map((n) => n.imported)],
+        requests.push({
+          path: target,
+          want: {
+            all: wantsNamespace,
+            names: [...(wantsDefault ? ['default'] : []), ...named.map((n) => n.imported)],
+          },
         });
       }
     }
@@ -234,14 +331,14 @@ export class SchemaTypeProgram {
     for (const exp of sf.getExportDeclarations()) {
       const spec = exp.getModuleSpecifierValue();
       if (spec === undefined) continue;
-      const target = this.resolve(spec, sf);
+      const target = resolveFrom(spec);
       if (exp.isNamespaceExport() || exp.getNamedExports().length === 0) {
         // `export * from` — it may provide any name this file was asked for and
         // does not declare itself.
         if (!needs.all && unresolvedNames.length === 0) {
           blank(exp);
         } else if (target) {
-          this.request(target, { all: needs.all, names: unresolvedNames });
+          requests.push({ path: target, want: { all: needs.all, names: unresolvedNames } });
         }
         continue;
       }
@@ -252,24 +349,26 @@ export class SchemaTypeProgram {
         )
         .map((n) => n.getNameNode().getText());
       if (wanted.length === 0) blank(exp);
-      else if (target) this.request(target, { names: wanted });
+      else if (target) requests.push({ path: target, want: { names: wanted } });
     }
 
-    return chars.join('');
+    return { text: chars.join(''), requests, resolved };
   }
 
   /**
-   * The project source file a module specifier resolves to, or undefined for a
-   * package (read unpruned by the program itself) or an unresolvable one.
+   * The project source file a module specifier resolves to; undefined for a
+   * package or a declaration file (read unpruned by the program itself), null for
+   * one that does not resolve.
    */
-  private resolve(specifier: string, from: SourceFile): string | undefined {
+  private resolve(specifier: string, from: SourceFile): string | null | undefined {
     const resolved = ts.resolveModuleName(
       specifier,
       from.getFilePath(),
       this.options,
       ts.sys,
     ).resolvedModule;
-    if (!resolved || resolved.isExternalLibraryImport) return undefined;
+    if (!resolved) return null;
+    if (resolved.isExternalLibraryImport) return undefined;
     const file = resolved.resolvedFileName;
     if (file.endsWith('.d.ts') || !/\.(m|c)?tsx?$/.test(file)) return undefined;
     return file;

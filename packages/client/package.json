@@ -64,7 +64,7 @@
     }
   },
   "devDependencies": {
-    "@nestjs/common": "12.0.1",
+    "@nestjs/common": "12.3.2",
     "@types/node": "20.19.43",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",

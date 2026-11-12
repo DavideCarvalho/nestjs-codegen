@@ -26,7 +26,6 @@ function makeConfig(overrides?: Partial<ResolvedConfig>): ResolvedConfig {
       componentNameStrategy: 'relative-no-ext',
     },
     contracts: { glob: 'src/**/*.controller.ts', debounceMs: 500 },
-    scopes: {},
     codegen: { outDir: '/tmp/test-out', cwd: '/tmp/test-cwd' },
     app: null,
     ...overrides,

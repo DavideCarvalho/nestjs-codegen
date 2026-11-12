@@ -21,7 +21,6 @@ function fakeConfig(extensions: CodegenExtension[]): ResolvedConfig {
     query: false,
     pages: null,
     contracts: { glob: 'src/**/*.controller.ts', debounceMs: 500 },
-    scopes: {},
     codegen: { outDir: '/tmp/out', cwd: '/tmp' },
     app: null,
     fetcher: null,

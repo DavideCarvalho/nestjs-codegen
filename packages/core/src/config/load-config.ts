@@ -127,11 +127,6 @@ function validateUserConfig(userConfig: UserConfigInput): void {
       );
     }
   }
-  if (userConfig.scopes && Object.keys(userConfig.scopes).length > 0) {
-    console.warn(
-      '[nestjs-codegen] The top-level `scopes` option has no effect and is deprecated. For several Inertia apps use `pages.scopes` (one entry per InertiaModule.forFeature scope); for several controller sets use one `contracts.glob` (e.g. a brace glob).',
-    );
-  }
 }
 
 function isGlobInput(value: unknown): value is string | string[] {
@@ -196,7 +191,6 @@ function applyDefaults(userConfig: UserConfigInput, cwd: string): ResolvedConfig
       glob: userConfig.contracts?.glob ?? 'src/**/*.controller.ts',
       debounceMs: userConfig.contracts?.debounceMs ?? 500,
     },
-    scopes: userConfig.scopes ?? {},
     codegen: {
       outDir,
       cwd: resolvedCwd,

@@ -214,16 +214,3 @@ absent from the generated client, with no warning. Reach for the wrapping factor
 Types on an inherited route resolve in the file that **declares the handler** — the factory's
 file — so a `@Body()`/`@Query()` DTO or a return type the factory imports resolves normally
 even though the controller's own file never names it.
-
-## Multi-scope discovery
-
-<Callout type="warn">
-**Deprecated — no effect.** The top-level `scopes` option was parsed but never read by
-discovery, and a config that sets it now gets a warning. What it was meant for is covered
-elsewhere:
-
-- **Several Inertia apps** (one `InertiaModule.forFeature({ scope })` each): use
-  [`pages.scopes`](/docs/integrations/inertia#several-inertia-apps-scopes).
-- **Several controller sets**: `contracts.glob` is one glob, so reach them with a brace glob,
-  e.g. `'src/{public,admin}/**/*.controller.ts'`.
-</Callout>

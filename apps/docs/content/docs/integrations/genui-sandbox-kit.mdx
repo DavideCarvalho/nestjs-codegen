@@ -52,7 +52,7 @@ export default defineConfig({
 
 ### Migration from 0.28
 
-`include` and `entry` are now `components`, and `css` is now `styles`. Passing the old options throws a `CodegenError` that names the replacement. It needs `@dudousxd/nestjs-agent-core` >= 0.53.
+`include` and `entry` are now `components`, and `css` is now `styles`. Rename them in your config; TypeScript flags the old names. It needs `@dudousxd/nestjs-agent-core` >= 0.53.
 
 A project with no kit (no `components` match, no `components/ui`, no `styles`) writes
 nothing; the extension is a no-op there. Without `generate` and without

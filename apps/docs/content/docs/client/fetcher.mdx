@@ -58,6 +58,7 @@ const transport: Transport = async (req) => {
     status: res.status,
     statusText: res.statusText,
     contentType: res.headers.get('content-type'),
+    headers: Object.fromEntries(res.headers), // lower-cased keys
     text: () => res.text(),
   };
 };

@@ -4,7 +4,7 @@ description: >-
   Use @dudousxd/nestjs-client, the framework-neutral runtime the generated api.ts imports from.
   Build the client with createApi(createFetcher(opts)); configure FetcherOptions
   (baseUrl, headers, transport, transformer, deserialize, onError). Swap the network layer with
-  axiosTransport(instance) or a custom Transport (returns normalized { ok,status,statusText,text() },
+  axiosTransport(instance) or a custom Transport (returns normalized { ok,status,statusText,contentType,headers,text() },
   NOT a parsed body). Round-trip rich types with a transformer ({ stringify, parse }) or an array
   pipeline via composeTransformers. Opt individual clients into superjson with the
   @dudousxd/nestjs-client/superjson subpath: superjsonFetcherOptions, withSuperjson, and the server
@@ -67,6 +67,7 @@ const transport: Transport = async (req) => {
   return {
     ok: res.ok, status: res.status, statusText: res.statusText,
     contentType: res.headers.get('content-type'),
+    headers: Object.fromEntries(res.headers), // lower-cased keys
     text: () => res.text(),
   };
 };
@@ -170,10 +171,11 @@ const transport: Transport = async (req) => await fetch(req.url).then((r) => r.j
 const transport: Transport = async (req) => {
   const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
   return { ok: res.ok, status: res.status, statusText: res.statusText,
-           contentType: res.headers.get('content-type'), text: () => res.text() };
+           contentType: res.headers.get('content-type'),
+           headers: Object.fromEntries(res.headers), text: () => res.text() };
 };
 ```
 
 The fetcher parses JSON and runs the transformer itself; a `Transport` only performs the call and
-hands back `{ ok, status, statusText, contentType, text() }`.
+hands back `{ ok, status, statusText, contentType, headers, text() }`.
 Source: `packages/client/src/fetcher/fetcher.ts` (`Transport`, `TransportResponse`).

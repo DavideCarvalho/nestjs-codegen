@@ -81,7 +81,6 @@ export default config;
     expect(config.pages.propsExport).toBe('ComponentProps');
     expect(config.pages.componentNameStrategy).toBe('relative-no-ext');
     expect(config.codegen.outDir).toBe(join(tmpDir, '.nestjs-codegen'));
-    expect(config.scopes).toEqual({});
     expect(config.app).toBeNull();
     // contracts defaults
     expect(config.contracts.glob).toBe('src/**/*.controller.ts');

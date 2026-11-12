@@ -161,6 +161,7 @@ describe('createFetcher', () => {
           status: 200,
           statusText: 'OK',
           contentType: 'application/json',
+          headers: { 'content-type': 'application/json' },
           text: async () => JSON.stringify({ via: 'axios', id: 7 }),
         };
       });
@@ -183,6 +184,7 @@ describe('createFetcher', () => {
         status: 422,
         statusText: 'Unprocessable',
         contentType: 'application/json',
+        headers: { 'content-type': 'application/json' },
         text: async () => '{"message":"bad"}',
       });
       const api = createFetcher({ transport });
@@ -311,32 +313,17 @@ describe('createFetcher — fetchBlob / fetchRaw (binary + headers escape hatch)
   });
 
   it('throws a clear error when the transport cannot produce a blob', async () => {
-    // A legacy/minimal transport without blob() — fetchBlob must fail loudly.
+    // A minimal transport without blob() — fetchBlob must fail loudly.
     const transport = async () => ({
       ok: true,
       status: 200,
       statusText: 'OK',
       contentType: 'application/octet-stream',
+      headers: { 'content-type': 'application/octet-stream' },
       text: async () => '',
     });
     const api = createFetcher({ transport });
     await expect(api.fetchBlob('/x')).rejects.toThrow(/responseType: 'blob'/);
-  });
-});
-
-describe('JSON path regression — unchanged after adding raw/blob support', () => {
-  it('verb methods still parse JSON and ignore the new TransportResponse fields', async () => {
-    const transport = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      contentType: 'application/json',
-      // Note: NO headers/blob/arrayBuffer — proves the JSON path is back-compat
-      // with transports written before this change.
-      text: async () => JSON.stringify({ kept: true }),
-    }));
-    const api = createFetcher({ transport });
-    expect(await api.get<{ kept: boolean }>('/x')).toEqual({ kept: true });
   });
 });
 

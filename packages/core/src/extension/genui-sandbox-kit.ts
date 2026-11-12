@@ -68,13 +68,6 @@ export interface GenuiSandboxKitOptions {
   kitModule?: string;
 }
 
-/** The options before nestjs-agent-core 0.53, and what replaced each. */
-const LEGACY_OPTIONS: Record<string, string> = {
-  entry: '`entry: X` is now `components: X`',
-  include: '`include: G` is now `components: G` (globs, files, directories or packages)',
-  css: "`css: G` is now `styles: G` (the app's style entry files)",
-};
-
 interface SandboxKitFiles {
   files: string[];
   dirs: string[];
@@ -192,14 +185,6 @@ function resolveKitFilesLocally(
  * Needs the optional peer `@dudousxd/nestjs-agent-core` (>=0.53.0) unless `generate` is given.
  */
 export function genuiSandboxKit(options: GenuiSandboxKitOptions = {}): CodegenExtension {
-  const legacy = Object.keys(LEGACY_OPTIONS).filter(
-    (key) => (options as Record<string, unknown>)[key] !== undefined,
-  );
-  if (legacy.length > 0) {
-    throw new CodegenError(
-      `genuiSandboxKit(): ${legacy.map((key) => `\`${key}\``).join(', ')} ${legacy.length > 1 ? 'were' : 'was'} removed — ${legacy.map((key) => LEGACY_OPTIONS[key]).join('; ')}. The options are now the agent's Vite plugin's: components, styles, wrapper, stylesDocs.`,
-    );
-  }
   const output = options.output ?? DEFAULT_SANDBOX_KIT_OUTPUT;
   const source = {
     ...(options.components !== undefined ? { components: options.components } : {}),

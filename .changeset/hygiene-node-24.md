@@ -16,3 +16,5 @@ Also removed (see the Upgrading page in the docs):
 - `@dudousxd/nestjs-client`: `TransportResponse.headers` is required. A custom `Transport` returns every response header, with lower-cased keys (`Object.fromEntries(res.headers)` with `fetch`).
 
 Fixed: `watch()` (and so `NestjsCodegenModule`'s dev watcher) resolves only after its file watchers finish their initial scan, so an edit made right after it starts is no longer missed.
+
+- The CLI/module drift guard no longer fires against a manifest written by another lib version: an upgrade that drops a config key (like `scopes`) is not drift.

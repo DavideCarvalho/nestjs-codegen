@@ -214,6 +214,21 @@ describe('generate() drift guard', () => {
     expect(manifest?.configKeyHashes?.serialization).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('a manifest from another lib version never trips the guard (an upgrade is not drift)', async () => {
+    const cliConfig = makeConfig(tmpBase, outDir, { serialization: 'json' });
+    await generate(cliConfig, [], 'cli');
+    const manifest = await readManifest(outDir);
+    if (manifest === null) throw new Error('expected a manifest');
+    await writeFile(
+      join(outDir, '.codegen-manifest.json'),
+      `${JSON.stringify({ ...manifest, version: '0.0.1-older' }, null, 2)}\n`,
+      'utf8',
+    );
+    const moduleConfig = makeConfig(tmpBase, outDir, { serialization: 'superjson' });
+    await expect(generate(moduleConfig, [], 'module')).resolves.not.toThrow();
+    expect((await readManifest(outDir))?.entryPoint).toBe('module');
+  });
+
   it('still throws (without naming keys) against a pre-key-hash manifest', async () => {
     const cliConfig = makeConfig(tmpBase, outDir, { serialization: 'json' });
     await generate(cliConfig, [], 'cli');

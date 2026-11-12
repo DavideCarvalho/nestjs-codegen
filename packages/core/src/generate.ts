@@ -103,8 +103,12 @@ export async function generate(
   // the current run's values.
   const configHash = computeConfigHash(config);
   const configKeyHashes = computeConfigKeyHashes(config);
+  // A manifest written by another lib version is not a drift signal: an upgrade can add or
+  // drop config keys (a removed option changes the hash on its own), and the next run
+  // rewrites the manifest anyway.
   if (
     config.driftGuard &&
+    manifest?.version === VERSION &&
     manifest?.entryPoint &&
     manifest.entryPoint !== entryPoint &&
     manifest.configHash &&

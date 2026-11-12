@@ -68,11 +68,6 @@ export default defineConfig({
       type: 'string',
       default: "'src/**/*.controller.ts'",
     },
-    scopes: {
-      description: "Deprecated, no effect (a config that sets it gets a warning). For several Inertia apps use pages.scopes; for several controller sets use one contracts.glob, e.g. a brace glob.",
-      type: 'Record<string, ScopeConfig>',
-      default: '{}',
-    },
     'codegen.outDir': {
       description: 'Output directory for generated files.',
       type: 'string',

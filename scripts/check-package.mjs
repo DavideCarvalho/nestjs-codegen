@@ -2,8 +2,8 @@
 /**
  * Lints every published package the way a consumer would install it: `publint` checks the
  * package.json against the files that ship, and `@arethetypeswrong/cli` resolves the types of
- * every export from the packed tarball (the `node16` profile for a dual ESM/CJS package, `esm-only`
- * for an ESM-only one). Run after the build.
+ * every export from the packed tarball (the `node16` profile for a package that ships CommonJS,
+ * `esm-only` for an ESM-only one). Run after the build.
  *
  * Usage:
  *   node scripts/check-package.mjs            # every non-private package under packages/
@@ -32,19 +32,31 @@ for (const dir of dirs) {
   if (pkg.private === true) continue;
   console.log(`\n▸ ${pkg.name}`);
   const out = mkdtempSync(join(tmpdir(), 'check-package-'));
+  let step = 'publint';
   try {
     execFileSync(bin('publint'), ['run', '--strict', dir], { stdio: 'inherit' });
-    execFileSync('pnpm', ['pack', '--pack-destination', out], { cwd: dir, stdio: 'ignore' });
+    step = 'pnpm pack';
+    execFileSync('pnpm', ['pack', '--pack-destination', out], {
+      cwd: dir,
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
     const tarball = readdirSync(out).find((f) => f.endsWith('.tgz'));
-    // A package with a `require` entry ships CommonJS too, so it must resolve from both ESM and
-    // CommonJS (`node16` profile: TypeScript's legacy `node10` resolution ignores `exports`
-    // subpaths and is not a supported consumer setup). An ESM-only package uses `esm-only`.
-    const dual = JSON.stringify(pkg.exports ?? {}).includes('"require"');
-    const profile = ['--profile', dual ? 'node16' : 'esm-only'];
+    if (!tarball) throw new Error(`pnpm pack produced no tarball in ${out}`);
+    step = 'attw';
+    // A package that ships CommonJS (a `require` entry, or a CommonJS package) must resolve from
+    // both ESM and CommonJS (`node16` profile: TypeScript's legacy `node10` resolution ignores
+    // `exports` subpaths and is not a supported consumer setup). An ESM-only package uses `esm-only`.
+    const esmOnly =
+      pkg.type === 'module' && !JSON.stringify(pkg.exports ?? {}).includes('"require"');
+    const profile = ['--profile', esmOnly ? 'esm-only' : 'node16'];
+    // Run from the package directory so a package's own `.attw.json` (e.g. an entrypoint that
+    // only resolves under the `node` condition, excluded on purpose) is picked up.
     execFileSync(bin('attw'), [join(out, tarball), ...profile, '--format', 'table'], {
+      cwd: dir,
       stdio: 'inherit',
     });
-  } catch {
+  } catch (error) {
+    console.error(`✖ ${pkg.name}: ${step} failed${error?.message ? ` — ${error.message}` : ''}`);
     failed++;
   } finally {
     rmSync(out, { recursive: true, force: true });

@@ -35,7 +35,6 @@ function makeConfig(pagesDir: string, outDir: string, contractsGlob?: string): R
       glob: contractsGlob ?? 'src/**/*.controller.ts',
       debounceMs: 500,
     },
-    scopes: {},
     codegen: { outDir, cwd: pagesDir },
     app: null,
     fetcher: null,

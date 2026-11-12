@@ -85,11 +85,9 @@ export interface TransportResponse {
   /**
    * All response headers, lower-cased keys. Lets callers read e.g.
    * `content-disposition` (original download filename) or `x-auth-token`.
-   * Optional for back-compat: transports written before this field still
-   * satisfy the contract, and `contentType` remains the source of truth for
-   * content-type detection.
+   * `contentType` remains the source of truth for content-type detection.
    */
-  headers?: Record<string, string>;
+  headers: Record<string, string>;
   /** The raw response body as text. */
   text(): Promise<string>;
   /**
@@ -120,6 +118,7 @@ export interface TransportResponse {
  *     ok: res.status >= 200 && res.status < 300,
  *     status: res.status, statusText: res.statusText,
  *     contentType: res.headers['content-type'] ?? null,
+ *     headers: res.headers,
  *     text: async () => res.data,
  *   };
  * };
@@ -426,7 +425,7 @@ export function createFetcher(opts: FetcherOptions = {}): Fetcher {
     ro: RawRequestOpts = {},
   ): Promise<RawResponse<T>> {
     const res = await send(method, path, ro);
-    const headers = res.headers ?? {};
+    const headers = res.headers;
 
     const responseType = ro.responseType ?? 'json';
     if (responseType === 'blob') {

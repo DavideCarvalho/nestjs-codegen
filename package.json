@@ -7,7 +7,7 @@
   "author": "Davi Carvalho <davi@goflip.ai>",
   "packageManager": "pnpm@9.0.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "pnpm": {
     "overrides": {
@@ -17,6 +17,7 @@
   "scripts": {
     "build": "pnpm --filter \"@dudousxd/nestjs-codegen\" build && pnpm -r --filter \"./packages/*\" --filter \"!@dudousxd/nestjs-codegen\" build",
     "test": "vitest run",
+    "check:package": "node scripts/check-package.mjs",
     "test:watch": "vitest",
     "typecheck": "pnpm build && pnpm -r --filter \"./packages/*\" typecheck",
     "lint": "biome check .",
@@ -27,10 +28,12 @@
     "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@biomejs/biome": "1.9.4",
     "@changesets/changelog-github": "0.7.0",
     "@changesets/cli": "2.31.1",
     "@vitest/coverage-v8": "4.1.12",
+    "publint": "0.3.25",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vite": "7.3.7",

@@ -296,6 +296,15 @@ export async function watch(
   trackedWatcher.on('change', (p) => scheduleContractsRegenerate(p));
   trackedWatcher.on('unlink', (p) => scheduleContractsRegenerate(p, true));
 
+  // Resolve only once the glob watchers have finished their initial scan: until then a
+  // file is not watched yet, so an edit made right after `watch()` returns would be lost.
+  // The scan takes milliseconds; the tracked-inputs watcher starts empty and has nothing to scan.
+  await Promise.all(
+    [pagesWatcher, contractsWatcher, formsWatcher].map(
+      (w) => new Promise<void>((resolveReady) => w.once('ready', () => resolveReady())),
+    ),
+  );
+
   return {
     close: async () => {
       if (pagesDebounceTimer !== undefined) {

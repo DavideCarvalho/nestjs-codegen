@@ -23,7 +23,6 @@ function makeConfig(cwd: string, extensions: CodegenExtension[]): ResolvedConfig
     validation: zodAdapter,
     pages: null,
     contracts: { glob: 'src/**/*.controller.ts', debounceMs: 100 },
-    scopes: {},
     codegen: { outDir: join(cwd, 'src/generated'), cwd },
     app: null,
     fetcher: null,
@@ -157,12 +156,6 @@ describe('genuiSandboxKit', () => {
 
     expect(tracked).toContain('src/components/ui/button.tsx');
     expect(tracked).toContain('src/components/ui');
-  });
-
-  it('the options from before nestjs-agent-core 0.53 throw a migration message', () => {
-    expect(() => genuiSandboxKit({ include: 'web/*.tsx', css: 'a.css' } as never)).toThrow(
-      /`include`, `css` were removed — `include: G` is now `components: G`.*`css: G` is now `styles: G`/,
-    );
   });
 
   it("with the real kit module: writes components, the styles' vocabulary and theme, and tracks what the styles import", async () => {

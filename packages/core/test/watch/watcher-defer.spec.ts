@@ -30,7 +30,6 @@ function makeConfig(outDir: string, cwd: string): ResolvedConfig {
     validation: zodAdapter,
     pages: null,
     contracts: { glob: 'src/**/*.controller.ts', debounceMs: 500 },
-    scopes: {},
     codegen: { outDir, cwd },
     app: null,
     fetcher: null,

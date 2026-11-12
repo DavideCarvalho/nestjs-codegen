@@ -50,12 +50,6 @@ export interface UserConfig {
     /** Debounce delay in ms before re-running route discovery. Default: `500` */
     debounceMs?: number;
   };
-  /**
-   * @deprecated Has no effect: discovery never read it. For several Inertia apps use
-   * `pages.scopes`; for several controller sets use one `contracts.glob` (brace/extglob).
-   * A config that sets it gets a warning.
-   */
-  scopes?: Record<string, ScopeConfig>;
   codegen?: {
     outDir?: string;
     cwd?: string;
@@ -152,12 +146,6 @@ export interface UserConfig {
   driftGuard?: boolean;
 }
 
-/** @deprecated See `UserConfig.scopes`. */
-export interface ScopeConfig {
-  glob: string;
-  prefix?: string;
-}
-
 /** How a page file's path (relative to its glob's static base) becomes its component name. */
 export type PageNameStrategy = 'relative-no-ext' | 'kebab' | ((path: string) => string);
 
@@ -232,7 +220,6 @@ export interface ResolvedConfig {
   validation: ValidationAdapter;
   pages: ResolvedPagesConfig | null;
   contracts: ResolvedContractsConfig;
-  scopes: Record<string, ScopeConfig>;
   codegen: ResolvedCodegenConfig;
   app: ResolvedAppConfig | null;
   fetcher: { importPath: string } | null;

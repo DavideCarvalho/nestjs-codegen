@@ -1,0 +1,24 @@
+---
+title: Upgrading
+description: What to change in your project when you move to a new release of nestjs-codegen.
+icon: CircleArrowUp
+---
+
+## Node.js 24, and removed options
+
+`@dudousxd/nestjs-codegen` 0.30, `@dudousxd/nestjs-client` 0.10 and the adapters released with them
+(`-zod`, `-valibot`, `-arktype`, `-tanstack`) require **Node.js 24 or newer**. Upgrade the Node.js
+version your app runs and builds on first.
+
+Then check your config and custom transports:
+
+- **Top-level `scopes` is gone** (it never had an effect), and so is the `ScopeConfig` type.
+  Delete it from `nestjs-codegen.config.ts`. For several Inertia apps use
+  [`pages.scopes`](/docs/integrations/inertia#several-inertia-apps-scopes). For several controller
+  sets, use one brace glob in `contracts.glob`, e.g. `'src/{public,admin}/**/*.controller.ts'`.
+- **`genuiSandboxKit()` no longer checks for its pre-0.28 option names.** `include`/`entry` are
+  `components` and `css` is `styles`. An old name is now just an unknown option, which TypeScript
+  reports.
+- **A custom `Transport` must return `headers`.** `TransportResponse.headers` (every response
+  header, lower-cased keys) is required now. With `fetch`, return `Object.fromEntries(res.headers)`.
+  `axiosTransport()` already does this.

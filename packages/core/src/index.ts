@@ -3,7 +3,7 @@ export const VERSION = '0.29.1';
 // Codegen pipeline (migrated from nestjs-inertia)
 export { defineConfig } from './config/define-config.js';
 export { loadConfig, resolveConfig } from './config/load-config.js';
-export type { UserConfig, ResolvedConfig, ScopeConfig } from './config/types.js';
+export type { UserConfig, ResolvedConfig } from './config/types.js';
 export { ConfigError, CodegenError } from './exceptions.js';
 
 export { generate } from './generate.js';

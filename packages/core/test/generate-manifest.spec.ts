@@ -20,7 +20,6 @@ function makeConfig(cwd: string, outDir: string): ResolvedConfig {
       componentNameStrategy: 'relative-no-ext',
     },
     contracts: { glob: 'src/**/*.controller.ts', debounceMs: 500 },
-    scopes: {},
     codegen: { outDir, cwd },
     app: null,
     fetcher: null,

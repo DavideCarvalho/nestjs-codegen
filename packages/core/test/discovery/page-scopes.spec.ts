@@ -186,19 +186,6 @@ describe('config', () => {
       ),
     ).toThrow(/"default"/);
   });
-
-  it('warns that the top-level `scopes` has no effect, pointing at pages.scopes', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      resolveConfig(
-        { validation: zodAdapter, scopes: { admin: { glob: 'src/admin/**/*.controller.ts' } } },
-        cwd,
-      );
-      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/`scopes`.*pages\.scopes/s));
-    } finally {
-      warn.mockRestore();
-    }
-  });
 });
 
 describe('skip-if-unchanged manifest', () => {

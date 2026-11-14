@@ -87,7 +87,7 @@ The mutation's `mutationFn` takes the **full leaf input** (`{ params?, query?, b
 
 ### Pagination / cursor selector
 
-By default `infiniteQueryOptions()` appends `page` to the query string and derives the next page from `response.meta.currentPage` (or `response.meta.page`) and `response.meta.lastPage`, so the Aviary list envelope `{ data, meta: { currentPage, lastPage, … } }` pages without overrides. That contract is now configurable from two places, and both keep the old default so existing output is unchanged.
+By default `infiniteQueryOptions()` appends `page` to the query string and derives the next page from `response.meta.currentPage` (or `response.meta.page`) and `response.meta.lastPage`, so the Aviary list envelope `{ data, meta: { currentPage, lastPage, … } }` pages without overrides. That contract is configurable from two places. Regenerating changes the emitted selector text, but responses that still send `meta.page` keep paging.
 
 **Generation-time** — the query-string key is structural to the API, so it is a `tanstackQuery()` option:
 

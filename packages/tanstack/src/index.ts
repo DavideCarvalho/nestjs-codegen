@@ -98,14 +98,14 @@ export function tanstackQuery(options: TanstackQueryOptions = {}): CodegenExtens
       // string). The emitted member takes an optional `overrides` arg so a consumer can plug
       // their own cursor selector — mirroring how Orval/tRPC expose `getNextPageParam` as a
       // call-site option. Defaults (page param value, initialPageParam, and the
-      // `meta.{page,lastPage}` selector) are kept so existing output keeps working unchanged.
+      // `meta.{currentPage|page,lastPage}` selector) are kept so existing output keeps working unchanged.
       if (req.isGet && !isBinary) {
         const resp = req.responseType;
         // Runtime overrides: any TanStack infinite-query option, spread last so it wins; the
         // three pagination-shaping fields are read explicitly so callers can override just
         // the selector while keeping every other default.
         const overridesType = `{ getNextPageParam?: (lastPage: ${resp}, allPages: ${resp}[], lastPageParam: number, allPageParams: number[]) => number | null | undefined; getPreviousPageParam?: (firstPage: ${resp}, allPages: ${resp}[], firstPageParam: number, allPageParams: number[]) => number | null | undefined; initialPageParam?: number; [key: string]: unknown }`;
-        const defaultNext = `(lastPage: ${resp}) => { const meta = (lastPage as unknown as { meta?: { page?: number; lastPage?: number } })?.meta; if (meta?.page != null && meta?.lastPage != null) { return meta.page < meta.lastPage ? meta.page + 1 : undefined; } return undefined; }`;
+        const defaultNext = `(lastPage: ${resp}) => { const meta = (lastPage as unknown as { meta?: { currentPage?: number; page?: number; lastPage?: number } })?.meta; const current = meta?.currentPage ?? meta?.page; if (current != null && meta?.lastPage != null) { return current < meta.lastPage ? current + 1 : undefined; } return undefined; }`;
         members.infiniteQueryOptions = `(overrides?: ${overridesType}) => _infiniteQueryOptions({ queryKey: ${req.queryKeyExpr}, queryFn: ({ pageParam }: { pageParam: number }) => fetcher.${req.method}<${resp}>(${req.urlExpr}, { query: { ...(input?.query ?? {}), ${pageParamName}: pageParam } as Record<string, unknown> }), initialPageParam: overrides?.initialPageParam ?? 1, getNextPageParam: overrides?.getNextPageParam ?? (${defaultNext}), ...overrides })`;
       }
       // ...and any non-GET (incl. filter-search POSTs) also gets a mutation entry. The

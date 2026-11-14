@@ -231,7 +231,7 @@ describe('tanstackQuery', () => {
   });
 
   describe('infiniteQueryOptions cursor/pagination selector', () => {
-    it('defaults: page param "page", initialPageParam 1, and meta.page/lastPage selector', () => {
+    it('defaults: page param "page", initialPageParam 1, and meta.currentPage|page/lastPage selector', () => {
       const members = tanstackQuery().apiClientLayer!.buildMembers(
         'fetcher.get<R>(u, o)',
         leaf(req()),
@@ -241,9 +241,10 @@ describe('tanstackQuery', () => {
       // Backward-compatible: still a zero-arg-callable handle member, defaults baked in.
       expect(io).toContain('initialPageParam: overrides?.initialPageParam ?? 1');
       expect(io).toContain('page: pageParam');
-      // Default selector reads meta.page / meta.lastPage.
-      expect(io).toContain('meta?.page != null && meta?.lastPage != null');
-      expect(io).toContain('meta.page < meta.lastPage ? meta.page + 1 : undefined');
+      // Default selector reads meta.currentPage (or meta.page) / meta.lastPage.
+      expect(io).toContain('current != null && meta?.lastPage != null');
+      expect(io).toContain('const current = meta?.currentPage ?? meta?.page;');
+      expect(io).toContain('current < meta.lastPage ? current + 1 : undefined');
     });
 
     it('accepts a runtime overrides arg (getNextPageParam / getPreviousPageParam / initialPageParam)', () => {
@@ -296,6 +297,9 @@ describe('tanstackQuery', () => {
       expect(cfg.initialPageParam).toBe(1);
       expect(cfg.getNextPageParam({ meta: { page: 1, lastPage: 3 } })).toBe(2);
       expect(cfg.getNextPageParam({ meta: { page: 3, lastPage: 3 } })).toBeUndefined();
+      // The Aviary list envelope: { data, meta: { currentPage, lastPage, … } }.
+      expect(cfg.getNextPageParam({ meta: { currentPage: 2, lastPage: 3, total: 9 } })).toBe(3);
+      expect(cfg.getNextPageParam({ meta: { currentPage: 3, lastPage: 3 } })).toBeUndefined();
     });
 
     it('custom getNextPageParam overrides the default', () => {

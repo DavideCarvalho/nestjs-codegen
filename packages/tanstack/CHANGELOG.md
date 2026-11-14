@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-codegen-tanstack
 
+## 0.7.0
+
+### Minor Changes
+
+- [#136](https://github.com/DavideCarvalho/nestjs-codegen/pull/136) [`27a396e`](https://github.com/DavideCarvalho/nestjs-codegen/commit/27a396ee4405d1bb96d6c431b878abec7c8b6f63) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The default `infiniteQueryOptions()` next-page selector reads `meta.currentPage` (the Aviary list envelope `{ data, meta: { total, perPage, currentPage, lastPage, firstPage } }`) and still falls back to `meta.page`, so generated infinite queries page through every Aviary offset list without a custom `getNextPageParam`.
+
 ## 0.6.0
 
 ### Minor Changes

@@ -92,8 +92,8 @@ Source: `apps/docs/content/docs/client/tanstack-query.mdx`, `packages/tanstack/s
 
 ### 3. Configure the infinite-query page field
 
-`infiniteQueryOptions()` appends a page param and reads the next page from `response.meta.page` /
-`response.meta.lastPage`. The field name is structural (baked into the emitted `queryFn`), so set it
+`infiniteQueryOptions()` appends a page param and reads the next page from `response.meta.currentPage`
+(falling back to `response.meta.page`) / `response.meta.lastPage`. The field name is structural (baked into the emitted `queryFn`), so set it
 at generation time for cursor-style APIs:
 
 ```ts

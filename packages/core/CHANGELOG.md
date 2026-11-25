@@ -1,5 +1,11 @@
 # @dudousxd/nestjs-codegen
 
+## 0.31.0
+
+### Minor Changes
+
+- [#137](https://github.com/DavideCarvalho/nestjs-codegen/pull/137) [`c08fd71`](https://github.com/DavideCarvalho/nestjs-codegen/commit/c08fd7142b8c421f779772c38da0a4bdc5386122) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Read a NestJS 12 parameter decorator's `schema` option (`@Body({ schema })`, `@Query({ schema })`, `@Query('q', { schema })`, `@Param('id', { schema })`, validated by `StandardSchemaValidationPipe`) the same way as a schema pipe's argument, so the generated client types the request from the schema instead of `unknown`.
+
 ## 0.30.0
 
 ### Minor Changes

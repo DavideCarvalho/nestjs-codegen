@@ -210,3 +210,21 @@ describe('the typed program stays small', () => {
     expect(contract('zod3Pipes.note').body).toBe('{ text: string }');
   });
 });
+
+describe('NestJS 12 decorator options ({ schema })', () => {
+  it('types @Body({ schema }) from the schema, as a pipe argument would be', () => {
+    expect(contract('paramOptions.create').body).toBe(
+      '{ prompt: string; note?: string | undefined }',
+    );
+    expect(contract('paramOptions.create').bodyRef ?? null).toBeNull();
+  });
+
+  it('types a whole @Query({ schema }) with its defaults', () => {
+    expect(contract('paramOptions.list').query).toBe('{ page?: number }');
+  });
+
+  it('types named @Query("x", { schema }) and @Param("x", { schema })', () => {
+    expect(contract('paramOptions.search').query).toBe('{ q: string }');
+    expect(contract('paramOptions.item').paramTypes).toEqual({ version: 'number' });
+  });
+});

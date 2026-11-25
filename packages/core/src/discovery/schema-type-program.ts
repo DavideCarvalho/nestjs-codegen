@@ -378,7 +378,8 @@ export class SchemaTypeProgram {
 /**
  * The expressions discovery reads schemas from: a pipe's ARGUMENTS in a param
  * decorator (`new ZodPipe(schema)` needs `schema`, not the `ZodPipe` class — whose
- * file would drag in `@nestjs/common` and all of rxjs), `@ApplyContract(...)`'s
+ * file would drag in `@nestjs/common` and all of rxjs), the `schema` of a param
+ * decorator's options object (`@Body({ schema })`), `@ApplyContract(...)`'s
  * argument, and `defineContract(...)` calls.
  */
 function schemaPositions(sf: SourceFile): Node[] {
@@ -392,6 +393,15 @@ function schemaPositions(sf: SourceFile): Node[] {
         for (const arg of node.getArguments()) {
           if (Node.isNewExpression(arg) || Node.isCallExpression(arg)) {
             roots.push(...arg.getArguments());
+          } else if (Node.isObjectLiteralExpression(arg)) {
+            // NestJS 12: `@Body({ schema })`, validated by StandardSchemaValidationPipe.
+            const schema = arg.getProperty('schema');
+            if (schema && Node.isPropertyAssignment(schema)) {
+              const value = schema.getInitializer();
+              if (value) roots.push(value);
+            } else if (schema && Node.isShorthandPropertyAssignment(schema)) {
+              roots.push(schema.getNameNode());
+            }
           }
         }
       }

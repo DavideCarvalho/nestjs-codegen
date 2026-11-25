@@ -27,6 +27,14 @@ import { zodAstToTs } from './zod-ast-to-ts.js';
  * pipe is read the same way, and `new ParseIntPipe()` / `new DefaultValuePipe(1)`
  * / `new ValidationPipe({ … })` are left alone because their arguments are not
  * schemas.
+ *
+ * NestJS 12 also takes the schema in the decorator's own options, validated by its
+ * `StandardSchemaValidationPipe` (usually global):
+ *
+ *     create(@Body({ schema: createBody }) body: z.infer<typeof createBody>) {}
+ *     search(@Query('q', { schema: z.string() }) q: string) {}
+ *
+ * so an options object's `schema` counts the same as a pipe's argument.
  */
 export interface PipeSchema {
   /** The request type (the schema's input — see `schema-type-inference.ts`). */
@@ -42,24 +50,49 @@ export interface PipeSchema {
  * decorator carries no schema pipe.
  */
 export function pipeSchemaOf(decorator: Decorator, project: Project): PipeSchema | null {
-  for (const pipe of decorator.getArguments()) {
-    if (!Node.isNewExpression(pipe) && !Node.isCallExpression(pipe)) continue;
-    for (const arg of pipe.getArguments()) {
-      if (!couldBeSchema(arg)) continue;
-      const inferred = inferSchema(arg, project);
-      if (inferred.kind === 'schema') {
-        return {
-          type: requestTypeOf(inferred.types),
-          optional: acceptsUndefined(inferred.types),
-          fields: requestFieldsOf(inferred.types),
-        };
-      }
-      if (inferred.kind === 'unresolved') {
-        const fallback = syntacticZodType(arg, project);
-        if (fallback) {
-          return { type: fallback, optional: fallback.endsWith('| undefined'), fields: null };
-        }
-      }
+  for (const arg of decorator.getArguments()) {
+    if (Node.isObjectLiteralExpression(arg)) {
+      const schema = optionsSchema(arg);
+      const found = schema ? schemaOf(schema, project) : null;
+      if (found) return found;
+      continue;
+    }
+    if (!Node.isNewExpression(arg) && !Node.isCallExpression(arg)) continue;
+    for (const pipeArg of arg.getArguments()) {
+      const found = schemaOf(pipeArg, project);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * The `schema` of a NestJS 12 parameter-decorator options object (`{ schema: x }` or
+ * the shorthand `{ schema }`), or undefined when it names none.
+ */
+function optionsSchema(options: Node): Node | undefined {
+  if (!Node.isObjectLiteralExpression(options)) return undefined;
+  const property = options.getProperty('schema');
+  if (property && Node.isPropertyAssignment(property)) return property.getInitializer();
+  if (property && Node.isShorthandPropertyAssignment(property)) return property.getNameNode();
+  return undefined;
+}
+
+/** The request shape `arg` declares when it is a schema, or null when it is not one. */
+function schemaOf(arg: Node, project: Project): PipeSchema | null {
+  if (!couldBeSchema(arg)) return null;
+  const inferred = inferSchema(arg, project);
+  if (inferred.kind === 'schema') {
+    return {
+      type: requestTypeOf(inferred.types),
+      optional: acceptsUndefined(inferred.types),
+      fields: requestFieldsOf(inferred.types),
+    };
+  }
+  if (inferred.kind === 'unresolved') {
+    const fallback = syntacticZodType(arg, project);
+    if (fallback) {
+      return { type: fallback, optional: fallback.endsWith('| undefined'), fields: null };
     }
   }
   return null;
